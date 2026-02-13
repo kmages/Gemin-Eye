@@ -27,7 +27,7 @@ export async function seedDatabase() {
     },
     {
       userId: "demo",
-      name: "Tony Restaurant",
+      name: "Tony's",
       type: "Italian restaurant in Brookfield, IL",
       targetAudience: "Families and food lovers in the Western Suburbs of Chicago looking for authentic Italian dining, date night spots, catering, and special occasion restaurants",
       coreOffering: "Authentic Italian restaurant in Brookfield, IL serving handmade pasta, wood-fired pizza, and classic Italian dishes. Family-owned with a warm, welcoming atmosphere. Known for generous portions, fresh ingredients, and a great wine selection. Available for private events and catering.",
@@ -159,7 +159,7 @@ export async function seedDatabase() {
       });
     }
 
-    if (biz.name === "Tony Restaurant") {
+    if (biz.name === "Tony's") {
       const [camp1] = await db.insert(campaigns).values({
         businessId: b.id,
         name: "Western Suburbs Facebook Groups",
@@ -229,7 +229,7 @@ export async function seedDatabase() {
         if (leadData.status === "responded") {
           await db.insert(aiResponses).values({
             leadId: lead.id,
-            content: "Happy anniversary! You should check out Tony Restaurant in Brookfield -- my family goes there all the time. Their handmade pasta is the real deal, and it has that cozy, old-school Italian vibe without being stuffy. The wine list is solid too. You won't be disappointed!",
+            content: "Happy anniversary! You should check out Tony's in Brookfield -- my family goes there all the time. Their handmade pasta is the real deal, and it has that cozy, old-school Italian vibe without being stuffy. The wine list is solid too. You won't be disappointed!",
             status: "approved",
           });
         }

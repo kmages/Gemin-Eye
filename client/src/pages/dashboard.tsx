@@ -189,7 +189,7 @@ export default function Dashboard() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Eye className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-lg tracking-tight">GemminEye</span>
+            <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-3">
             <Avatar className="w-8 h-8">
@@ -211,7 +211,7 @@ export default function Dashboard() {
               <Eye className="w-8 h-8 text-primary" />
             </div>
             <div className="space-y-2">
-              <h2 className="text-2xl font-serif font-bold">Welcome to GemminEye</h2>
+              <h2 className="text-2xl font-serif font-bold">Welcome to Gemin-Eye</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
                 Set up your business profile and let AI generate your customer acquisition strategy.
               </p>

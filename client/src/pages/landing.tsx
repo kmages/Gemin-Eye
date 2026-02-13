@@ -86,7 +86,7 @@ function DemoPreview() {
               <div className="w-7 h-7 rounded-full bg-chart-2/20 flex items-center justify-center">
                 <Send className="w-3 h-3 text-chart-2" />
               </div>
-              <span className="text-xs font-medium text-chart-2">GemminEye Response</span>
+              <span className="text-xs font-medium text-chart-2">Gemin-Eye Response</span>
             </div>
             <p className="text-sm leading-relaxed text-foreground/80" data-testid="text-demo-response">
               <TypingAnimation text={demoResponse} />
@@ -144,7 +144,7 @@ export default function LandingPage() {
     {
       step: "03",
       title: "Monitor & Respond",
-      description: "GemminEye watches for high-intent posts and crafts human-like responses. You approve and post in seconds via Telegram alerts.",
+      description: "Gemin-Eye watches for high-intent posts and crafts human-like responses. You approve and post in seconds via Telegram alerts.",
       icon: Zap,
     },
   ];
@@ -155,7 +155,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Eye className="w-6 h-6 text-primary" />
-            <span className="font-semibold text-lg tracking-tight" data-testid="text-brand-name">GemminEye</span>
+            <span className="font-semibold text-lg tracking-tight" data-testid="text-brand-name">Gemin-Eye</span>
           </div>
           <div className="hidden md:flex items-center gap-6">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
@@ -183,7 +183,7 @@ export default function LandingPage() {
               <span className="text-primary">Reimagined.</span>
             </h1>
             <p className="text-lg text-muted-foreground max-w-lg leading-relaxed" data-testid="text-hero-subtitle">
-              Stop blasting ads to millions. GemminEye monitors specific interest groups and responds to high-intent questions as a helpful human.
+              Stop blasting ads to millions. Gemin-Eye monitors specific interest groups and responds to high-intent questions as a helpful human.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Button size="lg" asChild data-testid="button-hero-cta">
@@ -273,9 +273,9 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Eye className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">GemminEye</span>
+            <span className="text-sm font-medium">Gemin-Eye</span>
           </div>
-          <p className="text-xs text-muted-foreground">&copy; 2026 GemminEye. All rights reserved.</p>
+          <p className="text-xs text-muted-foreground">&copy; 2026 Gemin-Eye. All rights reserved.</p>
         </div>
       </footer>
     </div>

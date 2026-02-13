@@ -128,7 +128,7 @@ export default function OnboardingPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation("/")}>
             <Eye className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-lg tracking-tight">GemminEye</span>
+            <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${step === "profile" ? "bg-primary" : "bg-chart-2"}`} />
@@ -146,7 +146,7 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-serif font-bold" data-testid="text-onboarding-title">Setup Your Agent</h1>
               <p className="text-muted-foreground">
-                Provide the intelligence GemminEye needs to represent you.
+                Provide the intelligence Gemin-Eye needs to represent you.
               </p>
             </div>
 
@@ -277,7 +277,7 @@ export default function OnboardingPage() {
                 <h1 className="text-3xl font-serif font-bold" data-testid="text-strategy-title">Your AI Strategy</h1>
               </div>
               <p className="text-muted-foreground pl-12">
-                Review the strategy GemminEye created for your business.
+                Review the strategy Gemin-Eye created for your business.
               </p>
             </div>
 
@@ -368,7 +368,7 @@ export default function OnboardingPage() {
             <div className="space-y-2">
               <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">You're All Set!</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Your GemminEye agent is now monitoring target groups. You'll be notified when high-intent leads are found.
+                Your Gemin-Eye agent is now monitoring target groups. You'll be notified when high-intent leads are found.
               </p>
             </div>
             <Button size="lg" onClick={() => setLocation("/")} data-testid="button-go-dashboard">

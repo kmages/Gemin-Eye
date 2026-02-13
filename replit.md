@@ -1,8 +1,8 @@
-# GemminEye - AI-Powered Customer Acquisition Platform
+# Gemin-Eye - AI-Powered Customer Acquisition Platform
 
 ## Overview
 
-GemminEye is an AI-powered customer acquisition platform that monitors niche online communities (Facebook groups, Reddit, etc.) for high-intent questions, then generates helpful, human-sounding responses that subtly promote a client's business. Instead of traditional advertising, it finds people actively seeking recommendations and engages them organically.
+Gemin-Eye is an AI-powered customer acquisition platform that monitors niche online communities (Facebook groups, Reddit, etc.) for high-intent questions, then generates helpful, human-sounding responses that subtly promote a client's business. Instead of traditional advertising, it finds people actively seeking recommendations and engages them organically.
 
 The app has three main flows:
 1. **Landing page** - Marketing page with animated demo showing how the product works

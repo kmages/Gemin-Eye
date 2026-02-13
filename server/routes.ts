@@ -6,6 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
 import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { registerTelegramWebhook } from "./telegram-bot";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -297,6 +298,8 @@ Return ONLY valid JSON with this structure:
       res.status(500).json({ error: "Failed to approve response" });
     }
   });
+
+  registerTelegramWebhook(app);
 
   app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
     try {

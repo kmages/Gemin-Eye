@@ -9,8 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
-  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users
+  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send
 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
 
@@ -55,6 +57,19 @@ function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
     }
   };
 
+  const sendToTelegram = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/telegram/notify-lead", { leadId: lead.id });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Sent to Telegram", description: "Lead notification sent to your Telegram." });
+    },
+    onError: () => {
+      toast({ title: "Failed", description: "Could not send to Telegram.", variant: "destructive" });
+    },
+  });
+
   return (
     <Card className="p-5 space-y-4" data-testid={`card-lead-${lead.id}`}>
       <div className="flex items-start justify-between gap-3">
@@ -91,9 +106,18 @@ function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
           <p className="text-sm leading-relaxed text-muted-foreground" data-testid={`text-response-${lead.id}`}>
             {response.content}
           </p>
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button variant="outline" size="sm" onClick={handleCopy} data-testid={`button-copy-${lead.id}`}>
               <Copy className="w-3 h-3 mr-1" /> Copy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendToTelegram.mutate()}
+              disabled={sendToTelegram.isPending}
+              data-testid={`button-telegram-${lead.id}`}
+            >
+              <Send className="w-3 h-3 mr-1" /> {sendToTelegram.isPending ? "Sending..." : "Send to Telegram"}
             </Button>
             {lead.postUrl && (
               <Button variant="outline" size="sm" asChild data-testid={`button-link-${lead.id}`}>

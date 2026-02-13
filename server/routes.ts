@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
+import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -223,6 +224,10 @@ Return ONLY the response text, no quotes or formatting.`;
         status: "pending",
       });
 
+      sendTelegramMessage(formatResponseNotification(
+        lead, business.name, responseText.trim()
+      )).catch((e) => console.error("Telegram notification failed:", e));
+
       res.json(aiResp);
     } catch (error) {
       console.error("Error generating response:", error);
@@ -290,6 +295,56 @@ Return ONLY valid JSON with this structure:
     } catch (error) {
       console.error("Error approving response:", error);
       res.status(500).json({ error: "Failed to approve response" });
+    }
+  });
+
+  app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
+    try {
+      const success = await sendTelegramMessage(
+        "<b>Gemin-Eye Connected!</b>\n\nYour Telegram notifications are working. You'll receive alerts here when new leads are found and AI responses are ready to copy & paste."
+      );
+      if (success) {
+        res.json({ success: true, message: "Test message sent!" });
+      } else {
+        res.status(500).json({ error: "Failed to send. Check bot token and chat ID." });
+      }
+    } catch (error) {
+      console.error("Telegram test error:", error);
+      res.status(500).json({ error: "Failed to send test message" });
+    }
+  });
+
+  app.post("/api/telegram/notify-lead", isAuthenticated, async (req: any, res) => {
+    try {
+      const { leadId } = req.body;
+      if (!leadId) return res.status(400).json({ error: "leadId required" });
+
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const lead = allLeads.find((l) => l.id === leadId);
+
+      if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+      const bizList = await storage.getBusinessesByUser(userId);
+      const campaign = camps.find((c) => c.id === lead.campaignId);
+      const business = bizList.find((b) => b.id === campaign?.businessId);
+
+      const leadResponses = await storage.getResponsesByLeads([lead.id]);
+      const latestResponse = leadResponses[0];
+
+      const msg = formatLeadNotification(
+        lead,
+        business?.name || "Unknown",
+        latestResponse?.content
+      );
+
+      const success = await sendTelegramMessage(msg);
+      res.json({ success });
+    } catch (error) {
+      console.error("Telegram notify error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
     }
   });
 

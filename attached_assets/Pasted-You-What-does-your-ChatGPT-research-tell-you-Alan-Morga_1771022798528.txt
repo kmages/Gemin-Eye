@@ -1,0 +1,683 @@
+You
+What does your ChatGPT research tell you? 
+
+Alan Morgan
+I just got, got home. I mean, I, the chat, TV thing as far as the pricing. 
+
+You
+So you didn't even have a chance to really read what you sent me. 
+
+Alan Morgan
+Well, I mean, I, I watched the road. It says, hey, this, this is the cream of. Of advertising and it's a uh, you know, a 75 to $300 per 
+
+You
+Yep. 
+
+Alan Morgan
+league. Or, you know, I want some, you know, hey, but it's, it's a. You know, a quality thing, you know, and it didn't, didn't say anything about, you know, I didn't ask you to follow up on the follow-up questions. Well, you know, what's the comparison with, you know, Google ads and, you know, I mean, how do you find customers and, you know, all the rest of those things like that. But, you know, it obviously has immense value, if it. Can be marketed. To the appropriate. Client. I mean, if, you know, I mean, if, if you are, I mean, you know, let's just take Mike for a second, if Mike is looking to increase, is, you know, traffic. You know, I mean, and he was going to pay uh, you know, uh, X number of dollars, you know, you have to make the assumption they're willing to pay. Uh, you know, I mean, that's the, that's one of the problems. I mean, what it's worth is, it's only worth it. If the client or customer is willing to pay for Google and words or Facebook and words or whatever they're willing to pay. You know, you got all these people that want it. But, you know, it's only a question of who's willing to pay the. You know, if they had an ad budget. Sure, you know, it's fine. And then, then it's a great business to be in. 
+
+You
+So. 
+
+Alan Morgan
+I mean, but you got to find a customer that's willing to pay. Per league. You know. Uh, you know, uh, which is obviously the best way of doing it because it's, you know, 
+
+You
+So 
+
+Alan Morgan
+I, yeah. 
+
+You
+you didn't watch the Super Bowl. I'm pretty sure. 
+
+Alan Morgan
+I watched a little bit of it, but you know. 
+
+You
+Pretty bad game. Um, 
+
+Alan Morgan
+I know. 
+
+You
+but Claude, the parent company being anthropic, ran adds making fun of open AI, who has started inserting ads into their free tear of search. 
+
+Alan Morgan
+Okay, well, they're trying to monetize it. You know, right? Finally, they're working for an income stream. Yeah, okay. 
+
+You
+Now, that goes in the face of the founder speaking three or four years ago at a VC conference saying that if open AI ever put ads in their search, somebody should take a shovel and bury him. 
+
+Alan Morgan
+Well, time change, man. Oh, come on. 
+
+You
+Right, I don't hold that against him. I'm just saying that the folks at anthropic took great fun at leveraging that inconsistency, I won't even call it hypocrisy. 
+
+Alan Morgan
+They're, they're, they're, they're wagging their, you know, thumbs or whatever it is, you know, you know, hey, of course they would. you know, I mean, hey, it's, it's like, you know, hey, you promised never to raise 
+
+You
+Right. 
+
+Alan Morgan
+taxes and here you're writing taxes. Okay. You promise they have us to lower inflation is double. You, you know, hey, I mean, of course you're, you know, whatever you promise that you don't deliver. Hey, you know, people, you know, hey, you know, hey, it makes great. Great political or 
+
+You
+So, 
+
+Alan Morgan
+advertising, you know? 
+
+You
+anthropics point. In the ads they ran in the Super Bowl was, our AI agent is so good, people are paying us to use it. We don't need to run ads. Yours is obviously not so good. 
+
+Alan Morgan
+And 3 and and 2 years from now when they start running ads. 
+
+You
+Well, okay, 
+
+Alan Morgan
+Yeah 
+
+You
+let's separate those two subjects for a second. So there's the topic of inserting ads into search, which Google has been doing since day one. They've never hidden their agenda. Google, if you were to ask the CEO of Google, what are you? He would say, we're an advertising company. 
+
+Alan Morgan
+Well, I'm studying amongst other things, that wouldn't surprise 
+
+You
+But 
+
+Alan Morgan
+me, you know. 
+
+You
+he would say it with pride, not 
+
+Alan Morgan
+Oh 
+
+You
+shame, 
+
+Alan Morgan
+okay. 
+
+You
+that was their 
+
+Alan Morgan
+Oh. 
+
+You
+mission from day one was to, 
+
+Alan Morgan
+Build an advertising platform, 
+
+You
+well, 
+
+Alan Morgan
+you 
+
+You
+to 
+
+Alan Morgan
+know. 
+
+You
+marry an inquiry with a good answer. And so if 
+
+Alan Morgan
+Yeah. 
+
+You
+the inquiry was, where do I get the lowest priced pots and pans, then they should have an advertiser that's ready to fill the void with that answer. Right? 
+
+Alan Morgan
+Well, yeah. 
+
+You
+But 
+
+Alan Morgan
+Well. 
+
+You
+what happened to Google, was they became so successful at what they set out to do, that the only way they could regulate the fairness of their platform in terms of an anti monopoly sort of thing, was to make every keyword that they offer an auctionable word. So, if the word is Las Vegas, who's willing to pay the most in an open blind auction for that keyword, and then you will be listed first when somebody says, What's the nicest hotel in Las Vegas? 
+
+Alan Morgan
+Yeah, I mean, it's it's a, it's a defense to 
+
+You
+Right, antitrust, 
+
+Alan Morgan
+anti-monopoly. 
+
+You
+you know. 
+
+Alan Morgan
+As well as being the highest revenue 
+
+You
+So, 
+
+Alan Morgan
+generator. 
+
+You
+yeah, 
+
+Alan Morgan
+I mean, you know, it's a combination too. 
+
+You
+but 
+
+Alan Morgan
+You 
+
+You
+the 
+
+Alan Morgan
+know. 
+
+You
+flip side is... 
+
+Alan Morgan
+They wouldn't do it. It reduced the revenue dramatically. 
+
+You
+The flip side is, people no longer trust a Google answer as much as they trust an open AI answer, because rightly or wrongly, they feel that a Google answer is tainted by who bought the answer. Who 
+
+Alan Morgan
+Hey. 
+
+You
+paid for the answer? Whereas 
+
+Alan Morgan
+Yeah, okay. I mean, 
+
+You
+Gemini, 
+
+Alan Morgan
+right. 
+
+You
+which is also part of Google, right, people can look at that and say, well, that's in a separate bucket, because that's their AI, that's not their, 
+
+Alan Morgan
+That's 
+
+You
+it's 
+
+Alan Morgan
+that's a day, a 
+
+You
+not their 
+
+Alan Morgan
+day. 
+
+You
+ad platform. 
+
+Alan Morgan
+Been tainted as of yet. 
+
+You
+In fact, they are one and the same, right? So let's just be clear. So, 
+
+Alan Morgan
+You know? 
+
+You
+what I'm suggesting is that we aggregate all the platforms and say, We're just looking for the customer that's looking for the answer and the answer is going to come with a link to the solution to the thing that they're looking for. And we don't care if they're on Facebook. We don't care if they're on LinkedIn. We don't care if they're on Reddit. We don't care where they are. Now, we'll never see. I shouldn't say never. That's not a good word. It's not likely, we'll see where people are searching Google, because Google is not a social network. YouTube is a social network. Google search is not a social network. So 
+
+Alan Morgan
+All right. 
+
+You
+their business is not threatened by what I'm proposing in any way, really. 
+
+Alan Morgan
+No, but. But the issue is. You don't want to. You don't want to say that. I mean, you know, hey, in theory, what you're saying is correct. In practice, you, you have to, starting small, you have to, not, poke the bears, and you have, or, or give them the opportunity to kill you by not using AI in the, name and the process, and not using, we've searched, you know, all the social media to help you get bad. You try and avoid all 
+
+You
+Well, 
+
+Alan Morgan
+that. 
+
+You
+think about Facebook for a second. They 
+
+Alan Morgan
+Yeah. 
+
+You
+also have a very formidable AI engine. It's not very popular, but it's powerful. So why couldn't they just do what I'm suggesting and say, whenever somebody posts something on their platform, they respond with a personalized user friendly recommendation, which is really nothing more than a paid ad. Right. 
+
+Alan Morgan
+Well, I can't. 
+
+You
+I don't see why they couldn't. 
+
+Alan Morgan
+They can't. They, but, It may not, again, it may not fit with what they're trying. I mean, you know, their current, revenue streams, and, you know, and they are a big company, and they don't 
+
+You
+Well, 
+
+Alan Morgan
+pimping at a time. 
+
+You
+that's, you really just hit the nail on the head, because that's what I was going to say, because their ad model today is you buy a billboard to put in front of a group of people that fit the criteria of what you are looking for. It's the opposite of what I'm suggesting. For 
+
+Alan Morgan
+Right, 
+
+You
+them 
+
+Alan Morgan
+I mean. 
+
+You
+to pivot their platform, to be more of a customized tailored response mechanism would do two things, I think. It would alienate the people that use the service, my opinion. And it would cause them to have to rethink the entire way that Facebook ads work. 
+
+Alan Morgan
+And and yeah, you know, revenue streams. I mean, yeah, I mean, because what, what you're proposing is the difference between. Yeah, an audience filled with people. Oh, are. You know, hey, I mean, yeah. You know, uh, Rod Stewart fans and a catcher. Okay? And I mean, they, you know they're all interested in Rod Stewart, because they're at the concert. The difference is that, the ones that are, Texting him, at that moment, saying, please play this song, are the ones that are most. Uh, you know, most, most active and have the highest chance of. you know, 
+
+You
+Well, 
+
+Alan Morgan
+success. 
+
+You
+it's definitely food for thought. We. 
+
+Alan Morgan
+No way, I mean, I think it is definitely, a, a, for a least 
+
+You
+. 
+
+Alan Morgan
+a short period of time. A potential marketing tool until somebody else figures it out, tries it, doesn't. I mean, there's a 1st over advantage or whatever, but the issue is you have to find the customers that are willing to pay. For the lead, you know? 
+
+You
+Yeah, that's a whole nother aspect 
+
+Alan Morgan
+Well, no, 
+
+You
+of 
+
+Alan Morgan
+that's. 
+
+You
+what I did that I haven't really thought through because my original thinking was literally, okay, here's the genesis of my idea. I built the, let me AI that for you, silly page. . And then I thought, I have a zero budget. How do I promote it? So that started my wheels turning, right? 
+
+Alan Morgan
+Right. 
+
+You
+And then I started thinking about my paid job, the doro mind job, and thinking, I'm being paid to try and find two things for doro mind patients, or caregivers, who have patients that they take care of. And doctors who might want to join the network, the Doro Mine Network, right? So, 
+
+Alan Morgan
+Yeah, it's totally. Yeah. 
+
+You
+you know, my boss is very... I'm trying to think of the right word. I want to say aggressive, but that's not really the right word. She's very passionate, 
+
+Alan Morgan
+Passionate. 
+
+You
+is a good word, about getting people into our network because it's morally the right thing to do, and it generates revenue for our business. And I really believe that's the order in which she sees things. Okay? 
+
+Alan Morgan
+Okay. 
+
+You
+So... 
+
+Alan Morgan
+That's, that's fine. Yeah 
+
+You
+So I'm thinking about those two things, right? And I'm on with the agency that I picked to do our Google Ad Word presentation. I could do it myself, but that would be a full time job for me, and there are people that do that way better than I can do it at any 
+
+Alan Morgan
+Oh, and. 
+
+You
+price. 
+
+Alan Morgan
+And it's not cost. I mean you need, there's no value to you. You're not getting the 10 grand 
+
+You
+Well, 
+
+Alan Morgan
+a month. 
+
+You
+yeah, there's no right. There's no value to me personally, that's for sure, but I was... Right. 
+
+Alan Morgan
+Well, that's what I'm saying, 
+
+You
+But thinking 
+
+Alan Morgan
+so. 
+
+You
+about how easily Google was willing to do that for a not for profit company wasn't that hard, really. And because what do they have to lose? They give you $120,000 worth of advertising. They take it out of their left pocket. I go to the agency, and the agency puts it in Google's right pocket. 
+
+Alan Morgan
+I mean, yeah, it's not, you know, hey, and there's all kinds of PR 
+
+You
+Right, 
+
+Alan Morgan
+benefits 
+
+You
+so they get a lot of corporate 
+
+Alan Morgan
+and. 
+
+You
+goodwill from doing it anyway. Yeah. 
+
+Alan Morgan
+guys, right? We're not 
+
+You
+Yeah, 
+
+Alan Morgan
+anti- and we're 
+
+You
+look at 
+
+Alan Morgan
+not. 
+
+You
+all the things we do to help the world. Right. 
+
+Alan Morgan
+Help the nonprofit world, yeah. 
+
+You
+Okay, so, that's, but because I was in those dialogues, and because I was studying the open claw architecture, there was a convergence of those two things in my brain where I said, wow, you could use the open claw agent architecture to... In particular, I looked at a TikTok video where a guy explained how you could lower the cost of using AI by using older models that charge less per token to do grunt work, like 
+
+Alan Morgan
+Well, 
+
+You
+searching 
+
+Alan Morgan
+yeah. 
+
+You
+the internet. 
+
+Alan Morgan
+It's, it's like, you know, instead of buying a $100,000 machine, you, you just, you buy, uh, you buy $5200 machines that are old and you just link them 
+
+You
+Right. 
+
+Alan Morgan
+together, you know? 
+
+You
+So in this case, we would use Google's 1.5 model to do the scraping of the groups that we're targeting, okay? And I mean, really, that is almost free. It's so cheap, it's almost free. And 
+
+Alan Morgan
+Yeah. 
+
+You
+then when you get a hit. So now you've got a bite, right? We're looking for somebody who's trying to find a good place to care for their schizophrenic, loved one. 
+
+Alan Morgan
+Yeah, I mean, you know, a place for a place for, a place for Todd, as opposed to a place for 
+
+You
+Okay, 
+
+Alan Morgan
+mom. 
+
+You
+right. 
+
+Alan Morgan
+You know? 
+
+You
+And the value of snagging that lead is about 2 grand. I know that for a fact. 
+
+Alan Morgan
+Yeah, I mean, that makes, say, guess what, to a psychiatric care center that has, has openings, it's, it's, gotta be worth a lot. 
+
+You
+So this is just where my brain went, right? So my brain was, okay, we're going to put these Google ads out into the ether, and we're going to get into the bidding war with Kaiser Permanente, and Eli Lilly, and who else is promoting something for schizophrenia. And maybe we can be competitive at 10 grand a month, and maybe we can't. I don't know yet. It's possible. We'll see. But on the 
+
+Alan Morgan
+But 
+
+You
+other hand, 
+
+Alan Morgan
+you, 
+
+You
+Well, 
+
+Alan Morgan
+Have to be hugely successful either. 
+
+You
+there's that. But on the other hand, why don't I look at special interest groups that populate social media. Facebook has at least 10 schizophrenia groups, and then they are bipolar, and they have schizoaffective. So when you get down to it, there's a million people on Facebook that are in these groups. So it's a subset of Facebook, but it's a nice number, right? And 
+
+Alan Morgan
+Right. 
+
+You
+we could buy ads in those groups. Or, and this is where the bot came in. I could just look at what people are posting in those groups with a robot. I don't have to sit there and look at it myself all day. and 
+
+Alan Morgan
+And have the robot response. 
+
+You
+just have the robot response. So the spy, the spy, using a very cheap AI model. The response is crafted using the high tiered, we'll just say the 3.0 Google model that will write a 
+
+Alan Morgan
+Well, high quality was 
+
+You
+thoughtful 
+
+Alan Morgan
+sponsored. 
+
+You
+response, right? 
+
+Alan Morgan
+Yeah, the personalized, you know, tonal, you know, yeah, I mean, yeah, it's 
+
+You
+So 
+
+Alan Morgan
+a well crafted ad, so to speak, you know. 
+
+You
+it doesn't look like I'm sticking my finger in your eye. 
+
+Alan Morgan
+Right, no, it's it's not, yeah, it's not just 
+
+You
+And 
+
+Alan Morgan
+a. 
+
+You
+I tested it. And I tested it, and it tested really well. So, now, I'm in this horrible spot that my brother's been in, where he's constantly scouring the internet to look for data and information about schizophrenia, and it's really... It's like throwing jacks in the air. You don't know where they're going to land on the ground, right? Sometimes they're goods, sometimes they're bad. Sometimes they're easy 
+
+Alan Morgan
+Yeah. 
+
+You
+to pick up, sometimes you have to reach to pick it up. And then I started looking at the resources where schizophrenic assistance groups live, and it was way more laser focused. It was easy to identify those places. Instead of 1,000, there's 10. And it's easy to keep your eye on those 10 groups and see, as soon as somebody posts, action reaction. And so that was just the genesis of my thought. And I'm really just saying this because I'm recording it, and I want to be able to articulate it back to the AI that's going to help me build it. 
+
+Alan Morgan
+I mean, it makes sense. You know, hey, it's part of the journey. I mean, you're, you're looking at one thing and you say, what if, this could be for something, you know, hey, that's, uh, part of, that's invention, right? 
+
+You
+I guess it's certainly the way my brain works. I mean, if Tony wanted to advertise his restaurant in Brookfield, you know, he could go to the pioneer press and buy an ad in the local paper, he could put a billboard up on Ogden Avenue. He doesn't have a lot of options. 
+
+Alan Morgan
+Right. 
+
+You
+But once you involve the internet, now he has a lot of options. 
+
+Alan Morgan
+He has a lot of options and, you know, because they have. Some unique qualities, they're open 247, which is, you know, 
+
+You
+Yeah, 
+
+Alan Morgan
+ah. 
+
+You
+that alone is going to attract a certain cab drivers, cops, whatever. 
+
+Alan Morgan
+And drivers, caps, people coming after a 
+
+You
+Yeah, 
+
+Alan Morgan
+show. 
+
+You
+hospital workers. There's a lot of people that are attracted to the 24/7 thing. 
+
+Alan Morgan
+Well, alone in, you know, that. You know, a 10 mile radius, you know, or well, you know, 
+
+You
+Anyway, 
+
+Alan Morgan
+20 mile, whatever it is, you know. But 
+
+You
+that's 
+
+Alan Morgan
+yeah. 
+
+You
+the genesis of my thinking. I sent you a crude version of the app that I banged out. 
+
+Alan Morgan
+Yeah, I couldn't really get it, uh. Well, I saw something, so. I'll take 
+
+You
+Okay. 
+
+Alan Morgan
+a look, yeah. 
+
+You
+And we'll talk tomorrow. 
+
+Alan Morgan
+Now now the only question is, how do we find the people that are willing to pay? 
+
+You
+Yeah. 
+
+Alan Morgan
+I mean, that, that is, because having, having the, having sliced cheese is only great if you can find the cheese lovers. 
+
+You
+Oh, for sure. 
+
+Alan Morgan
+You know? They're willing to pay the premium price, because this is a premium product for direct intentional, uh, 
+
+You
+Mm-hmm. 
+
+Alan Morgan
+ads. It's not, it's not billboard advertising. It's not, uh, uh, you know, it's not regular Facebook advertising or audience, group advertising. This is, you know, directed, intentional 
+
+You
+That 
+
+Alan Morgan
+responsive. 
+
+You
+was my thinking, man. All right. 
+
+Alan Morgan
+This is, this is Dyra. Direct. Intentional response 
+
+You
+I 
+
+Alan Morgan
+and 
+
+You
+will talk 
+
+Alan Morgan
+resizing. 
+
+You
+to you later. Bye. 
+
+Alan Morgan
+All right bye. 

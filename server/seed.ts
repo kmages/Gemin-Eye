@@ -27,6 +27,14 @@ export async function seedDatabase() {
     },
     {
       userId: "demo",
+      name: "Tony Restaurant",
+      type: "Italian restaurant in Brookfield, IL",
+      targetAudience: "Families and food lovers in the Western Suburbs of Chicago looking for authentic Italian dining, date night spots, catering, and special occasion restaurants",
+      coreOffering: "Authentic Italian restaurant in Brookfield, IL serving handmade pasta, wood-fired pizza, and classic Italian dishes. Family-owned with a warm, welcoming atmosphere. Known for generous portions, fresh ingredients, and a great wine selection. Available for private events and catering.",
+      preferredTone: "casual",
+    },
+    {
+      userId: "demo",
       name: "LMAITFY.ai",
       type: "AI productivity tool",
       targetAudience: "Tech-savvy individuals, productivity enthusiasts, people who frequently share AI prompts with colleagues",
@@ -149,6 +157,83 @@ export async function seedDatabase() {
         content: "Hey Jake! Have you considered bocce? Chicago Bocce is a blast for team events -- they have indoor and outdoor courts, and it's the kind of thing where everyone can play regardless of skill level. Plus they do food and drinks which makes it feel more like a party than a forced team activity. A few of us from my office went last month and people are still talking about it.",
         status: "approved",
       });
+    }
+
+    if (biz.name === "Tony Restaurant") {
+      const [camp1] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Western Suburbs Facebook Groups",
+        platform: "Facebook",
+        status: "active",
+        strategy: "Monitor Western Suburbs and Brookfield community groups where people ask for restaurant recommendations, date night ideas, and catering services.",
+        targetGroups: [
+          "Brookfield IL Community",
+          "Western Suburbs Foodies",
+          "La Grange & Brookfield Moms",
+          "Best Restaurants in the Western Suburbs",
+          "Brookfield & Riverside Neighbors"
+        ],
+        keywords: ["restaurant recommendation", "Italian food", "date night", "catering", "best pizza", "good pasta", "where to eat", "Brookfield restaurant", "private dining"],
+      }).returning();
+
+      const [camp2] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Reddit Chicago Food",
+        platform: "Reddit",
+        status: "active",
+        strategy: "Monitor Chicago-area food subreddits where people seek restaurant recommendations in the suburbs.",
+        targetGroups: [
+          "r/chicagofood",
+          "r/chicago",
+          "r/ChicagoSuburbs"
+        ],
+        keywords: ["Italian restaurant", "suburbs restaurant", "Brookfield", "pasta", "pizza", "date night suburbs"],
+      }).returning();
+
+      const demoLeads = [
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "Western Suburbs Foodies",
+          authorName: "Lisa M.",
+          originalPost: "Looking for a really good Italian restaurant near Brookfield for our anniversary dinner. We want somewhere with great pasta and a cozy atmosphere, not a chain. Any suggestions?",
+          postUrl: "https://facebook.com/groups/example/post/10",
+          intentScore: 9,
+          status: "responded",
+        },
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "La Grange & Brookfield Moms",
+          authorName: "Karen W.",
+          originalPost: "Need a restaurant that can do catering for my daughter's communion party -- about 40 people. Preferably Italian. Anyone have a good experience with a local place?",
+          postUrl: "https://facebook.com/groups/example/post/11",
+          intentScore: 10,
+          status: "new",
+        },
+        {
+          campaignId: camp2.id,
+          platform: "Reddit",
+          groupName: "r/chicagofood",
+          authorName: "u/suburb_foodie",
+          originalPost: "Any hidden gem Italian spots in the western suburbs? Tired of the same old chains. Looking for somewhere with handmade pasta and a good wine list. Bonus if it's family-friendly.",
+          postUrl: "https://reddit.com/r/chicagofood/example",
+          intentScore: 8,
+          status: "new",
+        },
+      ];
+
+      for (const leadData of demoLeads) {
+        const [lead] = await db.insert(leads).values(leadData).returning();
+
+        if (leadData.status === "responded") {
+          await db.insert(aiResponses).values({
+            leadId: lead.id,
+            content: "Happy anniversary! You should check out Tony Restaurant in Brookfield -- my family goes there all the time. Their handmade pasta is the real deal, and it has that cozy, old-school Italian vibe without being stuffy. The wine list is solid too. You won't be disappointed!",
+            status: "approved",
+          });
+        }
+      }
     }
 
     if (biz.name === "LMAITFY.ai") {

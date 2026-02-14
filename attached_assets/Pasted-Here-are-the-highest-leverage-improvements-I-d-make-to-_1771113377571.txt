@@ -1,0 +1,88 @@
+Here are the highest-leverage improvements I’d make to Gemin-Eye based on what’s currently in the repo (TypeScript monorepo: client/, server/, shared/) and the architecture you described.  ￼
+
+1) Make it “installable” for strangers (biggest ROI)
+
+Right now there’s no README at the repo root (the README.md 404s), so anyone landing on the project can’t run it.  ￼
+
+Add:
+	•	README.md: what it is, demo screenshots/GIF, features, and “Run locally” steps
+	•	.env.example with required vars (you reference these throughout server startup + Gemini + sessions)  ￼
+	•	One command dev: npm install && npm run dev (and confirm in README)
+	•	Deployment notes: Replit vs “normal” Node hosting; how to set DB + webhook + bot token
+
+Suggested .env.example keys (based on code/docs):
+	•	DATABASE_URL  ￼
+	•	AI_INTEGRATIONS_GEMINI_API_KEY, AI_INTEGRATIONS_GEMINI_BASE_URL  ￼
+	•	SESSION_SECRET, ISSUER_URL, REPL_ID  ￼
+	•	Telegram bot vars (whatever server/telegram*.ts expects; see also webhook registration)  ￼
+
+2) Fix security + correctness sharp edges (some are real footguns)
+
+A) CORS + token validation on /api/fb-scan
+
+Your bookmarklet hits /api/fb-scan with Access-Control-Allow-Origin: * and a token check. That’s fine conceptually, but:
+	•	Ensure the token is HMAC with a secret (not just deterministic) and has expiration.
+	•	Consider origin allowlist (or at least tighten for production) because “*” + a long-lived token is a common abuse path.  ￼
+
+B) HTML escaping looks broken in Google Alerts monitor
+
+In server/google-alerts-monitor.ts, escapeHtml() appears to be malformed (it’s not actually escaping <, >, quotes, etc.), and stripHtml() is doing manual entity handling. Use a small, proven library (he, sanitize-html) or implement a correct escape util once.  ￼
+
+C) Rate limiting is very light
+
+/api/fb-scan rate limits to ~10/min per chatId/IP in-memory. That’s good for MVP, but:
+	•	It resets on deploy/restart (in-memory)
+	•	It doesn’t protect other endpoints
+	•	It can be bypassed with distributed IPs / multiple chatIds  ￼
+
+Upgrade path:
+	•	Use a shared store (Redis) or Postgres-based limiter.
+	•	Add limits for expensive AI endpoints and webhook routes too.
+
+3) Reduce “god file” complexity in server/routes.ts
+
+server/routes.ts is doing: auth wiring, REST APIs, telegram webhook, monitors, scoring, fb scan handler, rate limiting… all in one place.  ￼
+
+Refactor into modules:
+	•	routes/businesses.ts, routes/campaigns.ts, routes/leads.ts
+	•	routes/telegram.ts, routes/fbScan.ts
+	•	services/ai.ts (Gemini prompts + parsing)
+	•	services/monitors/googleAlerts.ts, services/monitors/reddit.ts
+
+You’ll immediately get:
+	•	easier testing
+	•	fewer merge conflicts
+	•	clearer boundaries between “HTTP” and “business logic”
+
+4) Make AI outputs more reliable (less regex, more structured)
+
+You parse model JSON with text.match(/\{[\s\S]*\}/) in multiple places. That’s fragile.  ￼
+
+Improvements:
+	•	Use strict JSON mode / structured output if available in your SDK, or
+	•	Wrap with a “JSON only” function + retry-on-parse-fail, and validate with Zod before trusting it.
+	•	Store prompts + model + response metadata for debugging (especially when clients complain “too salesy”).
+
+5) Database: add constraints + reduce N+1 queries
+
+Your Drizzle schema is clean, but you’ll benefit from:
+	•	Foreign keys + onDelete behavior
+	•	Useful indexes (e.g., campaigns.business_id, leads.campaign_id, ai_responses.lead_id, seen_items.dedup_key)  ￼
+
+Also your storage layer loops queries (N+1) for campaigns/leads/responses. Replace with WHERE IN (...) queries and join where appropriate for performance once you have real volume.  ￼
+
+6) Add baseline engineering hygiene (fast wins)
+	•	ESLint + Prettier + pre-commit hook
+	•	Typecheck in CI (npm run check)  ￼
+	•	GitHub Actions: install → typecheck → unit tests
+	•	Dependabot (you have a lot of deps)
+	•	Tests: start with “prompt parsing / zod validation / token generation / fb-scan handler” (highest bug density)
+
+If you want the quickest “do this next” checklist (in order)
+	1.	Add README.md + .env.example + “Run locally” instructions.  ￼
+	2.	Fix escapeHtml/HTML handling in alerts and sanitize Telegram formatting.  ￼
+	3.	Split server/routes.ts into route modules + service modules.  ￼
+	4.	Replace regex JSON extraction with “validate + retry” and Zod parsing.  ￼
+	5.	Add CI (typecheck + lint) and a couple unit tests.
+
+If you tell me your goal (“make it easier to sell”, “make it safer”, “make it scale”, or “make it open-source friendly”), I’ll tailor this into a concrete PR plan with file-by-file diffs.

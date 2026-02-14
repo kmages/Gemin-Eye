@@ -10,9 +10,12 @@ The app has three main flows:
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 
 ## Recent Changes (Feb 14, 2026)
+- Added Context Upgrade: Bot asks "Which group is this from?" when group name is missing and multiple businesses exist, improving match accuracy
+- Added Feedback Loop: Every AI response includes 4 inline buttons (Used It / Bad Match / Too Salesy / Wrong Client) saved to `response_feedback` table
+- Feedback-aware response generation: Bot queries recent feedback per business and adjusts prompts (e.g., less salesy if flagged)
+- Leads and AI responses now saved to database when generated via Telegram bot
 - Added screenshot/image support to Telegram bot - send a screenshot and Gemini Flash reads text from the image
 - Added admin command center via Telegram: /newclient, /removeclient, /keywords, /groups for managing businesses entirely from chat
-- Updated /start and /help messages with new capabilities documentation
 - Primary domain: Gemin-Eye.com
 
 ## Previous Changes (Feb 13, 2026)
@@ -69,6 +72,7 @@ Preferred communication style: Simple, everyday language.
   - `sessions` - Session storage (Replit Auth managed)
   - `businesses` - User's business profiles with target audience, tone preferences
   - `campaigns` - Monitoring campaigns per business (platform, target groups, keywords)
+  - `response_feedback` - Feedback on AI responses (positive, bad_match, too_salesy, wrong_client)
   - `leads` - Discovered high-intent posts from communities
   - `ai_responses` - AI-generated responses to leads with approval status
   - `conversations` / `messages` - Chat functionality tables

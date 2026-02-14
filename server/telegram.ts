@@ -97,6 +97,60 @@ export function formatResponseNotification(lead: {
   return msg;
 }
 
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string
+): Promise<boolean> {
+  const token = getBotToken();
+  if (!token) return false;
+
+  try {
+    const body: Record<string, any> = { callback_query_id: callbackQueryId };
+    if (text) body.text = text;
+
+    const res = await fetch(`${TELEGRAM_API}${token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch (error) {
+    console.error("Telegram answerCallbackQuery error:", error);
+    return false;
+  }
+}
+
+export async function editMessageReplyMarkup(
+  chatId: string,
+  messageId: number,
+  replyMarkup?: { inline_keyboard: InlineButton[][] }
+): Promise<boolean> {
+  const token = getBotToken();
+  if (!token) return false;
+
+  try {
+    const body: Record<string, any> = {
+      chat_id: chatId,
+      message_id: messageId,
+    };
+    if (replyMarkup) {
+      body.reply_markup = replyMarkup;
+    } else {
+      body.reply_markup = { inline_keyboard: [] };
+    }
+
+    const res = await fetch(`${TELEGRAM_API}${token}/editMessageReplyMarkup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch (error) {
+    console.error("Telegram editMessageReplyMarkup error:", error);
+    return false;
+  }
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")

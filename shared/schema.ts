@@ -93,10 +93,30 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
   createdAt: true,
 });
 
+export const responseFeedback = pgTable("response_feedback", {
+  id: serial("id").primaryKey(),
+  responseId: integer("response_id").notNull(),
+  feedback: text("feedback").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const responseFeedbackRelations = relations(responseFeedback, ({ one }) => ({
+  response: one(aiResponses, {
+    fields: [responseFeedback.responseId],
+    references: [aiResponses.id],
+  }),
+}));
+
 export const insertAiResponseSchema = createInsertSchema(aiResponses).omit({
   id: true,
   createdAt: true,
   approvedAt: true,
+});
+
+export const insertResponseFeedbackSchema = createInsertSchema(responseFeedback).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type Business = typeof businesses.$inferSelect;
@@ -107,3 +127,5 @@ export type Lead = typeof leads.$inferSelect;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type AiResponse = typeof aiResponses.$inferSelect;
 export type InsertAiResponse = z.infer<typeof insertAiResponseSchema>;
+export type ResponseFeedback = typeof responseFeedback.$inferSelect;
+export type InsertResponseFeedback = z.infer<typeof insertResponseFeedbackSchema>;

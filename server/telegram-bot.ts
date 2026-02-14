@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
-import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
 import { storage } from "./storage";
 
 const ai = new GoogleGenAI({
@@ -14,6 +14,15 @@ const ai = new GoogleGenAI({
 });
 
 const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+interface PendingContextRequest {
+  postText: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+  timestamp: number;
+}
+
+const pendingContextRequests = new Map<string, PendingContextRequest>();
 
 interface BusinessWithCampaigns {
   id: number;
@@ -192,6 +201,8 @@ interface PostAnalysis {
   message: string;
   postUrl: string | null;
   platform: "reddit" | "facebook" | null;
+  responseId: number | null;
+  needsGroupContext: boolean;
 }
 
 async function handlePost(postText: string, groupName?: string, postUrl?: string | null, overridePlatform?: "reddit" | "facebook" | null): Promise<PostAnalysis> {
@@ -203,6 +214,8 @@ async function handlePost(postText: string, groupName?: string, postUrl?: string
       message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard or use /newclient.",
       postUrl: postUrl || null,
       platform,
+      responseId: null,
+      needsGroupContext: false,
     };
   }
 
@@ -212,6 +225,7 @@ async function handlePost(postText: string, groupName?: string, postUrl?: string
   }).join("\n");
 
   const matchPrompt = `You are a lead matching AI. Given a social media post, determine which business (if any) is the best match and score the lead intent.
+Also rate your confidence in the match from 1-10 (10 = certain, 1 = guessing).
 
 Available businesses:
 ${bizSummaries}
@@ -223,6 +237,7 @@ Return ONLY valid JSON:
 {
   "matched_business": "<exact business name or null if no match>",
   "intent_score": <1-10>,
+  "confidence": <1-10>,
   "reasoning": "<one sentence>"
 }`;
 
@@ -239,16 +254,31 @@ Return ONLY valid JSON:
       message: "Could not analyze this post. Try again.",
       postUrl: postUrl || null,
       platform,
+      responseId: null,
+      needsGroupContext: false,
     };
   }
 
   const match = JSON.parse(matchJson[0]);
+  const confidence = match.confidence || 10;
+
+  if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {
+    return {
+      message: "",
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: true,
+    };
+  }
 
   if (!match.matched_business || match.matched_business === "null") {
     return {
       message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
       postUrl: postUrl || null,
       platform,
+      responseId: null,
+      needsGroupContext: false,
     };
   }
 
@@ -258,6 +288,8 @@ Return ONLY valid JSON:
       message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
       postUrl: postUrl || null,
       platform,
+      responseId: null,
+      needsGroupContext: false,
     };
   }
 
@@ -266,6 +298,8 @@ Return ONLY valid JSON:
       message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"*".repeat(match.intent_score)}${"_".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
       postUrl: postUrl || null,
       platform,
+      responseId: null,
+      needsGroupContext: false,
     };
   }
 
@@ -277,6 +311,33 @@ Return ONLY valid JSON:
 
   const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
 
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, biz.id))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
+    const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses for this business were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful and only naturally mention the business if it truly fits.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine, helpful, and less promotional. The recommendation should feel organic, not forced.";
+      }
+    }
+  } catch (err) {
+    // feedback query failed, proceed without it
+  }
+
   const responsePrompt = `You are writing a response to a ${platformLabel} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post: "${postText}"
@@ -285,6 +346,7 @@ ${groupName ? `Group: "${groupName}"` : ""}
 Business to recommend: ${biz.name}
 What they do: ${biz.coreOffering}
 Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
 
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
 
@@ -298,12 +360,42 @@ Return ONLY the response text, no quotes or formatting.`;
 
   const responseText = (responseResult.text || "").trim();
 
+  const activeCampaign = biz.campaigns[0];
+  let savedResponseId: number | null = null;
+
+  if (activeCampaign) {
+    try {
+      const [savedLead] = await db.insert(leads).values({
+        campaignId: activeCampaign.id,
+        platform: platform || "unknown",
+        groupName: groupName || "Unknown Group",
+        authorName: "via Telegram",
+        originalPost: postText,
+        postUrl: postUrl || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      }).returning();
+
+      if (savedLead) {
+        const [savedResponse] = await db.insert(aiResponses).values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        }).returning();
+        savedResponseId = savedResponse?.id || null;
+      }
+    } catch (err) {
+      console.error("Error saving lead/response to DB:", err);
+    }
+  }
+
   const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
   const platformEmoji = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
 
   let msg = `<b>Lead Matched!</b>\n\n`;
   msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
   if (platform) msg += `<b>Platform:</b> ${platformEmoji}\n`;
+  if (groupName) msg += `<b>Group:</b> ${escapeHtml(groupName)}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
   msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>\n\n`;
@@ -317,6 +409,8 @@ Return ONLY the response text, no quotes or formatting.`;
     message: msg,
     postUrl: postUrl || null,
     platform,
+    responseId: savedResponseId,
+    needsGroupContext: false,
   };
 }
 
@@ -617,11 +711,99 @@ export function registerTelegramWebhook(app: any) {
     return;
   }
 
+  async function sendResultWithButtons(result: PostAnalysis) {
+    const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+
+    if (result.postUrl) {
+      const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
+      buttons.push([{ text: label, url: result.postUrl }]);
+    }
+
+    if (result.responseId) {
+      buttons.push([
+        { text: "Used It", callback_data: `fb_good_${result.responseId}` },
+        { text: "Bad Match", callback_data: `fb_bad_${result.responseId}` },
+        { text: "Too Salesy", callback_data: `fb_salesy_${result.responseId}` },
+        { text: "Wrong Client", callback_data: `fb_wrong_${result.responseId}` },
+      ]);
+    }
+
+    await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+  }
+
   app.post(`/api/telegram/webhook/${token}`, async (req: any, res: any) => {
     try {
       res.sendStatus(200);
 
       const update = req.body;
+
+      if (update?.callback_query) {
+        const cbq = update.callback_query;
+        const data = cbq.data as string;
+        const cbqChatId = String(cbq.message?.chat?.id || "");
+
+        if (data.startsWith("fb_")) {
+          const parts = data.split("_");
+          const feedbackType = parts[1];
+          const responseId = parseInt(parts[2]);
+
+          if (!isNaN(responseId)) {
+            const feedbackMap: Record<string, string> = {
+              good: "positive",
+              bad: "bad_match",
+              salesy: "too_salesy",
+              wrong: "wrong_client",
+            };
+
+            const feedbackValue = feedbackMap[feedbackType] || feedbackType;
+
+            try {
+              const existing = await db.select().from(responseFeedback).where(eq(responseFeedback.responseId, responseId)).limit(1);
+              if (existing.length > 0) {
+                await answerCallbackQuery(cbq.id, "Feedback already recorded for this response.");
+                return;
+              }
+
+              await db.insert(responseFeedback).values({
+                responseId,
+                feedback: feedbackValue,
+              });
+
+              if (feedbackValue === "positive") {
+                await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId));
+              }
+            } catch (err) {
+              console.error("Error saving feedback:", err);
+            }
+
+            const feedbackLabels: Record<string, string> = {
+              positive: "Marked as used - great!",
+              bad_match: "Noted: bad match. I'll learn from this.",
+              too_salesy: "Noted: too salesy. I'll adjust the tone.",
+              wrong_client: "Noted: wrong client matched.",
+            };
+
+            await answerCallbackQuery(cbq.id, feedbackLabels[feedbackValue] || "Feedback saved!");
+
+            if (cbq.message?.message_id && cbqChatId) {
+              const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+              const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+              const selectedLabel = feedbackType === "good" ? "Used It" : feedbackType === "salesy" ? "Too Salesy" : feedbackType === "wrong" ? "Wrong Client" : "Bad Match";
+              const confirmRow = [{ text: `[${selectedLabel}]`, callback_data: "noop" }];
+              const newKeyboard = [...urlButtons, confirmRow];
+              await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+            }
+          } else {
+            await answerCallbackQuery(cbq.id);
+          }
+        } else if (data === "noop") {
+          await answerCallbackQuery(cbq.id, "Feedback already recorded.");
+        } else {
+          await answerCallbackQuery(cbq.id);
+        }
+        return;
+      }
+
       const message = update?.message;
       if (!message) return;
 
@@ -633,6 +815,7 @@ export function registerTelegramWebhook(app: any) {
       if (chatId !== ALLOWED_CHAT_ID) return;
 
       if (message.photo && message.photo.length > 0) {
+        pendingContextRequests.delete(chatId);
         await sendTelegramMessage("Reading screenshot...");
 
         const largestPhoto = message.photo[message.photo.length - 1];
@@ -658,13 +841,20 @@ export function registerTelegramWebhook(app: any) {
 
         const result = await handlePost(extracted.text, groupName, postUrl, extracted.platform);
 
-        const buttons = [];
-        if (result.postUrl) {
-          const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
-          buttons.push([{ text: label, url: result.postUrl }]);
+        if (result.needsGroupContext) {
+          pendingContextRequests.set(chatId, {
+            postText: extracted.text,
+            postUrl: postUrl || null,
+            platform: extracted.platform,
+            timestamp: Date.now(),
+          });
+          await sendTelegramMessage(
+            `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
+          );
+          return;
         }
 
-        await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+        await sendResultWithButtons(result);
         return;
       }
 
@@ -673,20 +863,23 @@ export function registerTelegramWebhook(app: any) {
       const text = message.text.trim();
 
       if (text === "/start") {
+        pendingContextRequests.delete(chatId);
         await sendTelegramMessage(
-          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response (Used It / Bad Match / Too Salesy / Wrong Client)\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
         );
         return;
       }
 
       if (text === "/help") {
+        pendingContextRequests.delete(chatId);
         await sendTelegramMessage(
-          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses\n\n<b>Tips:</b>\n- Screenshots work best when the post text is clearly visible\n- Include group names like "Western Suburbs Foodies: post text"\n- I use Gemini Flash for matching and Gemini Pro for responses`
+          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Feedback:</b>\nEvery AI response comes with buttons:\n- <b>Used It</b> - You posted the response (helps me learn what works)\n- <b>Bad Match</b> - The post wasn't relevant to that business\n- <b>Too Salesy</b> - The response sounded too much like an ad\n- <b>Wrong Client</b> - Matched to the wrong business\n\n<b>Context:</b>\nIf I can't tell which group a post is from, I'll ask you. This helps me pick the right business and write a better response.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses`
         );
         return;
       }
 
       if (text === "/businesses") {
+        pendingContextRequests.delete(chatId);
         const allBiz = await getAllBusinessesWithCampaigns();
         if (allBiz.length === 0) {
           await sendTelegramMessage("No businesses set up yet. Use /newclient to add one!");
@@ -706,11 +899,33 @@ export function registerTelegramWebhook(app: any) {
         return;
       }
 
+      const pendingContext = pendingContextRequests.get(chatId);
+      const CONTEXT_TTL = 5 * 60 * 1000;
+      if (pendingContext && (Date.now() - pendingContext.timestamp) >= CONTEXT_TTL) {
+        pendingContextRequests.delete(chatId);
+      }
+      if (pendingContext && !text.startsWith("/") && (Date.now() - pendingContext.timestamp) < CONTEXT_TTL) {
+        pendingContextRequests.delete(chatId);
+
+        const groupName = text.toLowerCase() === "skip" ? undefined : text.trim();
+
+        await sendTelegramMessage(groupName ? `Got it - analyzing for <b>${escapeHtml(groupName)}</b>...` : "Analyzing without group context...");
+
+        const result = await handlePost(pendingContext.postText, groupName, pendingContext.postUrl, pendingContext.platform);
+        await sendResultWithButtons(result);
+        return;
+      }
+
+      if (text.startsWith("/")) {
+        pendingContextRequests.delete(chatId);
+      }
+
       const handled = await handleAdminCommand(chatId, text);
       if (handled) return;
 
       if (text.startsWith("/")) return;
 
+      pendingContextRequests.delete(chatId);
       await sendTelegramMessage("Analyzing post...");
 
       const postUrl = extractPostUrl(text);
@@ -732,13 +947,20 @@ export function registerTelegramWebhook(app: any) {
 
       const result = await handlePost(postText, groupName, postUrl);
 
-      const buttons = [];
-      if (result.postUrl) {
-        const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
-        buttons.push([{ text: label, url: result.postUrl }]);
+      if (result.needsGroupContext) {
+        pendingContextRequests.set(chatId, {
+          postText,
+          postUrl: postUrl || null,
+          platform: result.platform,
+          timestamp: Date.now(),
+        });
+        await sendTelegramMessage(
+          `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
+        );
+        return;
       }
 
-      await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+      await sendResultWithButtons(result);
     } catch (error) {
       console.error("Telegram webhook error:", error);
       await sendTelegramMessage("Something went wrong analyzing that post. Please try again.").catch(() => {});

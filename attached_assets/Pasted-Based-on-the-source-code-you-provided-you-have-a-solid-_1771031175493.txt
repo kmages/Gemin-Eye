@@ -1,0 +1,29 @@
+Based on the source code you provided, you have a solid "Text-Based Router." It takes text, matches it to a business in your PostgreSQL database, and generates a reply.
+Here are the three specific ways we can make this Replit project significantly better right now.
+1. The "Vision" Upgrade (The Killer Feature)
+Problem: You are on your phone. Copying text from the Facebook app or Reddit app is annoying. You have to long-press, select all, copy, switch apps... it creates friction.
+Solution: Enable Image Support.
+Your current code explicitly ignores images: if (!update?.message?.text) return;.
+We can change this so you just screenshot the post and send the photo to the bot.
+ * How: We update server/telegram-bot.ts to listen for message.photo.
+ * The Tech: We pass that image directly to Gemini 2.5 Flash (which is multimodal). It will read the text from the pixel data, identify the platform (Facebook vs Reddit), and process it exactly like text.
+ * Benefit: "See a lead -> Screenshot -> Send." It takes 2 seconds.
+2. Conversational "Command Center"
+Problem: Right now, adding a new client (like "Tony's") or changing a strategy requires you to edit the database or run SQL queries. That is not "CEO work."
+Solution: Add Admin Commands to the bot.
+We can add a listener for commands like /addclient or /update.
+ * You type: /newclient Name: Mario's Tacos, Type: Food, Tone: Fun
+ * Bot: "Created! What keywords should I watch for?"
+ * You: "Tacos, Mexican, hungry, lunch"
+ * Bot: "Done. I am now watching for Mario's Tacos."
+This moves the entire business logic into the chat window, so you never have to look at the code or database again.
+3. "Always On" Deployment
+Problem: Replit projects ("Repls") go to sleep when you close the tab. If you find a lead at 8 PM and your tab is closed, the bot won't wake up to answer you.
+Solution: Replit Deployments.
+ * Instead of just hitting "Run," you click the "Deploy" button in the top right.
+ * For about $5/month (on Replit), it reserves a permanent server container.
+ * Benefit: Your bot responds instantly, 24/7, even if your laptop is off and you are on vacation.
+Which one do you want to build first?
+ * Option A (Vision): "I want to send screenshots instead of text." (I can give you the code for this immediately).
+ * Option B (Admin): "I want to add new clients via chat."
+ * Option C (Deploy): "I want to make sure it never sleeps."

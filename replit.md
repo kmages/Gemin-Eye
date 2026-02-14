@@ -10,6 +10,15 @@ The app has three main flows:
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 
 ## Recent Changes (Feb 14, 2026)
+- Added automated Reddit RSS monitor (`server/reddit-monitor.ts`) that scans subreddits every 90 seconds
+  - Pulls target subreddits from DB campaigns (targetGroups field)
+  - Filters posts by keywords, then uses Gemini Flash for lead scoring
+  - Generates responses with Gemini Pro for leads with intent >= 5
+  - Saves leads and responses to DB, sends Telegram alerts with feedback buttons
+  - Includes rate-limit handling, seen-post deduplication, and memory pruning
+- Improved Context Upgrade: Bot now matches first, only asks "Which group?" when confidence < 6 AND multiple businesses exist (not every post)
+- Added feedback deduplication: one feedback per responseId prevents spam
+- Added TTL (5 min) on pending context requests to prevent stale state
 - Added Context Upgrade: Bot asks "Which group is this from?" when group name is missing and multiple businesses exist, improving match accuracy
 - Added Feedback Loop: Every AI response includes 4 inline buttons (Used It / Bad Match / Too Salesy / Wrong Client) saved to `response_feedback` table
 - Feedback-aware response generation: Bot queries recent feedback per business and adjusts prompts (e.g., less salesy if flagged)

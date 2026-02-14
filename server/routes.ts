@@ -11,6 +11,7 @@ import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
 import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
 import { registerTelegramWebhook } from "./telegram-bot";
+import { startRedditMonitor } from "./reddit-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 
 const ai = new GoogleGenAI({
@@ -305,6 +306,7 @@ Return ONLY valid JSON with this structure:
   });
 
   registerTelegramWebhook(app);
+  startRedditMonitor();
 
   app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
     try {

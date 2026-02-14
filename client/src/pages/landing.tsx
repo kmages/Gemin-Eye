@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send } from "lucide-react";
+import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useTheme } from "@/components/theme-provider";
 
@@ -160,6 +160,7 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-6">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
+            <a href="#clients" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-nav-clients">Clients</a>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" asChild data-testid="button-login">
@@ -252,6 +253,66 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="clients" className="py-20 px-4 sm:px-6 bg-card/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-serif font-bold mb-3" data-testid="text-clients-title">Trusted by Growing Businesses</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              From local restaurants to national breeders, businesses across industries use Gemin-Eye to find customers organically.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[
+              { name: "Doro Mind", type: "Mental Health", icon: Brain },
+              { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell },
+              { name: "LMAITFY.ai", type: "AI Tool", icon: Globe },
+              { name: "Tony's", type: "Italian Restaurant", icon: Utensils },
+              { name: "Heart of America Whoodles", type: "Dog Breeder", icon: Dog },
+              { name: "Gemin-Eye", type: "AI SaaS", icon: Eye },
+            ].map((client) => (
+              <Card key={client.name} className="p-4 flex flex-col items-center text-center gap-2 hover-elevate" data-testid={`card-client-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <client.icon className="w-5 h-5 text-primary" />
+                </div>
+                <p className="text-sm font-medium leading-tight" data-testid={`text-client-name-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.name}</p>
+                <p className="text-xs text-muted-foreground" data-testid={`text-client-type-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.type}</p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-serif font-bold mb-3" data-testid="text-testimonial-title">We Eat Our Own Cooking</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Gemin-Eye uses its own platform to find new clients. If that's not confidence in your product, what is?
+            </p>
+          </div>
+          <Card className="p-8 relative" data-testid="card-testimonial">
+            <Quote className="w-10 h-10 text-primary/20 absolute top-6 left-6" />
+            <div className="relative space-y-4 pl-4">
+              <p className="text-lg leading-relaxed text-foreground/90 italic" data-testid="text-testimonial-quote">
+                "We built Gemin-Eye to help businesses find customers without ads or cold outreach. So naturally, we asked ourselves: why not use it to find our own clients? We set up Gemin-Eye as its own client — monitoring Reddit, Facebook Groups, and Google Alerts for entrepreneurs and marketers asking about lead generation, customer acquisition, and organic growth. It works. The same AI that finds dog-breed seekers and bocce enthusiasts also finds SaaS founders who need exactly what we built. We're client number seven, and we're our own best case study."
+              </p>
+              <div className="flex items-center gap-3 pt-2">
+                <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-primary-foreground" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm" data-testid="text-testimonial-author">Gemin-Eye Team</p>
+                  <p className="text-xs text-muted-foreground" data-testid="text-testimonial-subtitle">Client #7 — Yes, we monitor ourselves</p>
+                </div>
+                <Badge variant="secondary" className="ml-auto text-xs" data-testid="badge-active-client">
+                  <Zap className="w-3 h-3 mr-1" /> Active Client
+                </Badge>
+              </div>
+            </div>
+          </Card>
         </div>
       </section>
 

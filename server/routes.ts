@@ -12,6 +12,7 @@ import { insertBusinessSchema } from "@shared/schema";
 import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
 import { registerTelegramWebhook, generateScanToken } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
+import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable, responseFeedback as responseFeedbackTable } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -310,6 +311,7 @@ Return ONLY valid JSON with this structure:
 
   registerTelegramWebhook(app);
   startRedditMonitor();
+  startGoogleAlertsMonitor();
 
   app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
     try {

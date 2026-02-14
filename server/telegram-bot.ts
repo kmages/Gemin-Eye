@@ -626,6 +626,88 @@ async function handleAdminCommand(chatId: string, text: string): Promise<boolean
     return true;
   }
 
+  if (text === "/addalert") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Add Google Alert Feed</b>\n\nWhich business should this alert feed be attached to?\n\n`;
+    allBiz.forEach((b, i) => {
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n`;
+    });
+    msg += `\nReply with the number, or /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/alerts") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    const allCamps = await db.select().from(campaigns);
+
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage(
+        `<b>No Google Alert feeds configured.</b>\n\n` +
+        `To add one:\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search query (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS feed URL\n` +
+        `5. Use /addalert to add it here`
+      );
+      return true;
+    }
+
+    let msg = `<b>Your Google Alert Feeds:</b>\n\n`;
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      msg += `<b>${escapeHtml(biz?.name || "Unknown")}</b>\n`;
+      feeds.forEach((f, i) => {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `  ${i + 1}. ${escapeHtml(shortUrl)}\n`;
+      });
+      msg += `\n`;
+    }
+    msg += `Use /addalert to add more feeds.\nUse /removealert to remove a feed.`;
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/removealert") {
+    const allCamps = await db.select().from(campaigns);
+    const allBiz = await db.select().from(businesses);
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage("No Google Alert feeds to remove.");
+      return true;
+    }
+
+    let msg = `<b>Remove a Google Alert Feed</b>\n\nReply with the number:\n\n`;
+    let idx = 1;
+    const feedIndex: Array<{ campaignId: number; feedUrl: string }> = [];
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      for (const f of feeds) {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `<b>${idx}.</b> ${escapeHtml(biz?.name || "?")} - ${escapeHtml(shortUrl)}\n`;
+        feedIndex.push({ campaignId: camp.id, feedUrl: f });
+        idx++;
+      }
+    }
+    msg += `\nOr /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
   return false;
 }
 
@@ -830,6 +912,108 @@ async function handleClientSetupFlow(chatId: string, text: string, pending: { st
       await sendTelegramMessage(`<b>Groups updated for ${escapeHtml(pending.name!)}</b>\n\nNew groups: ${newGroups.map(g => escapeHtml(g)).join(", ")}`);
       break;
     }
+
+    case "alert_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "alert_url";
+      await sendTelegramMessage(
+        `<b>Adding alert feed for ${escapeHtml(allBiz[idx].name)}</b>\n\n` +
+        `Paste the Google Alert RSS feed URL:\n\n` +
+        `<i>How to get it:</i>\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS URL and paste it here`,
+        { disable_web_page_preview: true }
+      );
+      break;
+    }
+
+    case "alert_url": {
+      const feedUrl = text.trim();
+      if (!feedUrl.startsWith("http")) {
+        await sendTelegramMessage("That doesn't look like a URL. Please paste the RSS feed URL starting with http:// or https://");
+        return true;
+      }
+
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (!biz) {
+        pendingClientSetups.delete(chatId);
+        await sendTelegramMessage("Business not found. Try again with /addalert.");
+        return true;
+      }
+
+      const allCamps = await db.select().from(campaigns);
+      let alertCamp = allCamps.find(c => c.businessId === biz.id && c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+      if (alertCamp) {
+        const existingFeeds = (alertCamp.targetGroups as string[]) || [];
+        if (existingFeeds.includes(feedUrl)) {
+          pendingClientSetups.delete(chatId);
+          await sendTelegramMessage("This feed URL is already added for this business.");
+          return true;
+        }
+        await db.update(campaigns).set({ targetGroups: [...existingFeeds, feedUrl] }).where(eq(campaigns.id, alertCamp.id));
+      } else {
+        const bizKeywords = biz.campaigns.flatMap(c => c.keywords);
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${biz.name} - Google Alerts`,
+          platform: "google_alerts",
+          status: "active",
+          strategy: `Monitor Google Alerts RSS feeds for ${biz.type} leads`,
+          targetGroups: [feedUrl],
+          keywords: bizKeywords,
+        });
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(
+        `<b>Google Alert feed added!</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Feed:</b> ${escapeHtml(feedUrl.length > 60 ? feedUrl.slice(0, 57) + "..." : feedUrl)}\n\n` +
+        `The monitor will check this feed every 2 minutes and alert you when it finds leads.\n\n` +
+        `Use /alerts to see all feeds, or /addalert to add more.`
+      );
+      break;
+    }
+
+    case "alert_remove": {
+      const idx = parseInt(text) - 1;
+      const feedEntries = (pending.groups || []);
+      if (isNaN(idx) || idx < 0 || idx >= feedEntries.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      const entry = feedEntries[idx];
+      const [campId, ...feedUrlParts] = entry.split("::");
+      const feedUrl = feedUrlParts.join("::");
+      const campaignId = parseInt(campId);
+
+      const camp = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+      if (camp.length > 0) {
+        const existingFeeds = (camp[0].targetGroups as string[]) || [];
+        const newFeeds = existingFeeds.filter(f => f !== feedUrl);
+        if (newFeeds.length === 0) {
+          await db.update(campaigns).set({ status: "inactive" }).where(eq(campaigns.id, campaignId));
+        } else {
+          await db.update(campaigns).set({ targetGroups: newFeeds }).where(eq(campaigns.id, campaignId));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Alert feed removed.</b>\n\nUse /alerts to see remaining feeds.`);
+      break;
+    }
   }
 
   return true;
@@ -1011,7 +1195,7 @@ export function registerTelegramWebhook(app: any) {
       if (text === "/start") {
         pendingContextRequests.delete(chatId);
         await sendTelegramMessage(
-          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response (Used It / Bad Match / Too Salesy / Wrong Client)\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response (Used It / Bad Match / Too Salesy / Wrong Client)\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
         );
         return;
       }
@@ -1019,7 +1203,7 @@ export function registerTelegramWebhook(app: any) {
       if (text === "/help") {
         pendingContextRequests.delete(chatId);
         await sendTelegramMessage(
-          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Feedback:</b>\nEvery AI response comes with buttons:\n- <b>Used It</b> - You posted the response (helps me learn what works)\n- <b>Bad Match</b> - The post wasn't relevant to that business\n- <b>Too Salesy</b> - The response sounded too much like an ad\n- <b>Wrong Client</b> - Matched to the wrong business\n\n<b>Context:</b>\nIf I can't tell which group a post is from, I'll ask you. This helps me pick the right business and write a better response.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses`
+          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Feedback:</b>\nEvery AI response comes with buttons:\n- <b>Used It</b> - You posted the response (helps me learn what works)\n- <b>Bad Match</b> - The post wasn't relevant to that business\n- <b>Too Salesy</b> - The response sounded too much like an ad\n- <b>Wrong Client</b> - Matched to the wrong business\n\n<b>Context:</b>\nIf I can't tell which group a post is from, I'll ask you. This helps me pick the right business and write a better response.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed`
         );
         return;
       }

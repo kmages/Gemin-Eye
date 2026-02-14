@@ -10,6 +10,14 @@ The app has three main flows:
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 
 ## Recent Changes (Feb 14, 2026)
+- **Google Alerts RSS Monitor** (`server/google-alerts-monitor.ts`)
+  - Monitors Google Alerts RSS feeds for leads across the entire web (Quora, forums, blogs, news)
+  - Reuses same pipeline: keyword filter → Gemini Flash scoring → Gemini Pro response → Telegram alert
+  - Scans every 2 minutes with dedup key `itemLink::businessId`
+  - Strips HTML from feed items, detects source platform (Quora, Reddit, YouTube, Medium, etc.)
+  - Telegram commands: /addalert, /alerts, /removealert for feed management
+  - Creates `google_alerts` platform campaigns with RSS feed URLs stored in `targetGroups`
+  - Inherits business keywords from existing campaigns when creating alert campaign
 - **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/BotName?start=setup`)
   - 3-step wizard: business name → what they offer → keywords
   - Works for any Telegram user (not just admin)
@@ -21,9 +29,9 @@ The app has three main flows:
   - Script scans posts as user scrolls, filters by keywords, sends to `/api/fb-scan` endpoint
   - Highlights matched posts with purple outline for visual feedback
   - Shows scan count banner at top of page
-  - Bookmarklet includes client's chat ID and business ID for routing
+  - Bookmarklet includes client's chat ID, business ID, and HMAC token for routing
 - **`/api/fb-scan` endpoint** (POST, CORS-enabled) receives Facebook posts from spy-glass
-  - Validates business exists, checks keyword match
+  - Validates HMAC token, business exists, checks keyword match
   - Scores with Gemini Flash, generates response with Gemini Pro
   - Saves leads/responses to DB, sends Telegram alert to client's chat with feedback buttons
 - Added `sendTelegramMessageToChat()` function to message any Telegram chat (not just admin)
@@ -34,7 +42,7 @@ The app has three main flows:
 - Added Feedback Loop with inline buttons, feedback-aware response generation
 - Leads and AI responses saved to database when generated via Telegram bot
 - Screenshot/image support via Gemini Flash OCR
-- Admin command center: /newclient, /removeclient, /keywords, /groups
+- Admin command center: /newclient, /removeclient, /keywords, /groups, /addalert, /alerts, /removealert
 - Primary domain: Gemin-Eye.com
 
 ## Previous Changes (Feb 13, 2026)

@@ -1,0 +1,378 @@
+import Parser from "rss-parser";
+import { GoogleGenAI } from "@google/genai";
+import { db } from "./db";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage } from "./telegram";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const parser = new Parser({
+  headers: {
+    "User-Agent": "Mozilla/5.0 (compatible; Gemin-Eye/1.0; +https://gemin-eye.com)",
+    "Accept": "text/xml, application/rss+xml, application/xml, application/atom+xml",
+  },
+  timeout: 15000,
+});
+
+const seenAlerts = new Set<string>();
+const SCAN_INTERVAL = 120 * 1000;
+let monitorInterval: ReturnType<typeof setInterval> | null = null;
+let isFirstRun = true;
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+interface AlertTarget {
+  feedUrl: string;
+  businessId: number;
+  businessName: string;
+  businessType: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaignId: number;
+  keywords: string[];
+}
+
+async function getAlertTargets(): Promise<AlertTarget[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  const targets: AlertTarget[] = [];
+
+  for (const biz of allBiz) {
+    const bizCamps = allCamps.filter(
+      (c) => c.businessId === biz.id && c.status === "active" && c.platform.toLowerCase() === "google_alerts"
+    );
+
+    for (const camp of bizCamps) {
+      const feedUrls = (camp.targetGroups || []) as string[];
+      const keywords = (camp.keywords || []) as string[];
+
+      for (const feedUrl of feedUrls) {
+        const trimmed = feedUrl.trim();
+        if (!trimmed) continue;
+        if (!trimmed.startsWith("http")) continue;
+
+        targets.push({
+          feedUrl: trimmed,
+          businessId: biz.id,
+          businessName: biz.name,
+          businessType: biz.type,
+          coreOffering: biz.coreOffering,
+          preferredTone: biz.preferredTone,
+          campaignId: camp.id,
+          keywords,
+        });
+      }
+    }
+  }
+
+  return targets;
+}
+
+function keywordMatch(text: string, keywords: string[]): boolean {
+  if (keywords.length === 0) return false;
+  const lower = text.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractSourceName(link: string): string {
+  try {
+    const url = new URL(link);
+    const host = url.hostname.replace("www.", "");
+    if (host.includes("quora.com")) return "Quora";
+    if (host.includes("reddit.com")) return "Reddit";
+    if (host.includes("stackoverflow.com")) return "Stack Overflow";
+    if (host.includes("youtube.com")) return "YouTube";
+    if (host.includes("medium.com")) return "Medium";
+    return host;
+  } catch {
+    return "Web";
+  }
+}
+
+async function processAlertItem(
+  item: { title: string; content: string; link: string; source: string },
+  target: AlertTarget
+): Promise<void> {
+  const fullText = `${item.title}\n${item.content}`;
+
+  if (!keywordMatch(fullText, target.keywords)) return;
+
+  const matchResult = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
+They offer: ${target.coreOffering}
+
+Analyze this web content found via Google Alerts:
+Source: ${item.source}
+Title: "${item.title}"
+Content: "${item.content.slice(0, 600)}"
+
+Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+    config: { maxOutputTokens: 512 },
+  });
+
+  const matchText = matchResult.text || "";
+  const matchJson = matchText.match(/\{[\s\S]*\}/);
+  if (!matchJson) return;
+
+  let match;
+  try {
+    match = JSON.parse(matchJson[0]);
+  } catch {
+    return;
+  }
+
+  if (!match.is_lead || match.intent_score < 5) return;
+
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, target.businessId))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
+    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
+      }
+    }
+  } catch {}
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const platformLabel = item.source === "Quora" ? "Quora answer" :
+    item.source === "Reddit" ? "Reddit comment" :
+    item.source === "YouTube" ? "YouTube comment" :
+    `${item.source} comment/reply`;
+
+  const responseResult = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post/question: "${item.title}\n${item.content.slice(0, 600)}"
+
+Business to recommend: ${target.businessName}
+What they do: ${target.coreOffering}
+Tone: ${toneMap[target.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = (responseResult.text || "").trim();
+  if (!responseText) return;
+
+  let savedResponseId: number | null = null;
+  try {
+    const [savedLead] = await db
+      .insert(leads)
+      .values({
+        campaignId: target.campaignId,
+        platform: "google_alerts",
+        groupName: item.source,
+        authorName: "Web user",
+        originalPost: fullText.slice(0, 2000),
+        postUrl: item.link || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      })
+      .returning();
+
+    if (savedLead) {
+      const [savedResponse] = await db
+        .insert(aiResponses)
+        .values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        })
+        .returning();
+      savedResponseId = savedResponse?.id || null;
+    }
+  } catch (err) {
+    console.error("Error saving Google Alert lead to DB:", err);
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+
+  let msg = `<b>Google Alert Lead Found</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
+  msg += `<b>Source:</b> ${escapeHtml(item.source)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>\n\n`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+
+  const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+  if (item.link) {
+    buttons.push([{ text: "Open Page", url: item.link }]);
+  }
+  if (savedResponseId) {
+    buttons.push([
+      { text: "Used It", callback_data: `fb_good_${savedResponseId}` },
+      { text: "Bad Match", callback_data: `fb_bad_${savedResponseId}` },
+      { text: "Too Salesy", callback_data: `fb_salesy_${savedResponseId}` },
+      { text: "Wrong Client", callback_data: `fb_wrong_${savedResponseId}` },
+    ]);
+  }
+
+  await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
+}
+
+async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Promise<void> {
+  try {
+    const res = await fetch(feedUrl, {
+      headers: {
+        "User-Agent": "Gemin-Eye/1.0 (RSS Reader)",
+        "Accept": "text/xml, application/rss+xml, application/xml, application/atom+xml",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const xml = await res.text();
+    const feed = await parser.parseString(xml);
+    const items = feed.items.slice(0, 8).map((item) => ({
+      title: item.title ? stripHtml(item.title) : "",
+      content: stripHtml(item.contentSnippet || item.content || item.summary || ""),
+      link: item.link || "",
+      source: item.link ? extractSourceName(item.link) : "Web",
+    }));
+
+    for (const item of items) {
+      const itemId = item.link || item.title || "";
+      if (!itemId) continue;
+
+      for (const target of targets) {
+        const seenKey = `${itemId}::${target.businessId}`;
+        if (seenAlerts.has(seenKey)) continue;
+        seenAlerts.add(seenKey);
+
+        if (isFirstRun) continue;
+
+        try {
+          await processAlertItem(item, target);
+        } catch (err: any) {
+          console.error(`Error processing alert for ${target.businessName}: ${err?.message || err}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    if (errMsg.includes("403") || errMsg.includes("429")) {
+      console.log(`Google Alerts rate-limited for feed, will retry next cycle`);
+    } else {
+      console.error(`Error scanning Google Alert feed: ${errMsg}`);
+    }
+  }
+}
+
+async function runScan(): Promise<void> {
+  const targets = await getAlertTargets();
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  pruneSeenAlerts();
+
+  const feedMap = new Map<string, AlertTarget[]>();
+  for (const t of targets) {
+    const key = t.feedUrl;
+    if (!feedMap.has(key)) feedMap.set(key, []);
+    feedMap.get(key)!.push(t);
+  }
+
+  console.log(`Google Alerts monitor: scanning ${feedMap.size} feeds for ${targets.length} business targets...${isFirstRun ? " (seeding dedup cache)" : ""}`);
+
+  const entries = Array.from(feedMap.values());
+  for (const feedTargets of entries) {
+    await scanFeedForTargets(feedTargets[0].feedUrl, feedTargets);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  if (isFirstRun) {
+    isFirstRun = false;
+    console.log(`Google Alerts monitor: seeded ${seenAlerts.size} items in dedup cache, now monitoring for new items`);
+  }
+}
+
+export function startGoogleAlertsMonitor(): void {
+  if (monitorInterval) return;
+
+  console.log("Google Alerts monitor: starting (scans every 2 minutes)");
+
+  setTimeout(() => {
+    runScan().catch((err) => console.error("Google Alerts monitor scan error:", err));
+  }, 15000);
+
+  monitorInterval = setInterval(() => {
+    runScan().catch((err) => console.error("Google Alerts monitor scan error:", err));
+  }, SCAN_INTERVAL);
+}
+
+export function stopGoogleAlertsMonitor(): void {
+  if (monitorInterval) {
+    clearInterval(monitorInterval);
+    monitorInterval = null;
+    console.log("Google Alerts monitor: stopped");
+  }
+}
+
+function pruneSeenAlerts(): void {
+  if (seenAlerts.size > 5000) {
+    const entries = Array.from(seenAlerts);
+    for (let i = 0; i < 2500; i++) {
+      seenAlerts.delete(entries[i]);
+    }
+  }
+}

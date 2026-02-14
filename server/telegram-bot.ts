@@ -432,6 +432,12 @@ interface ClientWizardState {
 
 const clientWizards = new Map<string, ClientWizardState>();
 
+export function generateBookmarkletCode(baseUrl: string, chatId: string, businessId: number, token: string): string {
+  const apiUrl = `${baseUrl}/api/fb-scan`;
+  const code = `javascript:void((function(){if(window.__geminEyeActive){alert('Gemin-Eye is already scanning this page.');return}window.__geminEyeActive=true;var CID='${chatId}',BID=${businessId},TOK='${token}',API='${apiUrl}';var seenPosts={},scannedCount=0,sentCount=0;var banner=document.createElement('div');banner.id='gemin-eye-banner';banner.style.cssText='position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#4338ca,#6d28d9);color:white;text-align:center;padding:10px 20px;z-index:2147483647;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';var counter=document.createElement('span');counter.style.cssText='font-weight:normal;opacity:0.85;font-size:13px;';counter.textContent='0 posts scanned';var closeBtn=document.createElement('span');closeBtn.textContent='X';closeBtn.style.cssText='position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';closeBtn.onclick=function(){banner.remove();window.__geminEyeActive=false;clearInterval(si)};banner.appendChild(document.createTextNode('Gemin-Eye: Scanning... '));banner.appendChild(counter);banner.appendChild(closeBtn);document.body.appendChild(banner);function extractPosts(){var found=[];var els=document.querySelectorAll('div[dir=\"auto\"]');els.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<25||t.length>5000||seenPosts[t])return;var a=el.closest('a');if(a&&a.href&&a.href.indexOf('/comment')===-1)return;found.push({text:t,element:el})});return found}function sendPost(postText,element){seenPosts[postText]=true;scannedCount++;var gn='';var h1=document.querySelector('h1');if(h1)gn=h1.innerText||'';if(!gn){var te=document.querySelector('[role=\"banner\"] a[href*=\"/groups/\"]');if(te)gn=te.innerText||''}fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:CID,businessId:BID,token:TOK,postText:postText,groupName:gn||document.title||'Facebook Group',pageUrl:window.location.href})}).then(function(r){return r.json()}).then(function(d){if(d.matched){sentCount++;element.style.outline='3px solid #6d28d9';element.style.outlineOffset='4px';element.style.borderRadius='4px'}}).catch(function(){});counter.textContent=scannedCount+' scanned, '+sentCount+' leads'}function scan(){var posts=extractPosts();posts.forEach(function(p){sendPost(p.text,p.element)})}scan();var si=setInterval(scan,3000)})())`;
+  return code;
+}
+
 function getAppBaseUrl(): string {
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   if (replitDevDomain) return `https://${replitDevDomain}`;
@@ -509,7 +515,7 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
 
       const baseUrl = getAppBaseUrl();
       const token = generateScanToken(chatId, biz.id);
-      const bookmarkletCode = `javascript:void((function(){var s=document.createElement('script');s.src='${baseUrl}/spy-glass.js?cid=${chatId}&bid=${biz.id}&tok=${token}&t='+Date.now();document.body.appendChild(s)})())`;
+      const bookmarkletCode = generateBookmarkletCode(baseUrl, chatId, biz.id, token);
 
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +

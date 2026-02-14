@@ -56,11 +56,46 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-async function handlePost(postText: string, groupName?: string): Promise<string> {
+const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;
+
+function extractPostUrl(text: string): string | null {
+  const matches = text.match(URL_REGEX);
+  return matches ? matches[0] : null;
+}
+
+function stripUrls(text: string): string {
+  return text.replace(URL_REGEX, "").trim();
+}
+
+function detectPlatformFromUrl(url: string): "reddit" | "facebook" | null {
+  if (/reddit\.com|redd\.it/i.test(url)) return "reddit";
+  if (/facebook\.com|fb\.com/i.test(url)) return "facebook";
+  return null;
+}
+
+function detectPlatformFromText(text: string): "reddit" | "facebook" | null {
+  const lower = text.toLowerCase();
+  if (lower.includes("reddit") || lower.includes("r/") || lower.includes("/r/")) return "reddit";
+  if (lower.includes("facebook") || lower.includes("fb group")) return "facebook";
+  return null;
+}
+
+interface PostAnalysis {
+  message: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+}
+
+async function handlePost(postText: string, groupName?: string, postUrl?: string | null): Promise<PostAnalysis> {
   const allBiz = await getAllBusinessesWithCampaigns();
+  const platform = (postUrl ? detectPlatformFromUrl(postUrl) : null) || detectPlatformFromText(postText) || null;
 
   if (allBiz.length === 0) {
-    return "No businesses set up yet. Add a business through the Gemin-Eye dashboard first.";
+    return {
+      message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard first.",
+      postUrl: postUrl || null,
+      platform,
+    };
   }
 
   const bizSummaries = allBiz.map((b) => {
@@ -92,22 +127,38 @@ Return ONLY valid JSON:
   const matchText = matchResult.text || "";
   const matchJson = matchText.match(/\{[\s\S]*\}/);
   if (!matchJson) {
-    return "Could not analyze this post. Try again.";
+    return {
+      message: "Could not analyze this post. Try again.",
+      postUrl: postUrl || null,
+      platform,
+    };
   }
 
   const match = JSON.parse(matchJson[0]);
 
   if (!match.matched_business || match.matched_business === "null") {
-    return `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`;
+    return {
+      message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+    };
   }
 
   const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business.toLowerCase());
   if (!biz) {
-    return `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`;
+    return {
+      message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+    };
   }
 
   if (match.intent_score < 4) {
-    return `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"█".repeat(match.intent_score)}${"░".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`;
+    return {
+      message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"█".repeat(match.intent_score)}${"░".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
+      postUrl: postUrl || null,
+      platform,
+    };
   }
 
   const toneMap: Record<string, string> = {
@@ -116,7 +167,9 @@ Return ONLY valid JSON:
     casual: "casual, friendly, and approachable",
   };
 
-  const responsePrompt = `You are writing a response to a social media post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
+
+  const responsePrompt = `You are writing a response to a ${platformLabel} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post: "${postText}"
 ${groupName ? `Group: "${groupName}"` : ""}
@@ -138,15 +191,25 @@ Return ONLY the response text, no quotes or formatting.`;
   const responseText = (responseResult.text || "").trim();
 
   const scoreBar = "█".repeat(match.intent_score) + "░".repeat(10 - match.intent_score);
+  const platformEmoji = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
 
   let msg = `<b>Lead Matched!</b>\n\n`;
   msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
+  if (platform) msg += `<b>Platform:</b> ${platformEmoji}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
   msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>\n\n`;
-  msg += `<b>Copy & paste this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
 
-  return msg;
+  if (postUrl) {
+    msg += `\n\nTap the button below to open the post and paste your reply.`;
+  }
+
+  return {
+    message: msg,
+    postUrl: postUrl || null,
+    platform,
+  };
 }
 
 export function registerTelegramWebhook(app: any) {
@@ -174,14 +237,14 @@ export function registerTelegramWebhook(app: any) {
 
       if (text === "/start") {
         await sendTelegramMessage(
-          `<b>Welcome to Gemin-Eye Bot!</b>\n\nPaste any Facebook group post here and I'll:\n\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n\nJust paste the post text and I'll handle the rest!\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nPaste any social media post here and I'll:\n\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n\n<b>Include the post URL</b> and I'll add an "Open Post" button so you can jump straight there to paste the reply.\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
         );
         return;
       }
 
       if (text === "/help") {
         await sendTelegramMessage(
-          `<b>How to use Gemin-Eye Bot:</b>\n\n<b>1.</b> Browse your target Facebook groups\n<b>2.</b> When you see a promising post, copy the text\n<b>3.</b> Paste it here\n<b>4.</b> Get an AI response back in seconds\n<b>5.</b> Copy the response and paste it on Facebook\n\nYou can also prefix with the group name:\n<code>Western Suburbs Foodies: Looking for a good Italian place...</code>\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
+          `<b>How to use Gemin-Eye Bot:</b>\n\n<b>1.</b> Browse Facebook groups or Reddit communities\n<b>2.</b> When you see a promising post, copy the URL and the post text\n<b>3.</b> Paste both here (URL + text)\n<b>4.</b> Get an AI response back in seconds\n<b>5.</b> Tap "Open Post" to jump to the post\n<b>6.</b> Paste the response as a comment\n\n<b>Formats that work:</b>\n\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<code>Western Suburbs Foodies: Looking for a good Italian place...</code>\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
         );
         return;
       }
@@ -209,17 +272,32 @@ export function registerTelegramWebhook(app: any) {
 
       await sendTelegramMessage("Analyzing post...");
 
-      let groupName: string | undefined;
-      let postText = text;
+      const postUrl = extractPostUrl(text);
+      let postText = postUrl ? stripUrls(text) : text;
 
-      const colonMatch = text.match(/^([^:]{3,50}):\s+(.+)/s);
+      let groupName: string | undefined;
+      const colonMatch = postText.match(/^([^:]{3,50}):\s+([\s\S]+)/);
       if (colonMatch) {
         groupName = colonMatch[1].trim();
         postText = colonMatch[2].trim();
       }
 
-      const result = await handlePost(postText, groupName);
-      await sendTelegramMessage(result);
+      if (!postText || postText.length < 5) {
+        await sendTelegramMessage(
+          "I need more text to analyze. Please paste the post content along with the URL.\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>"
+        );
+        return;
+      }
+
+      const result = await handlePost(postText, groupName, postUrl);
+
+      const buttons = [];
+      if (result.postUrl) {
+        const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
+        buttons.push([{ text: label, url: result.postUrl }]);
+      }
+
+      await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
     } catch (error) {
       console.error("Telegram webhook error:", error);
       await sendTelegramMessage("Something went wrong analyzing that post. Please try again.").catch(() => {});

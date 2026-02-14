@@ -8,7 +8,16 @@ function getChatId(): string | undefined {
   return process.env.TELEGRAM_CHAT_ID;
 }
 
-export async function sendTelegramMessage(text: string): Promise<boolean> {
+export interface InlineButton {
+  text: string;
+  url?: string;
+  callback_data?: string;
+}
+
+export async function sendTelegramMessage(
+  text: string,
+  options?: { buttons?: InlineButton[][] }
+): Promise<boolean> {
   const token = getBotToken();
   const chatId = getChatId();
 
@@ -18,15 +27,23 @@ export async function sendTelegramMessage(text: string): Promise<boolean> {
   }
 
   try {
+    const body: Record<string, any> = {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    };
+
+    if (options?.buttons && options.buttons.length > 0) {
+      body.reply_markup = {
+        inline_keyboard: options.buttons,
+      };
+    }
+
     const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {

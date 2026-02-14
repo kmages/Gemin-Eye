@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T20:19:43Z
+# Generated: 2026-02-14T20:21:28Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -3266,7 +3266,7 @@ async function registerWebhook(token: string) {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (363 lines)
+FILE: server/reddit-monitor.ts (369 lines)
 ============================================================
 import Parser from "rss-parser";
 import { GoogleGenAI } from "@google/genai";
@@ -3555,6 +3555,8 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
       link: item.link || "",
     }));
 
+    let newPosts = 0;
+    let kwMatches = 0;
     for (const post of posts) {
       const postId = post.link || post.title || "";
       if (!postId) continue;
@@ -3563,6 +3565,7 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
         const seenKey = `rd::${postId}::${target.businessId}`;
         if (await hasBeenSeen(seenKey)) continue;
         await markSeen(seenKey);
+        newPosts++;
 
         try {
           await processPostForTarget(post, target);
@@ -3570,6 +3573,9 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
           console.error(`Error processing post for ${target.businessName}: ${err?.message || err}`);
         }
       }
+    }
+    if (newPosts > 0) {
+      console.log(`Reddit monitor: r/${subreddit} - ${posts.length} posts, ${newPosts} new evaluations`);
     }
   } catch (err: any) {
     const errMsg = err?.message || String(err);

@@ -11,6 +11,7 @@ import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
 import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
 import { registerTelegramWebhook } from "./telegram-bot";
+import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -355,17 +356,15 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  app.get("/api/download/source", async (_req, res) => {
-    const tmpFile = path.join(os.tmpdir(), "gemin-eye-source.tar.gz");
+  app.get("/api/download/source", (_req, res) => {
     try {
-      const targets = ["shared", "server", "client/src", "client/index.html", "tailwind.config.ts", "vite.config.ts", "drizzle.config.ts", "package.json", "tsconfig.json", "replit.md"];
-      const existing = targets.filter(d => fs.existsSync(d));
-      execSync(`tar -czf ${tmpFile} --exclude='node_modules' --exclude='dist' --exclude='.cache' ${existing.join(" ")}`, { cwd: process.cwd() });
-      res.download(tmpFile, "gemin-eye-source.tar.gz", () => {
-        try { fs.unlinkSync(tmpFile); } catch {}
-      });
+      const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
+      res.setHeader("Content-Type", "application/gzip");
+      res.setHeader("Content-Disposition", "attachment; filename=gemin-eye-source.tar.gz");
+      res.setHeader("Content-Length", buffer.length.toString());
+      res.send(buffer);
     } catch (err) {
-      res.status(500).json({ error: "Failed to generate archive" });
+      res.status(500).json({ error: "Failed to serve archive" });
     }
   });
 

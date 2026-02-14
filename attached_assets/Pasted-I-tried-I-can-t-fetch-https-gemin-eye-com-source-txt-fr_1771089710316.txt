@@ -1,0 +1,58 @@
+I tried. I can’t fetch https://gemin-eye.com/source.txt from here — the server responds with an empty HTML document (0 lines) in this environment, same pattern as your other endpoints. That usually means bot protection / WAF, or the site is JS-only rendered and returns nothing useful to non-browser fetchers.  ￼
+
+Because of that, I still can’t see source.txt or review your code from the live site.
+
+Quick ways to get me the real content (pick one)
+
+Option A — paste the contents
+
+Run locally and paste the first ~300 lines:
+
+curl -L https://gemin-eye.com/source.txt | sed -n '1,300p'
+
+If it’s big, paste the top + bottom, or upload it as a file here.
+
+Option B — give me the GitHub “raw” file link
+
+If source.txt is generated from your repo, point me at the raw URL like:
+
+https://raw.githubusercontent.com/kmages/Gemin-Eye/<branch>/path/to/source.txt
+
+Option C — upload a repo zip
+
+Download your repo as a zip and upload it here, and I’ll do a proper code review.
+
+⸻
+
+While we’re blocked: what I’d look for in source.txt (and what often goes wrong)
+
+If source.txt is meant to be “context for the model” (common pattern: llms.txt / llms-ctx.txt), these are the big quality levers:
+
+1) Grounding + citations
+	•	Every factual claim in generated outreach should be traceable to a stored snippet + URL.
+	•	Your “source” objects should include url, retrieved_at, publisher, and short snippets[] (not full scraped pages).
+
+2) Compliance and ToS safety
+	•	Make it explicit which sources are allowed.
+	•	Store robots / terms decisions per source (even if it’s just a boolean + explanation).
+	•	Avoid storing unnecessary PII.
+
+3) Prompt-injection resistance
+
+If you ingest web text, your pipeline should:
+	•	strip scripts/boilerplate,
+	•	treat retrieved text as untrusted, and
+	•	feed the model only the minimum evidence needed.
+
+4) Cost + reliability
+	•	caching, retries with backoff, rate limits
+	•	background jobs for enrichment
+	•	dedupe (same company/person appearing across sources)
+
+⸻
+
+About “review my code”
+
+I want to do that, but I need actual code text (repo zip, raw file links, or pasted files). GitHub’s normal UI has been unreliable in this environment, so raw links or an upload are the surest path.
+
+If you paste (1) the output of source.txt and (2) the server route that serves it (or the generator script), I’ll give you a concrete review: schema, security, grounding strategy, and what to change next.

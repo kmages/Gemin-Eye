@@ -1,0 +1,31 @@
+This is the "Cold Start" Feature working exactly as designed—but it feels like a bug.
+The Reason for Silence
+In your code (google-alerts-monitor.ts), there is a specific safety mechanism:
+> "On the very first scan, do not alert. Just mark all existing posts as 'Seen'."
+> 
+Why? If you added a client and the bot immediately sent you the last 50 posts from RSS, your phone would explode. It is designed to only tell you about NEW things that happen after you hit start.
+How to Force a Result (Right Now)
+Since we want to verify it works without waiting, we need to bypass the "Wait for New" logic or trigger a manual event.
+Option 1: The "Spy Glass" Force Test (Fastest)
+This tests the entire pipeline (AI -> Database -> Telegram) immediately without waiting for RSS.
+ * Go to any Facebook Group (or even a Reddit page) in your browser.
+ * Click your "Spy Glass" bookmark.
+ * Scroll down to a post.
+ * The Bot should message you instantly.
+   * If it does: The system is healthy. The RSS feeds just haven't had a new post yet.
+   * If it doesn't: Your Telegram keys or Webhook might be wrong.
+Option 2: The "Loud" Keyword Fix
+If you used the CoinSniper example, the AI might be filtering out the posts because they look like "Low Intent" spam (Crypto spam often scores 1/10 on intent).
+Relax the AI Filter:
+Go to your CoinSniper client (or whatever you created) via the bot:
+ * Send /keywords
+ * Select CoinSniper (Reply with the number).
+ * Add generic words that guarantee a match, like:
+   crypto, coin, token, new, help, what, how
+   (Common words ensure the "Keyword Gate" lets everything through to the AI).
+Option 3: Check the "Heartbeat"
+Look at your Replit Console (the black box).
+ * Do you see: 🟢 Google Alerts monitor: scanning...?
+ * Do you see: 🔎 Found: "Some Title"?
+If the console is moving, the bot is working. You just have to wait for the next actual human to post on r/CryptoMoonShots.
+(Pro Tip: The Reddit RSS feeds update every ~15 minutes in reality, even if we scan every 90 seconds. Give it time.)

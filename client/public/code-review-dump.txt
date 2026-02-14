@@ -1,0 +1,3167 @@
+
+========== server/google-alerts-monitor.ts ==========
+
+import Parser from "rss-parser";
+import { GoogleGenAI } from "@google/genai";
+import { db } from "./db";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage } from "./telegram";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const parser = new Parser({
+  headers: {
+    "User-Agent": "Mozilla/5.0 (compatible; Gemin-Eye/1.0; +https://gemin-eye.com)",
+    "Accept": "text/xml, application/rss+xml, application/xml, application/atom+xml",
+  },
+  timeout: 15000,
+});
+
+const seenAlerts = new Set<string>();
+const SCAN_INTERVAL = 120 * 1000;
+let monitorInterval: ReturnType<typeof setInterval> | null = null;
+let isFirstRun = true;
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+interface AlertTarget {
+  feedUrl: string;
+  businessId: number;
+  businessName: string;
+  businessType: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaignId: number;
+  keywords: string[];
+}
+
+async function getAlertTargets(): Promise<AlertTarget[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  const targets: AlertTarget[] = [];
+
+  for (const biz of allBiz) {
+    const bizCamps = allCamps.filter(
+      (c) => c.businessId === biz.id && c.status === "active" && c.platform.toLowerCase() === "google_alerts"
+    );
+
+    for (const camp of bizCamps) {
+      const feedUrls = (camp.targetGroups || []) as string[];
+      const keywords = (camp.keywords || []) as string[];
+
+      for (const feedUrl of feedUrls) {
+        const trimmed = feedUrl.trim();
+        if (!trimmed) continue;
+        if (!trimmed.startsWith("http")) continue;
+
+        targets.push({
+          feedUrl: trimmed,
+          businessId: biz.id,
+          businessName: biz.name,
+          businessType: biz.type,
+          coreOffering: biz.coreOffering,
+          preferredTone: biz.preferredTone,
+          campaignId: camp.id,
+          keywords,
+        });
+      }
+    }
+  }
+
+  return targets;
+}
+
+function keywordMatch(text: string, keywords: string[]): boolean {
+  if (keywords.length === 0) return false;
+  const lower = text.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractSourceName(link: string): string {
+  try {
+    const url = new URL(link);
+    const host = url.hostname.replace("www.", "");
+    if (host.includes("quora.com")) return "Quora";
+    if (host.includes("reddit.com")) return "Reddit";
+    if (host.includes("stackoverflow.com")) return "Stack Overflow";
+    if (host.includes("youtube.com")) return "YouTube";
+    if (host.includes("medium.com")) return "Medium";
+    return host;
+  } catch {
+    return "Web";
+  }
+}
+
+async function processAlertItem(
+  item: { title: string; content: string; link: string; source: string },
+  target: AlertTarget
+): Promise<void> {
+  const fullText = `${item.title}\n${item.content}`;
+
+  if (!keywordMatch(fullText, target.keywords)) return;
+
+  const matchResult = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
+They offer: ${target.coreOffering}
+
+Analyze this web content found via Google Alerts:
+Source: ${item.source}
+Title: "${item.title}"
+Content: "${item.content.slice(0, 600)}"
+
+Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+    config: { maxOutputTokens: 512 },
+  });
+
+  const matchText = matchResult.text || "";
+  const matchJson = matchText.match(/\{[\s\S]*\}/);
+  if (!matchJson) return;
+
+  let match;
+  try {
+    match = JSON.parse(matchJson[0]);
+  } catch {
+    return;
+  }
+
+  if (!match.is_lead || match.intent_score < 5) return;
+
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, target.businessId))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
+    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
+      }
+    }
+  } catch {}
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const platformLabel = item.source === "Quora" ? "Quora answer" :
+    item.source === "Reddit" ? "Reddit comment" :
+    item.source === "YouTube" ? "YouTube comment" :
+    `${item.source} comment/reply`;
+
+  const responseResult = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post/question: "${item.title}\n${item.content.slice(0, 600)}"
+
+Business to recommend: ${target.businessName}
+What they do: ${target.coreOffering}
+Tone: ${toneMap[target.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = (responseResult.text || "").trim();
+  if (!responseText) return;
+
+  let savedResponseId: number | null = null;
+  try {
+    const [savedLead] = await db
+      .insert(leads)
+      .values({
+        campaignId: target.campaignId,
+        platform: "google_alerts",
+        groupName: item.source,
+        authorName: "Web user",
+        originalPost: fullText.slice(0, 2000),
+        postUrl: item.link || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      })
+      .returning();
+
+    if (savedLead) {
+      const [savedResponse] = await db
+        .insert(aiResponses)
+        .values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        })
+        .returning();
+      savedResponseId = savedResponse?.id || null;
+    }
+  } catch (err) {
+    console.error("Error saving Google Alert lead to DB:", err);
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+
+  let msg = `<b>Google Alert Lead Found</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
+  msg += `<b>Source:</b> ${escapeHtml(item.source)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>\n\n`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+
+  const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+  if (item.link) {
+    buttons.push([{ text: "Open Page", url: item.link }]);
+  }
+  if (savedResponseId) {
+    buttons.push([
+      { text: "Used It", callback_data: `fb_good_${savedResponseId}` },
+      { text: "Bad Match", callback_data: `fb_bad_${savedResponseId}` },
+      { text: "Too Salesy", callback_data: `fb_salesy_${savedResponseId}` },
+      { text: "Wrong Client", callback_data: `fb_wrong_${savedResponseId}` },
+    ]);
+  }
+
+  await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
+}
+
+async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Promise<void> {
+  try {
+    const res = await fetch(feedUrl, {
+      headers: {
+        "User-Agent": "Gemin-Eye/1.0 (RSS Reader)",
+        "Accept": "text/xml, application/rss+xml, application/xml, application/atom+xml",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const xml = await res.text();
+    const feed = await parser.parseString(xml);
+    const items = feed.items.slice(0, 8).map((item) => ({
+      title: item.title ? stripHtml(item.title) : "",
+      content: stripHtml(item.contentSnippet || item.content || item.summary || ""),
+      link: item.link || "",
+      source: item.link ? extractSourceName(item.link) : "Web",
+    }));
+
+    for (const item of items) {
+      const itemId = item.link || item.title || "";
+      if (!itemId) continue;
+
+      for (const target of targets) {
+        const seenKey = `${itemId}::${target.businessId}`;
+        if (seenAlerts.has(seenKey)) continue;
+        seenAlerts.add(seenKey);
+
+        if (isFirstRun) continue;
+
+        try {
+          await processAlertItem(item, target);
+        } catch (err: any) {
+          console.error(`Error processing alert for ${target.businessName}: ${err?.message || err}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    if (errMsg.includes("403") || errMsg.includes("429")) {
+      console.log(`Google Alerts rate-limited for feed, will retry next cycle`);
+    } else {
+      console.error(`Error scanning Google Alert feed: ${errMsg}`);
+    }
+  }
+}
+
+async function runScan(): Promise<void> {
+  const targets = await getAlertTargets();
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  pruneSeenAlerts();
+
+  const feedMap = new Map<string, AlertTarget[]>();
+  for (const t of targets) {
+    const key = t.feedUrl;
+    if (!feedMap.has(key)) feedMap.set(key, []);
+    feedMap.get(key)!.push(t);
+  }
+
+  console.log(`Google Alerts monitor: scanning ${feedMap.size} feeds for ${targets.length} business targets...${isFirstRun ? " (seeding dedup cache)" : ""}`);
+
+  const entries = Array.from(feedMap.values());
+  for (const feedTargets of entries) {
+    await scanFeedForTargets(feedTargets[0].feedUrl, feedTargets);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  if (isFirstRun) {
+    isFirstRun = false;
+    console.log(`Google Alerts monitor: seeded ${seenAlerts.size} items in dedup cache, now monitoring for new items`);
+  }
+}
+
+export function startGoogleAlertsMonitor(): void {
+  if (monitorInterval) return;
+
+  console.log("Google Alerts monitor: starting (scans every 2 minutes)");
+
+  setTimeout(() => {
+    runScan().catch((err) => console.error("Google Alerts monitor scan error:", err));
+  }, 15000);
+
+  monitorInterval = setInterval(() => {
+    runScan().catch((err) => console.error("Google Alerts monitor scan error:", err));
+  }, SCAN_INTERVAL);
+}
+
+export function stopGoogleAlertsMonitor(): void {
+  if (monitorInterval) {
+    clearInterval(monitorInterval);
+    monitorInterval = null;
+    console.log("Google Alerts monitor: stopped");
+  }
+}
+
+function pruneSeenAlerts(): void {
+  if (seenAlerts.size > 5000) {
+    const entries = Array.from(seenAlerts);
+    for (let i = 0; i < 2500; i++) {
+      seenAlerts.delete(entries[i]);
+    }
+  }
+}
+
+========== server/telegram-bot.ts ==========
+
+import { GoogleGenAI } from "@google/genai";
+import crypto from "crypto";
+import { db } from "./db";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
+import { storage } from "./storage";
+
+export function generateScanToken(chatId: string, businessId: number): string {
+  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 16);
+}
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+interface PendingContextRequest {
+  postText: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+  timestamp: number;
+}
+
+const pendingContextRequests = new Map<string, PendingContextRequest>();
+
+interface BusinessWithCampaigns {
+  id: number;
+  name: string;
+  type: string;
+  targetAudience: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaigns: Array<{
+    id: number;
+    name: string;
+    platform: string;
+    keywords: string[];
+    targetGroups: string[];
+  }>;
+}
+
+async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampaigns[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  return allBiz.map((b) => ({
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    targetAudience: b.targetAudience,
+    coreOffering: b.coreOffering,
+    preferredTone: b.preferredTone,
+    campaigns: allCamps
+      .filter((c) => c.businessId === b.id && c.status === "active")
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        platform: c.platform,
+        keywords: (c.keywords as string[]) || [],
+        targetGroups: (c.targetGroups as string[]) || [],
+      })),
+  }));
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;
+
+function extractPostUrl(text: string): string | null {
+  const matches = text.match(URL_REGEX);
+  return matches ? matches[0] : null;
+}
+
+function stripUrls(text: string): string {
+  return text.replace(URL_REGEX, "").trim();
+}
+
+function detectPlatformFromUrl(url: string): "reddit" | "facebook" | null {
+  if (/reddit\.com|redd\.it/i.test(url)) return "reddit";
+  if (/facebook\.com|fb\.com/i.test(url)) return "facebook";
+  return null;
+}
+
+function detectPlatformFromText(text: string): "reddit" | "facebook" | null {
+  const lower = text.toLowerCase();
+  if (lower.includes("reddit") || lower.includes("r/") || lower.includes("/r/")) return "reddit";
+  if (lower.includes("facebook") || lower.includes("fb group")) return "facebook";
+  return null;
+}
+
+interface ImageExtraction {
+  text: string;
+  platform: "reddit" | "facebook" | null;
+  groupName: string | null;
+  authorName: string | null;
+  postUrl: string | null;
+}
+
+function detectMimeType(filePath: string): string {
+  if (filePath.endsWith(".png")) return "image/png";
+  if (filePath.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
+}
+
+async function downloadTelegramPhotoWithMime(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+
+  try {
+    const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_id: fileId }),
+    });
+    const fileData = await fileRes.json() as any;
+    if (!fileData.ok || !fileData.result?.file_path) return null;
+
+    const filePath = fileData.result.file_path as string;
+    const mimeType = detectMimeType(filePath);
+    const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+    const imgRes = await fetch(downloadUrl);
+    if (!imgRes.ok) return null;
+
+    const arrayBuf = await imgRes.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuf), mimeType };
+  } catch (error) {
+    console.error("Error downloading Telegram photo:", error);
+    return null;
+  }
+}
+
+async function extractTextFromImage(imageBuffer: Buffer, mimeType: string): Promise<ImageExtraction | null> {
+  try {
+    const base64Image = imageBuffer.toString("base64");
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Image,
+              },
+            },
+            {
+              text: `You are analyzing a screenshot of a social media post. Extract the following information:
+
+1. The full text content of the post (the main body/question being asked)
+2. The platform (Reddit or Facebook) - look for visual cues like Reddit's upvote arrows, subreddit names (r/...), Facebook's blue header, group names, like/comment buttons
+3. The group or subreddit name if visible
+4. The author's name/username if visible
+
+Return ONLY valid JSON:
+{
+  "post_text": "<the full text of the post>",
+  "platform": "<reddit or facebook or unknown>",
+  "group_name": "<group or subreddit name, or null>",
+  "author_name": "<author name or null>",
+  "post_url": "<any visible URL in the screenshot, or null>"
+}
+
+If you cannot read any text from the image, return: {"post_text": "", "platform": "unknown", "group_name": null, "author_name": null, "post_url": null}`,
+            },
+          ],
+        },
+      ],
+      config: { maxOutputTokens: 2048 },
+    });
+
+    const responseText = result.text || "";
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed.post_text || parsed.post_text.length < 3) return null;
+
+    let platform: "reddit" | "facebook" | null = null;
+    if (parsed.platform === "reddit") platform = "reddit";
+    else if (parsed.platform === "facebook") platform = "facebook";
+
+    return {
+      text: parsed.post_text,
+      platform,
+      groupName: parsed.group_name || null,
+      authorName: parsed.author_name || null,
+      postUrl: parsed.post_url || null,
+    };
+  } catch (error) {
+    console.error("Error extracting text from image:", error);
+    return null;
+  }
+}
+
+interface PostAnalysis {
+  message: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+  responseId: number | null;
+  needsGroupContext: boolean;
+}
+
+async function handlePost(postText: string, groupName?: string, postUrl?: string | null, overridePlatform?: "reddit" | "facebook" | null): Promise<PostAnalysis> {
+  const allBiz = await getAllBusinessesWithCampaigns();
+  const platform = overridePlatform || (postUrl ? detectPlatformFromUrl(postUrl) : null) || detectPlatformFromText(postText) || null;
+
+  if (allBiz.length === 0) {
+    return {
+      message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard or use /newclient.",
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const bizSummaries = allBiz.map((b) => {
+    const kws = b.campaigns.flatMap((c) => c.keywords);
+    return `- ${b.name} (${b.type}): keywords=[${kws.join(", ")}], audience="${b.targetAudience}"`;
+  }).join("\n");
+
+  const matchPrompt = `You are a lead matching AI. Given a social media post, determine which business (if any) is the best match and score the lead intent.
+Also rate your confidence in the match from 1-10 (10 = certain, 1 = guessing).
+
+Available businesses:
+${bizSummaries}
+
+Post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Return ONLY valid JSON:
+{
+  "matched_business": "<exact business name or null if no match>",
+  "intent_score": <1-10>,
+  "confidence": <1-10>,
+  "reasoning": "<one sentence>"
+}`;
+
+  const matchResult = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: matchPrompt,
+    config: { maxOutputTokens: 1024 },
+  });
+
+  const matchText = matchResult.text || "";
+  const matchJson = matchText.match(/\{[\s\S]*\}/);
+  if (!matchJson) {
+    return {
+      message: "Could not analyze this post. Try again.",
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const match = JSON.parse(matchJson[0]);
+  const confidence = match.confidence || 10;
+
+  if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {
+    return {
+      message: "",
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: true,
+    };
+  }
+
+  if (!match.matched_business || match.matched_business === "null") {
+    return {
+      message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business.toLowerCase());
+  if (!biz) {
+    return {
+      message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  if (match.intent_score < 4) {
+    return {
+      message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"*".repeat(match.intent_score)}${"_".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
+
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, biz.id))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
+    const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses for this business were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful and only naturally mention the business if it truly fits.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine, helpful, and less promotional. The recommendation should feel organic, not forced.";
+      }
+    }
+  } catch (err) {
+    // feedback query failed, proceed without it
+  }
+
+  const responsePrompt = `You are writing a response to a ${platformLabel} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Business to recommend: ${biz.name}
+What they do: ${biz.coreOffering}
+Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`;
+
+  const responseResult = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: responsePrompt,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = (responseResult.text || "").trim();
+
+  const activeCampaign = biz.campaigns[0];
+  let savedResponseId: number | null = null;
+
+  if (activeCampaign) {
+    try {
+      const [savedLead] = await db.insert(leads).values({
+        campaignId: activeCampaign.id,
+        platform: platform || "unknown",
+        groupName: groupName || "Unknown Group",
+        authorName: "via Telegram",
+        originalPost: postText,
+        postUrl: postUrl || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      }).returning();
+
+      if (savedLead) {
+        const [savedResponse] = await db.insert(aiResponses).values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        }).returning();
+        savedResponseId = savedResponse?.id || null;
+      }
+    } catch (err) {
+      console.error("Error saving lead/response to DB:", err);
+    }
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+  const platformEmoji = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
+
+  let msg = `<b>Lead Matched!</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
+  if (platform) msg += `<b>Platform:</b> ${platformEmoji}\n`;
+  if (groupName) msg += `<b>Group:</b> ${escapeHtml(groupName)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
+  msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>\n\n`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+
+  if (postUrl) {
+    msg += `\n\nTap the button below to open the post and paste your reply.`;
+  }
+
+  return {
+    message: msg,
+    postUrl: postUrl || null,
+    platform,
+    responseId: savedResponseId,
+    needsGroupContext: false,
+  };
+}
+
+const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
+
+interface ClientWizardState {
+  step: "name" | "keywords" | "offering" | "done";
+  chatId: string;
+  name?: string;
+  keywords?: string[];
+  offering?: string;
+}
+
+const clientWizards = new Map<string, ClientWizardState>();
+
+function getAppBaseUrl(): string {
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDevDomain) return `https://${replitDevDomain}`;
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  if (replSlug && replOwner) return `https://${replSlug}.${replOwner}.repl.co`;
+  return "https://gemin-eye.com";
+}
+
+async function handleClientWizard(chatId: string, text: string): Promise<boolean> {
+  const wizard = clientWizards.get(chatId);
+  if (!wizard) return false;
+
+  if (text.startsWith("/")) {
+    clientWizards.delete(chatId);
+    return false;
+  }
+
+  switch (wizard.step) {
+    case "name": {
+      const name = text.trim();
+      if (name.length < 2 || name.length > 100) {
+        await sendTelegramMessageToChat(chatId, "Please enter a valid business name (2-100 characters).");
+        return true;
+      }
+      wizard.name = name;
+      wizard.step = "offering";
+      await sendTelegramMessageToChat(chatId,
+        `Got it: <b>${escapeHtml(wizard.name)}</b>\n\nIn one sentence, what does ${escapeHtml(wizard.name)} do or sell?\n<i>(e.g., "Classic American diner with all-day breakfast and comfort food")</i>`
+      );
+      return true;
+    }
+
+    case "offering": {
+      const offering = text.trim();
+      if (offering.length < 5) {
+        await sendTelegramMessageToChat(chatId, "Please describe what the business does in at least a few words.");
+        return true;
+      }
+      wizard.offering = offering;
+      wizard.step = "keywords";
+      await sendTelegramMessageToChat(chatId,
+        `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., tacos, hungry, best lunch, where to eat)</i>`
+      );
+      return true;
+    }
+
+    case "keywords": {
+      wizard.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      if (wizard.keywords.length < 1) {
+        await sendTelegramMessageToChat(chatId, "Please enter at least one keyword, separated by commas.");
+        return true;
+      }
+
+      const biz = await storage.createBusiness({
+        userId: `tg-${chatId}`,
+        name: wizard.name!,
+        type: wizard.offering || wizard.name!,
+        targetAudience: "General",
+        coreOffering: wizard.offering || wizard.name!,
+        preferredTone: "casual",
+      });
+
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - Facebook`,
+        platform: "Facebook",
+        status: "active",
+        strategy: `Monitor Facebook groups for leads matching ${wizard.name}`,
+        targetGroups: [],
+        keywords: wizard.keywords,
+      });
+
+      clientWizards.delete(chatId);
+
+      const baseUrl = getAppBaseUrl();
+      const token = generateScanToken(chatId, biz.id);
+      const bookmarkletCode = `javascript:void((function(){var s=document.createElement('script');s.src='${baseUrl}/spy-glass.js?cid=${chatId}&bid=${biz.id}&tok=${token}&t='+Date.now();document.body.appendChild(s)})())`;
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>Setup Complete!</b>\n\n` +
+        `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
+        `<b>Step 3: The Spy Glass</b>\n` +
+        `To scan a Facebook Group, create a browser bookmark with the code below as the URL:\n\n` +
+        `1. Right-click your bookmarks bar\n` +
+        `2. Click "Add bookmark" (or "Add page")\n` +
+        `3. Name it: <b>Scan Group</b>\n` +
+        `4. Paste this as the URL:`
+      );
+
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(bookmarkletCode)}</code>`);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>How to use it:</b>\n` +
+        `1. Go to any Facebook Group page\n` +
+        `2. Click your "Scan Group" bookmark\n` +
+        `3. Scroll through the feed\n` +
+        `4. I'll message you here instantly when I spot a lead!\n\n` +
+        `That's it - you're all set!`
+      );
+
+      await sendTelegramMessage(
+        `<b>New Client Onboarded via Wizard</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Telegram ID:</b> ${chatId}\n` +
+        `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}`
+      );
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function handleAdminCommand(chatId: string, text: string): Promise<boolean> {
+  const pending = pendingClientSetups.get(chatId);
+
+  if (pending && !text.startsWith("/")) {
+    return await handleClientSetupFlow(chatId, text, pending);
+  }
+
+  if (pending && text.startsWith("/")) {
+    pendingClientSetups.delete(chatId);
+  }
+
+  if (text === "/newclient") {
+    pendingClientSetups.set(chatId, { step: "name" });
+    await sendTelegramMessage("<b>New Client Setup</b>\n\nWhat's the business name?");
+    return true;
+  }
+
+  if (text === "/removeclient") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses to remove.");
+      return true;
+    }
+
+    let msg = `<b>Remove a Client</b>\n\nReply with the number of the business to remove:\n\n`;
+    allBiz.forEach((b, i) => {
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)} (${escapeHtml(b.type)})\n`;
+    });
+    msg += `\nOr type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "remove_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/keywords") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Update Keywords</b>\n\nWhich business? Reply with the number:\n\n`;
+    allBiz.forEach((b, i) => {
+      const kws = b.campaigns.flatMap((c) => c.keywords).slice(0, 8);
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n    Current: ${kws.map(k => escapeHtml(k)).join(", ")}\n\n`;
+    });
+    msg += `Or type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "keywords_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/groups") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Update Target Groups</b>\n\nWhich business? Reply with the number:\n\n`;
+    allBiz.forEach((b, i) => {
+      const grps = b.campaigns.flatMap((c) => c.targetGroups).slice(0, 5);
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n    Current: ${grps.map(g => escapeHtml(g)).join(", ")}\n\n`;
+    });
+    msg += `Or type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "groups_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/cancel") {
+    pendingClientSetups.delete(chatId);
+    await sendTelegramMessage("Cancelled.");
+    return true;
+  }
+
+  if (text === "/addalert") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Add Google Alert Feed</b>\n\nWhich business should this alert feed be attached to?\n\n`;
+    allBiz.forEach((b, i) => {
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n`;
+    });
+    msg += `\nReply with the number, or /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/alerts") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    const allCamps = await db.select().from(campaigns);
+
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage(
+        `<b>No Google Alert feeds configured.</b>\n\n` +
+        `To add one:\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search query (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS feed URL\n` +
+        `5. Use /addalert to add it here`
+      );
+      return true;
+    }
+
+    let msg = `<b>Your Google Alert Feeds:</b>\n\n`;
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      msg += `<b>${escapeHtml(biz?.name || "Unknown")}</b>\n`;
+      feeds.forEach((f, i) => {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `  ${i + 1}. ${escapeHtml(shortUrl)}\n`;
+      });
+      msg += `\n`;
+    }
+    msg += `Use /addalert to add more feeds.\nUse /removealert to remove a feed.`;
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/removealert") {
+    const allCamps = await db.select().from(campaigns);
+    const allBiz = await db.select().from(businesses);
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage("No Google Alert feeds to remove.");
+      return true;
+    }
+
+    let msg = `<b>Remove a Google Alert Feed</b>\n\nReply with the number:\n\n`;
+    let idx = 1;
+    const feedIndex: Array<{ campaignId: number; feedUrl: string }> = [];
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      for (const f of feeds) {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `<b>${idx}.</b> ${escapeHtml(biz?.name || "?")} - ${escapeHtml(shortUrl)}\n`;
+        feedIndex.push({ campaignId: camp.id, feedUrl: f });
+        idx++;
+      }
+    }
+    msg += `\nOr /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  return false;
+}
+
+async function handleClientSetupFlow(chatId: string, text: string, pending: { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }): Promise<boolean> {
+  if (text === "/cancel") {
+    pendingClientSetups.delete(chatId);
+    await sendTelegramMessage("Client setup cancelled.");
+    return true;
+  }
+
+  switch (pending.step) {
+    case "name":
+      pending.name = text;
+      pending.step = "type";
+      await sendTelegramMessage(`Got it: <b>${escapeHtml(text)}</b>\n\nWhat type of business is this?\n<i>(e.g., "Diner in Brookfield, IL", "AI productivity tool", "Bocce ball club")</i>`);
+      break;
+
+    case "type":
+      pending.type = text;
+      pending.step = "audience";
+      await sendTelegramMessage(`Business type: <b>${escapeHtml(text)}</b>\n\nWho is the target audience?\n<i>(e.g., "Families in the Western Suburbs looking for casual dining")</i>`);
+      break;
+
+    case "audience":
+      pending.audience = text;
+      pending.step = "offering";
+      await sendTelegramMessage(`Target audience set.\n\nDescribe what this business offers in 1-2 sentences:\n<i>(e.g., "Classic American diner serving hearty breakfasts and comfort food. Family-owned with generous portions.")</i>`);
+      break;
+
+    case "offering":
+      pending.offering = text;
+      pending.step = "tone";
+      await sendTelegramMessage(`Got the offering.\n\nWhat tone should AI responses use?\n\n<b>1.</b> Casual (friendly, approachable)\n<b>2.</b> Empathetic (warm, supportive)\n<b>3.</b> Professional (authoritative, informative)\n\nReply with 1, 2, or 3.`);
+      break;
+
+    case "tone": {
+      const toneChoice = text.trim();
+      if (toneChoice === "1") pending.tone = "casual";
+      else if (toneChoice === "2") pending.tone = "empathetic";
+      else if (toneChoice === "3") pending.tone = "professional";
+      else pending.tone = "casual";
+
+      pending.step = "keywords";
+      await sendTelegramMessage(`Tone: <b>${pending.tone}</b>\n\nNow list the keywords to watch for, separated by commas:\n<i>(e.g., "restaurant recommendation, best pizza, where to eat, Brookfield food")</i>`);
+      break;
+    }
+
+    case "keywords": {
+      pending.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      pending.step = "groups";
+      await sendTelegramMessage(`Keywords: ${pending.keywords.map(k => `<b>${escapeHtml(k)}</b>`).join(", ")}\n\nFinally, list the groups/subreddits to target, separated by commas:\n<i>(e.g., "r/chicagofood, Western Suburbs Foodies, Brookfield IL Community")</i>`);
+      break;
+    }
+
+    case "groups": {
+      pending.groups = text.split(",").map(g => g.trim()).filter(g => g.length > 0);
+
+      const biz = await storage.createBusiness({
+        userId: "telegram-admin",
+        name: pending.name!,
+        type: pending.type!,
+        targetAudience: pending.audience!,
+        coreOffering: pending.offering!,
+        preferredTone: pending.tone!,
+      });
+
+      const redditGroups = pending.groups.filter(g => g.toLowerCase().startsWith("r/"));
+      const facebookGroups = pending.groups.filter(g => !g.toLowerCase().startsWith("r/"));
+
+      if (facebookGroups.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - Facebook`,
+          platform: "Facebook",
+          status: "active",
+          strategy: `Monitor Facebook groups for ${pending.type} leads`,
+          targetGroups: facebookGroups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      if (redditGroups.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - Reddit`,
+          platform: "Reddit",
+          status: "active",
+          strategy: `Monitor Reddit communities for ${pending.type} leads`,
+          targetGroups: redditGroups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      if (facebookGroups.length === 0 && redditGroups.length === 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - General`,
+          platform: "Facebook",
+          status: "active",
+          strategy: `Monitor social media for ${pending.type} leads`,
+          targetGroups: pending.groups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      pendingClientSetups.delete(chatId);
+
+      let msg = `<b>Client Created!</b>\n\n`;
+      msg += `<b>Name:</b> ${escapeHtml(biz.name)}\n`;
+      msg += `<b>Type:</b> ${escapeHtml(biz.type)}\n`;
+      msg += `<b>Tone:</b> ${escapeHtml(pending.tone!)}\n`;
+      msg += `<b>Keywords:</b> ${(pending.keywords || []).map(k => escapeHtml(k)).join(", ")}\n`;
+      msg += `<b>Groups:</b> ${(pending.groups || []).map(g => escapeHtml(g)).join(", ")}\n\n`;
+      msg += `I'm now watching for leads for <b>${escapeHtml(biz.name)}</b>. Send me posts to analyze!`;
+
+      await sendTelegramMessage(msg);
+      break;
+    }
+
+    case "remove_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      const bizToRemove = allBiz[idx];
+      const allCampsToRemove = bizToRemove.campaigns;
+
+      for (const camp of allCampsToRemove) {
+        const campLeads = await db.select().from(leads).where(eq(leads.campaignId, camp.id));
+        for (const lead of campLeads) {
+          await db.delete(aiResponses).where(eq(aiResponses.leadId, lead.id));
+        }
+        await db.delete(leads).where(eq(leads.campaignId, camp.id));
+        await db.delete(campaigns).where(eq(campaigns.id, camp.id));
+      }
+      await db.delete(businesses).where(eq(businesses.id, bizToRemove.id));
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>${escapeHtml(bizToRemove.name)}</b> has been removed along with all its campaigns, leads, and responses.`);
+      break;
+    }
+
+    case "keywords_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "keywords_update";
+      const currentKws = allBiz[idx].campaigns.flatMap(c => c.keywords);
+      await sendTelegramMessage(`<b>Updating keywords for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent keywords: ${currentKws.map(k => escapeHtml(k)).join(", ")}\n\nSend the new complete list of keywords, separated by commas:\n<i>(This will replace all current keywords)</i>`);
+      break;
+    }
+
+    case "keywords_update": {
+      const newKeywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (biz) {
+        for (const camp of biz.campaigns) {
+          await db.update(campaigns).set({ keywords: newKeywords }).where(eq(campaigns.id, camp.id));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Keywords updated for ${escapeHtml(pending.name!)}</b>\n\nNew keywords: ${newKeywords.map(k => escapeHtml(k)).join(", ")}`);
+      break;
+    }
+
+    case "groups_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "groups_update";
+      const currentGroups = allBiz[idx].campaigns.flatMap(c => c.targetGroups);
+      await sendTelegramMessage(`<b>Updating groups for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent groups: ${currentGroups.map(g => escapeHtml(g)).join(", ")}\n\nSend the new complete list of groups/subreddits, separated by commas:\n<i>(This will replace all current groups)</i>`);
+      break;
+    }
+
+    case "groups_update": {
+      const newGroups = text.split(",").map(g => g.trim()).filter(g => g.length > 0);
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (biz) {
+        for (const camp of biz.campaigns) {
+          await db.update(campaigns).set({ targetGroups: newGroups }).where(eq(campaigns.id, camp.id));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Groups updated for ${escapeHtml(pending.name!)}</b>\n\nNew groups: ${newGroups.map(g => escapeHtml(g)).join(", ")}`);
+      break;
+    }
+
+    case "alert_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "alert_url";
+      await sendTelegramMessage(
+        `<b>Adding alert feed for ${escapeHtml(allBiz[idx].name)}</b>\n\n` +
+        `Paste the Google Alert RSS feed URL:\n\n` +
+        `<i>How to get it:</i>\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS URL and paste it here`,
+        { disable_web_page_preview: true }
+      );
+      break;
+    }
+
+    case "alert_url": {
+      const feedUrl = text.trim();
+      if (!feedUrl.startsWith("http")) {
+        await sendTelegramMessage("That doesn't look like a URL. Please paste the RSS feed URL starting with http:// or https://");
+        return true;
+      }
+
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (!biz) {
+        pendingClientSetups.delete(chatId);
+        await sendTelegramMessage("Business not found. Try again with /addalert.");
+        return true;
+      }
+
+      const allCamps = await db.select().from(campaigns);
+      let alertCamp = allCamps.find(c => c.businessId === biz.id && c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+      if (alertCamp) {
+        const existingFeeds = (alertCamp.targetGroups as string[]) || [];
+        if (existingFeeds.includes(feedUrl)) {
+          pendingClientSetups.delete(chatId);
+          await sendTelegramMessage("This feed URL is already added for this business.");
+          return true;
+        }
+        await db.update(campaigns).set({ targetGroups: [...existingFeeds, feedUrl] }).where(eq(campaigns.id, alertCamp.id));
+      } else {
+        const bizKeywords = biz.campaigns.flatMap(c => c.keywords);
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${biz.name} - Google Alerts`,
+          platform: "google_alerts",
+          status: "active",
+          strategy: `Monitor Google Alerts RSS feeds for ${biz.type} leads`,
+          targetGroups: [feedUrl],
+          keywords: bizKeywords,
+        });
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(
+        `<b>Google Alert feed added!</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Feed:</b> ${escapeHtml(feedUrl.length > 60 ? feedUrl.slice(0, 57) + "..." : feedUrl)}\n\n` +
+        `The monitor will check this feed every 2 minutes and alert you when it finds leads.\n\n` +
+        `Use /alerts to see all feeds, or /addalert to add more.`
+      );
+      break;
+    }
+
+    case "alert_remove": {
+      const idx = parseInt(text) - 1;
+      const feedEntries = (pending.groups || []);
+      if (isNaN(idx) || idx < 0 || idx >= feedEntries.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      const entry = feedEntries[idx];
+      const [campId, ...feedUrlParts] = entry.split("::");
+      const feedUrl = feedUrlParts.join("::");
+      const campaignId = parseInt(campId);
+
+      const camp = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+      if (camp.length > 0) {
+        const existingFeeds = (camp[0].targetGroups as string[]) || [];
+        const newFeeds = existingFeeds.filter(f => f !== feedUrl);
+        if (newFeeds.length === 0) {
+          await db.update(campaigns).set({ status: "inactive" }).where(eq(campaigns.id, campaignId));
+        } else {
+          await db.update(campaigns).set({ targetGroups: newFeeds }).where(eq(campaigns.id, campaignId));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Alert feed removed.</b>\n\nUse /alerts to see remaining feeds.`);
+      break;
+    }
+  }
+
+  return true;
+}
+
+export function registerTelegramWebhook(app: any) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.warn("TELEGRAM_BOT_TOKEN not set, skipping bot webhook setup");
+    return;
+  }
+
+  async function sendResultWithButtons(result: PostAnalysis) {
+    const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+
+    if (result.postUrl) {
+      const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
+      buttons.push([{ text: label, url: result.postUrl }]);
+    }
+
+    if (result.responseId) {
+      buttons.push([
+        { text: "Used It", callback_data: `fb_good_${result.responseId}` },
+        { text: "Bad Match", callback_data: `fb_bad_${result.responseId}` },
+        { text: "Too Salesy", callback_data: `fb_salesy_${result.responseId}` },
+        { text: "Wrong Client", callback_data: `fb_wrong_${result.responseId}` },
+      ]);
+    }
+
+    await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+  }
+
+  app.post(`/api/telegram/webhook/${token}`, async (req: any, res: any) => {
+    try {
+      res.sendStatus(200);
+
+      const update = req.body;
+
+      if (update?.callback_query) {
+        const cbq = update.callback_query;
+        const data = cbq.data as string;
+        const cbqChatId = String(cbq.message?.chat?.id || "");
+
+        if (data.startsWith("fb_")) {
+          const parts = data.split("_");
+          const feedbackType = parts[1];
+          const responseId = parseInt(parts[2]);
+
+          if (!isNaN(responseId)) {
+            const feedbackMap: Record<string, string> = {
+              good: "positive",
+              bad: "bad_match",
+              salesy: "too_salesy",
+              wrong: "wrong_client",
+            };
+
+            const feedbackValue = feedbackMap[feedbackType] || feedbackType;
+
+            try {
+              const existing = await db.select().from(responseFeedback).where(eq(responseFeedback.responseId, responseId)).limit(1);
+              if (existing.length > 0) {
+                await answerCallbackQuery(cbq.id, "Feedback already recorded for this response.");
+                return;
+              }
+
+              await db.insert(responseFeedback).values({
+                responseId,
+                feedback: feedbackValue,
+              });
+
+              if (feedbackValue === "positive") {
+                await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId));
+              }
+            } catch (err) {
+              console.error("Error saving feedback:", err);
+            }
+
+            const feedbackLabels: Record<string, string> = {
+              positive: "Marked as used - great!",
+              bad_match: "Noted: bad match. I'll learn from this.",
+              too_salesy: "Noted: too salesy. I'll adjust the tone.",
+              wrong_client: "Noted: wrong client matched.",
+            };
+
+            await answerCallbackQuery(cbq.id, feedbackLabels[feedbackValue] || "Feedback saved!");
+
+            if (cbq.message?.message_id && cbqChatId) {
+              const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+              const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+              const selectedLabel = feedbackType === "good" ? "Used It" : feedbackType === "salesy" ? "Too Salesy" : feedbackType === "wrong" ? "Wrong Client" : "Bad Match";
+              const confirmRow = [{ text: `[${selectedLabel}]`, callback_data: "noop" }];
+              const newKeyboard = [...urlButtons, confirmRow];
+              await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+            }
+          } else {
+            await answerCallbackQuery(cbq.id);
+          }
+        } else if (data === "noop") {
+          await answerCallbackQuery(cbq.id, "Feedback already recorded.");
+        } else {
+          await answerCallbackQuery(cbq.id);
+        }
+        return;
+      }
+
+      const message = update?.message;
+      if (!message) return;
+
+      const chatId = String(message.chat.id);
+      const messageText = (message.text || "").trim();
+
+      if (messageText === "/start setup" || messageText === "/setup") {
+        clientWizards.set(chatId, { step: "name", chatId });
+        await sendTelegramMessageToChat(chatId,
+          `<b>Welcome to Gemin-Eye!</b>\n\n` +
+          `I'm going to set up your business monitor in 3 quick steps.\n\n` +
+          `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
+        );
+        return;
+      }
+
+      const wizardHandled = await handleClientWizard(chatId, messageText);
+      if (wizardHandled) return;
+
+      if (!ALLOWED_CHAT_ID) {
+        console.warn("TELEGRAM_CHAT_ID not set, ignoring incoming message");
+        return;
+      }
+      if (chatId !== ALLOWED_CHAT_ID) return;
+
+      if (message.photo && message.photo.length > 0) {
+        pendingContextRequests.delete(chatId);
+        await sendTelegramMessage("Reading screenshot...");
+
+        const largestPhoto = message.photo[message.photo.length - 1];
+        const photoData = await downloadTelegramPhotoWithMime(largestPhoto.file_id);
+
+        if (!photoData) {
+          await sendTelegramMessage("Couldn't download that image. Please try again.");
+          return;
+        }
+
+        const extracted = await extractTextFromImage(photoData.buffer, photoData.mimeType);
+        if (!extracted || extracted.text.length < 5) {
+          await sendTelegramMessage("Couldn't read any text from that screenshot. Make sure the post text is clearly visible and try again.");
+          return;
+        }
+
+        const caption = message.caption || "";
+        const captionUrl = extractPostUrl(caption);
+        const postUrl = captionUrl || extracted.postUrl;
+        const groupName = extracted.groupName || undefined;
+
+        await sendTelegramMessage(`Read from screenshot. Analyzing...\n\n<i>"${escapeHtml(extracted.text.length > 150 ? extracted.text.slice(0, 150) + "..." : extracted.text)}"</i>`);
+
+        const result = await handlePost(extracted.text, groupName, postUrl, extracted.platform);
+
+        if (result.needsGroupContext) {
+          pendingContextRequests.set(chatId, {
+            postText: extracted.text,
+            postUrl: postUrl || null,
+            platform: extracted.platform,
+            timestamp: Date.now(),
+          });
+          await sendTelegramMessage(
+            `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
+          );
+          return;
+        }
+
+        await sendResultWithButtons(result);
+        return;
+      }
+
+      if (!message.text) return;
+
+      const text = message.text.trim();
+
+      if (text === "/start") {
+        pendingContextRequests.delete(chatId);
+        await sendTelegramMessage(
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response (Used It / Bad Match / Too Salesy / Wrong Client)\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
+        );
+        return;
+      }
+
+      if (text === "/help") {
+        pendingContextRequests.delete(chatId);
+        await sendTelegramMessage(
+          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Feedback:</b>\nEvery AI response comes with buttons:\n- <b>Used It</b> - You posted the response (helps me learn what works)\n- <b>Bad Match</b> - The post wasn't relevant to that business\n- <b>Too Salesy</b> - The response sounded too much like an ad\n- <b>Wrong Client</b> - Matched to the wrong business\n\n<b>Context:</b>\nIf I can't tell which group a post is from, I'll ask you. This helps me pick the right business and write a better response.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed`
+        );
+        return;
+      }
+
+      if (text === "/businesses") {
+        pendingContextRequests.delete(chatId);
+        const allBiz = await getAllBusinessesWithCampaigns();
+        if (allBiz.length === 0) {
+          await sendTelegramMessage("No businesses set up yet. Use /newclient to add one!");
+          return;
+        }
+
+        let msg = `<b>Your Businesses:</b>\n\n`;
+        for (const b of allBiz) {
+          const kws = b.campaigns.flatMap((c) => c.keywords).slice(0, 5);
+          const groups = b.campaigns.flatMap((c) => c.targetGroups).slice(0, 3);
+          msg += `<b>${escapeHtml(b.name)}</b> (${escapeHtml(b.type)})\n`;
+          msg += `Groups: ${groups.map((g) => escapeHtml(g)).join(", ")}\n`;
+          msg += `Keywords: ${kws.map((k) => escapeHtml(k)).join(", ")}\n\n`;
+        }
+        msg += `<b>Commands:</b> /newclient | /removeclient | /keywords | /groups`;
+        await sendTelegramMessage(msg);
+        return;
+      }
+
+      const pendingContext = pendingContextRequests.get(chatId);
+      const CONTEXT_TTL = 5 * 60 * 1000;
+      if (pendingContext && (Date.now() - pendingContext.timestamp) >= CONTEXT_TTL) {
+        pendingContextRequests.delete(chatId);
+      }
+      if (pendingContext && !text.startsWith("/") && (Date.now() - pendingContext.timestamp) < CONTEXT_TTL) {
+        pendingContextRequests.delete(chatId);
+
+        const groupName = text.toLowerCase() === "skip" ? undefined : text.trim();
+
+        await sendTelegramMessage(groupName ? `Got it - analyzing for <b>${escapeHtml(groupName)}</b>...` : "Analyzing without group context...");
+
+        const result = await handlePost(pendingContext.postText, groupName, pendingContext.postUrl, pendingContext.platform);
+        await sendResultWithButtons(result);
+        return;
+      }
+
+      if (text.startsWith("/")) {
+        pendingContextRequests.delete(chatId);
+      }
+
+      const handled = await handleAdminCommand(chatId, text);
+      if (handled) return;
+
+      if (text.startsWith("/")) return;
+
+      pendingContextRequests.delete(chatId);
+      await sendTelegramMessage("Analyzing post...");
+
+      const postUrl = extractPostUrl(text);
+      let postText = postUrl ? stripUrls(text) : text;
+
+      let groupName: string | undefined;
+      const colonMatch = postText.match(/^([^:]{3,50}):\s+([\s\S]+)/);
+      if (colonMatch) {
+        groupName = colonMatch[1].trim();
+        postText = colonMatch[2].trim();
+      }
+
+      if (!postText || postText.length < 5) {
+        await sendTelegramMessage(
+          "I need more text to analyze. Please paste the post content along with the URL.\n\n<b>Or just screenshot the post!</b>\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>"
+        );
+        return;
+      }
+
+      const result = await handlePost(postText, groupName, postUrl);
+
+      if (result.needsGroupContext) {
+        pendingContextRequests.set(chatId, {
+          postText,
+          postUrl: postUrl || null,
+          platform: result.platform,
+          timestamp: Date.now(),
+        });
+        await sendTelegramMessage(
+          `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
+        );
+        return;
+      }
+
+      await sendResultWithButtons(result);
+    } catch (error) {
+      console.error("Telegram webhook error:", error);
+      await sendTelegramMessage("Something went wrong analyzing that post. Please try again.").catch(() => {});
+    }
+  });
+
+  registerWebhook(token).catch((e) => console.error("Failed to register Telegram webhook:", e));
+}
+
+async function registerWebhook(token: string) {
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+
+  let webhookUrl: string;
+  if (replitDevDomain) {
+    webhookUrl = `https://${replitDevDomain}/api/telegram/webhook/${token}`;
+  } else if (replSlug && replOwner) {
+    webhookUrl = `https://${replSlug}.${replOwner}.repl.co/api/telegram/webhook/${token}`;
+  } else {
+    console.warn("Could not determine public URL for Telegram webhook");
+    return;
+  }
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: webhookUrl }),
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      console.log("Telegram webhook registered successfully");
+    } else {
+      console.error("Telegram webhook registration failed:", data.description || "unknown error");
+    }
+  } catch (error) {
+    console.error("Error registering Telegram webhook:", error);
+  }
+}
+
+========== server/reddit-monitor.ts ==========
+
+import Parser from "rss-parser";
+import { GoogleGenAI } from "@google/genai";
+import { db } from "./db";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage } from "./telegram";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const parser = new Parser({
+  headers: {
+    "User-Agent": "Mozilla/5.0 (compatible; Gemin-Eye/1.0; +https://gemin-eye.com)",
+    "Accept": "text/xml, application/rss+xml, application/xml",
+  },
+  timeout: 10000,
+});
+const seenPosts = new Set<string>();
+const SCAN_INTERVAL = 90 * 1000;
+let monitorInterval: ReturnType<typeof setInterval> | null = null;
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+interface SubredditTarget {
+  subreddit: string;
+  businessId: number;
+  businessName: string;
+  businessType: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaignId: number;
+  keywords: string[];
+}
+
+async function getRedditTargets(): Promise<SubredditTarget[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  const targets: SubredditTarget[] = [];
+
+  for (const biz of allBiz) {
+    const bizCamps = allCamps.filter(
+      (c) => c.businessId === biz.id && c.status === "active"
+    );
+
+    for (const camp of bizCamps) {
+      const groups = (camp.targetGroups || []) as string[];
+      const keywords = (camp.keywords || []) as string[];
+
+      for (const group of groups) {
+        const cleaned = group
+          .replace(/^r\//, "")
+          .replace(/^\/r\//, "")
+          .trim();
+        if (!cleaned) continue;
+        if (/\s/.test(cleaned)) continue;
+        if (cleaned.length > 50) continue;
+
+        targets.push({
+          subreddit: cleaned,
+          businessId: biz.id,
+          businessName: biz.name,
+          businessType: biz.type,
+          coreOffering: biz.coreOffering,
+          preferredTone: biz.preferredTone,
+          campaignId: camp.id,
+          keywords,
+        });
+      }
+    }
+  }
+
+  return targets;
+}
+
+function keywordMatch(text: string, keywords: string[]): boolean {
+  if (keywords.length === 0) return true;
+  const lower = text.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
+}
+
+async function processPostForTarget(
+  post: { title: string; content: string; link: string },
+  target: SubredditTarget
+): Promise<void> {
+  const title = post.title;
+  const content = post.content;
+  const fullText = `${title}\n${content}`;
+
+  if (!keywordMatch(fullText, target.keywords)) return;
+
+  const matchResult = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
+They offer: ${target.coreOffering}
+
+Analyze this Reddit post from r/${target.subreddit}:
+Title: "${title}"
+Content: "${content.slice(0, 400)}"
+
+Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+    config: { maxOutputTokens: 512 },
+  });
+
+  const matchText = matchResult.text || "";
+  const matchJson = matchText.match(/\{[\s\S]*\}/);
+  if (!matchJson) return;
+
+  let match;
+  try {
+    match = JSON.parse(matchJson[0]);
+  } catch {
+    return;
+  }
+
+  if (!match.is_lead || match.intent_score < 5) return;
+
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, target.businessId))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
+    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance =
+          "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
+      }
+    }
+  } catch {
+  }
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const responseResult = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: `You are writing a Reddit comment in r/${target.subreddit}. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post: "${title}\n${content.slice(0, 400)}"
+
+Business to recommend: ${target.businessName}
+What they do: ${target.coreOffering}
+Tone: ${toneMap[target.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding Reddit comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = (responseResult.text || "").trim();
+  if (!responseText) return;
+
+  let savedResponseId: number | null = null;
+  try {
+    const [savedLead] = await db
+      .insert(leads)
+      .values({
+        campaignId: target.campaignId,
+        platform: "reddit",
+        groupName: `r/${target.subreddit}`,
+        authorName: "Reddit user",
+        originalPost: fullText.slice(0, 2000),
+        postUrl: post.link || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      })
+      .returning();
+
+    if (savedLead) {
+      const [savedResponse] = await db
+        .insert(aiResponses)
+        .values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        })
+        .returning();
+      savedResponseId = savedResponse?.id || null;
+    }
+  } catch (err) {
+    console.error("Error saving Reddit lead to DB:", err);
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+
+  let msg = `<b>Reddit Lead Found</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
+  msg += `<b>Subreddit:</b> r/${escapeHtml(target.subreddit)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>\n\n`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+
+  const buttons = [];
+  if (post.link) {
+    buttons.push([{ text: "Open Post", url: post.link }]);
+  }
+  if (savedResponseId) {
+    buttons.push([
+      { text: "Used It", callback_data: `fb_good_${savedResponseId}` },
+      { text: "Bad Match", callback_data: `fb_bad_${savedResponseId}` },
+      { text: "Too Salesy", callback_data: `fb_salesy_${savedResponseId}` },
+      { text: "Wrong Client", callback_data: `fb_wrong_${savedResponseId}` },
+    ]);
+  }
+
+  await sendTelegramMessage(msg, { buttons });
+}
+
+async function scanSubredditForTargets(subreddit: string, targets: SubredditTarget[]): Promise<void> {
+  const url = `https://www.reddit.com/r/${subreddit}/new.rss`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Gemin-Eye/1.0 (RSS Reader)",
+        "Accept": "text/xml, application/rss+xml, application/xml",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const xml = await res.text();
+    const feed = await parser.parseString(xml);
+    const posts = feed.items.slice(0, 5).map((item) => ({
+      title: item.title || "",
+      content: item.contentSnippet || item.content || "",
+      link: item.link || "",
+    }));
+
+    for (const post of posts) {
+      const postId = post.link || post.title || "";
+      if (!postId) continue;
+
+      for (const target of targets) {
+        const seenKey = `${postId}::${target.businessId}`;
+        if (seenPosts.has(seenKey)) continue;
+        seenPosts.add(seenKey);
+
+        try {
+          await processPostForTarget(post, target);
+        } catch (err: any) {
+          console.error(`Error processing post for ${target.businessName}: ${err?.message || err}`);
+        }
+      }
+    }
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    if (errMsg.includes("403") || errMsg.includes("429") || errMsg.includes("Forbidden")) {
+      console.log(`Reddit rate-limited on r/${subreddit}, will retry next cycle`);
+    } else if (errMsg.includes("404") || errMsg.includes("Not Found")) {
+      console.log(`r/${subreddit} not found (invalid subreddit name), skipping`);
+    } else {
+      console.error(`Error scanning r/${subreddit}: ${errMsg}`);
+    }
+  }
+}
+
+async function runScan(): Promise<void> {
+  const targets = await getRedditTargets();
+
+  if (targets.length === 0) {
+    return;
+  }
+
+  pruneSeenPosts();
+
+  const subMap = new Map<string, SubredditTarget[]>();
+  for (const t of targets) {
+    const key = t.subreddit.toLowerCase();
+    if (!subMap.has(key)) subMap.set(key, []);
+    subMap.get(key)!.push(t);
+  }
+
+  console.log(`Reddit monitor: scanning ${subMap.size} subreddits for ${targets.length} business targets...`);
+
+  const entries = Array.from(subMap.values());
+  for (const subTargets of entries) {
+    await scanSubredditForTargets(subTargets[0].subreddit, subTargets);
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
+
+export function startRedditMonitor(): void {
+  if (monitorInterval) return;
+
+  console.log("Reddit monitor: starting (scans every 90 seconds)");
+
+  setTimeout(() => {
+    runScan().catch((err) => console.error("Reddit monitor scan error:", err));
+  }, 10000);
+
+  monitorInterval = setInterval(() => {
+    runScan().catch((err) => console.error("Reddit monitor scan error:", err));
+  }, SCAN_INTERVAL);
+}
+
+export function stopRedditMonitor(): void {
+  if (monitorInterval) {
+    clearInterval(monitorInterval);
+    monitorInterval = null;
+    console.log("Reddit monitor: stopped");
+  }
+}
+
+function pruneSeenPosts(): void {
+  if (seenPosts.size > 5000) {
+    const entries = Array.from(seenPosts);
+    for (let i = 0; i < 2500; i++) {
+      seenPosts.delete(entries[i]);
+    }
+  }
+}
+
+========== server/routes.ts ==========
+
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { execSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { storage } from "./storage";
+import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { insertBusinessSchema } from "@shared/schema";
+import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { registerTelegramWebhook, generateScanToken } from "./telegram-bot";
+import { startRedditMonitor } from "./reddit-monitor";
+import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
+import { SOURCE_ARCHIVE_B64 } from "./source-archive";
+import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable, responseFeedback as responseFeedbackTable } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { db } from "./db";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+  await setupAuth(app);
+  registerAuthRoutes(app);
+
+  app.get("/api/businesses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const biz = await storage.getBusinessesByUser(userId);
+      res.json(biz);
+    } catch (error) {
+      console.error("Error fetching businesses:", error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  app.post("/api/businesses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const bodySchema = insertBusinessSchema.omit({ userId: true }).extend({
+        strategy: z.object({
+          platforms: z.array(z.object({ name: z.string() })),
+          groups: z.array(z.string()),
+          keywords: z.array(z.string()),
+          sampleResponse: z.string(),
+          rationale: z.string(),
+        }).optional(),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+
+      const { name, type, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
+
+      const biz = await storage.createBusiness({
+        userId,
+        name,
+        type,
+        targetAudience,
+        coreOffering,
+        preferredTone,
+      });
+
+      if (strategy && strategy.platforms) {
+        for (const platform of strategy.platforms) {
+          await storage.createCampaign({
+            businessId: biz.id,
+            name: `${platform.name} Campaign`,
+            platform: platform.name,
+            status: "active",
+            strategy: strategy.rationale,
+            targetGroups: strategy.groups.filter((_: string, i: number) => i < 5),
+            keywords: strategy.keywords,
+          });
+        }
+      }
+
+      res.json(biz);
+    } catch (error) {
+      console.error("Error creating business:", error);
+      res.status(500).json({ error: "Failed to create business" });
+    }
+  });
+
+  app.post("/api/strategy/generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const strategyInputSchema = z.object({
+        name: z.string().min(1),
+        type: z.string().min(1),
+        targetAudience: z.string().min(1),
+        coreOffering: z.string().min(10),
+        preferredTone: z.string().min(1),
+      });
+
+      const parsed = strategyInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+
+      const { name, type, targetAudience, coreOffering, preferredTone } = parsed.data;
+
+      const prompt = `You are a marketing strategist specializing in social media community engagement.
+
+A business wants to find customers by monitoring social media groups for high-intent questions and responding helpfully.
+
+Business Details:
+- Name: ${name}
+- Type/Niche: ${type}
+- Target Audience: ${targetAudience}
+- Core Offering: ${coreOffering}
+- Preferred Tone: ${preferredTone}
+
+Generate a customer acquisition strategy. Return ONLY valid JSON with this exact structure:
+{
+  "platforms": [{"name": "Facebook"}, {"name": "Reddit"}],
+  "groups": ["Group Name 1", "Group Name 2", "Group Name 3", "Group Name 4", "Group Name 5"],
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
+  "sampleResponse": "A sample response that the AI would post in one of these groups when someone asks a relevant question. Make it sound natural and helpful, not like an ad. About 2-3 sentences.",
+  "rationale": "2-3 sentences explaining why these platforms and groups were chosen and how this strategy will help the business find customers."
+}
+
+Be specific with real group names that exist on these platforms. Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: prompt,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const text = response.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON found in response");
+      }
+
+      const strategyData = JSON.parse(jsonMatch[0]);
+      res.json(strategyData);
+    } catch (error) {
+      console.error("Error generating strategy:", error);
+      res.status(500).json({ error: "Failed to generate strategy" });
+    }
+  });
+
+  app.get("/api/campaigns", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      res.json(camps);
+    } catch (error) {
+      console.error("Error fetching campaigns:", error);
+      res.status(500).json({ error: "Failed to fetch campaigns" });
+    }
+  });
+
+  app.get("/api/leads", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const leadIds = allLeads.map((l) => l.id);
+      const responses = await storage.getResponsesByLeads(leadIds);
+      res.json({ leads: allLeads, responses });
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  app.post("/api/leads/:id/generate-response", isAuthenticated, async (req: any, res) => {
+    try {
+      const leadId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const lead = allLeads.find((l) => l.id === leadId);
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const campaign = camps.find((c) => c.id === lead.campaignId);
+      const bizList = await storage.getBusinessesByUser(userId);
+      const business = bizList.find((b) => b.id === campaign?.businessId);
+
+      if (!business) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      const toneMap: Record<string, string> = {
+        empathetic: "empathetic, warm, and supportive",
+        professional: "professional, authoritative, and informative",
+        casual: "casual, friendly, and approachable",
+      };
+
+      const prompt = `You are writing a response to a social media post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post was in the group "${lead.groupName}" on ${lead.platform}.
+The original post: "${lead.originalPost}"
+Posted by: ${lead.authorName}
+
+Business to recommend: ${business.name}
+What they do: ${business.coreOffering}
+Tone: ${toneMap[business.preferredTone] || "friendly and helpful"}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: prompt,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const responseText = response.text || "";
+
+      const aiResp = await storage.createResponse({
+        leadId,
+        content: responseText.trim(),
+        status: "pending",
+      });
+
+      sendTelegramMessage(formatResponseNotification(
+        lead, business.name, responseText.trim()
+      )).catch((e) => console.error("Telegram notification failed:", e));
+
+      res.json(aiResp);
+    } catch (error) {
+      console.error("Error generating response:", error);
+      res.status(500).json({ error: "Failed to generate response" });
+    }
+  });
+
+  app.post("/api/leads/score", isAuthenticated, async (req: any, res) => {
+    try {
+      const { post, businessType, targetAudience } = req.body;
+      if (!post || !businessType) {
+        return res.status(400).json({ error: "Missing required fields: post, businessType" });
+      }
+
+      const prompt = `You are a lead scoring AI. Analyze this social media post and rate how likely this person is to become a customer for the described business.
+
+Post: "${post}"
+Business Type: ${businessType}
+Target Audience: ${targetAudience || "general"}
+
+Return ONLY valid JSON with this structure:
+{
+  "score": <number 1-10>,
+  "reasoning": "<one sentence explaining the score>",
+  "keywords_matched": ["keyword1", "keyword2"]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: { maxOutputTokens: 1024 },
+      });
+
+      const text = response.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON found in response");
+      }
+
+      res.json(JSON.parse(jsonMatch[0]));
+    } catch (error) {
+      console.error("Error scoring lead:", error);
+      res.status(500).json({ error: "Failed to score lead" });
+    }
+  });
+
+  app.post("/api/responses/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const leadIds = allLeads.map((l) => l.id);
+      const allResponses = await storage.getResponsesByLeads(leadIds);
+      const owned = allResponses.find((r) => r.id === id);
+
+      if (!owned) {
+        return res.status(404).json({ error: "Response not found" });
+      }
+
+      const resp = await storage.updateResponseStatus(id, "approved");
+      res.json(resp);
+    } catch (error) {
+      console.error("Error approving response:", error);
+      res.status(500).json({ error: "Failed to approve response" });
+    }
+  });
+
+  registerTelegramWebhook(app);
+  startRedditMonitor();
+  startGoogleAlertsMonitor();
+
+  app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
+    try {
+      const success = await sendTelegramMessage(
+        "<b>Gemin-Eye Connected!</b>\n\nYour Telegram notifications are working. You'll receive alerts here when new leads are found and AI responses are ready to copy & paste."
+      );
+      if (success) {
+        res.json({ success: true, message: "Test message sent!" });
+      } else {
+        res.status(500).json({ error: "Failed to send. Check bot token and chat ID." });
+      }
+    } catch (error) {
+      console.error("Telegram test error:", error);
+      res.status(500).json({ error: "Failed to send test message" });
+    }
+  });
+
+  app.post("/api/telegram/notify-lead", isAuthenticated, async (req: any, res) => {
+    try {
+      const { leadId } = req.body;
+      if (!leadId) return res.status(400).json({ error: "leadId required" });
+
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const lead = allLeads.find((l) => l.id === leadId);
+
+      if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+      const bizList = await storage.getBusinessesByUser(userId);
+      const campaign = camps.find((c) => c.id === lead.campaignId);
+      const business = bizList.find((b) => b.id === campaign?.businessId);
+
+      const leadResponses = await storage.getResponsesByLeads([lead.id]);
+      const latestResponse = leadResponses[0];
+
+      const msg = formatLeadNotification(
+        lead,
+        business?.name || "Unknown",
+        latestResponse?.content
+      );
+
+      const success = await sendTelegramMessage(msg);
+      res.json({ success });
+    } catch (error) {
+      console.error("Telegram notify error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
+  app.post("/api/fb-scan", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    try {
+      const { chatId, businessId, token, postText, groupName, pageUrl } = req.body;
+
+      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
+        res.json({ matched: false, reason: "missing_fields" });
+        return;
+      }
+
+      const expectedToken = generateScanToken(String(chatId), Number(businessId));
+      if (token !== expectedToken) {
+        res.json({ matched: false, reason: "invalid_token" });
+        return;
+      }
+
+      if (postText.length < 25) {
+        res.json({ matched: false, reason: "too_short" });
+        return;
+      }
+
+      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
+      if (biz.length === 0) {
+        res.json({ matched: false, reason: "business_not_found" });
+        return;
+      }
+
+      const business = biz[0];
+      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+      const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
+
+      const lower = postText.toLowerCase();
+      const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
+      if (!hasKeyword) {
+        res.json({ matched: false, reason: "no_keyword_match" });
+        return;
+      }
+
+      const matchResult = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `You are a lead scout for "${business.name}" (${business.type}).
+They offer: ${business.coreOffering}
+
+Analyze this Facebook post from "${groupName || "a Facebook group"}":
+"${postText.slice(0, 500)}"
+
+Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+        config: { maxOutputTokens: 512 },
+      });
+
+      const matchText = matchResult.text || "";
+      const matchJson = matchText.match(/\{[\s\S]*\}/);
+      if (!matchJson) {
+        res.json({ matched: false, reason: "ai_parse_error" });
+        return;
+      }
+
+      let match;
+      try {
+        match = JSON.parse(matchJson[0]);
+      } catch {
+        res.json({ matched: false, reason: "json_parse_error" });
+        return;
+      }
+
+      if (!match.is_lead || match.intent_score < 4) {
+        res.json({ matched: false, reason: "low_intent", score: match.intent_score });
+        return;
+      }
+
+      let feedbackGuidance = "";
+      try {
+        const recentFeedback = await db
+          .select({ feedback: responseFeedbackTable.feedback })
+          .from(responseFeedbackTable)
+          .innerJoin(aiResponsesTable, eq(responseFeedbackTable.responseId, aiResponsesTable.id))
+          .innerJoin(leadsTable, eq(aiResponsesTable.leadId, leadsTable.id))
+          .innerJoin(campaignsTable, eq(leadsTable.campaignId, campaignsTable.id))
+          .where(eq(campaignsTable.businessId, businessId))
+          .orderBy(responseFeedbackTable.id)
+          .limit(20);
+
+        const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
+        const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
+        const total = recentFeedback.length;
+
+        if (total > 0) {
+          if (salesyCount > total * 0.3) {
+            feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
+          } else if (negCount > total * 0.5) {
+            feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";
+          }
+        }
+      } catch {}
+
+      const toneMap: Record<string, string> = {
+        empathetic: "empathetic, warm, and supportive",
+        professional: "professional, authoritative, and informative",
+        casual: "casual, friendly, and approachable",
+      };
+
+      const responseResult = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: `You are writing a Facebook comment in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post: "${postText.slice(0, 500)}"
+Group: "${groupName || "Facebook Group"}"
+
+Business to recommend: ${business.name}
+What they do: ${business.coreOffering}
+Tone: ${toneMap[business.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const responseText = (responseResult.text || "").trim();
+      if (!responseText) {
+        res.json({ matched: true, score: match.intent_score, reason: "no_response_generated" });
+        return;
+      }
+
+      let savedResponseId: number | null = null;
+      const activeCampaign = bizCampaigns[0];
+      if (activeCampaign) {
+        try {
+          const [savedLead] = await db.insert(leadsTable).values({
+            campaignId: activeCampaign.id,
+            platform: "facebook",
+            groupName: groupName || "Facebook Group",
+            authorName: "FB user",
+            originalPost: postText.slice(0, 2000),
+            postUrl: pageUrl || null,
+            intentScore: match.intent_score,
+            status: "matched",
+          }).returning();
+
+          if (savedLead) {
+            const [savedResponse] = await db.insert(aiResponsesTable).values({
+              leadId: savedLead.id,
+              content: responseText,
+              status: "pending",
+            }).returning();
+            savedResponseId = savedResponse?.id || null;
+          }
+        } catch (err) {
+          console.error("Error saving FB scan lead:", err);
+        }
+      }
+
+      function escHtml(t: string) {
+        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+      let msg = `<b>Facebook Lead Found</b>\n\n`;
+      msg += `<b>Business:</b> ${escHtml(business.name)}\n`;
+      msg += `<b>Group:</b> ${escHtml(groupName || "Facebook Group")}\n`;
+      msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+      msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
+      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>\n\n`;
+      msg += `<b>Copy this response:</b>\n<code>${escHtml(responseText)}</code>`;
+
+      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+      if (pageUrl) {
+        buttons.push([{ text: "Open Facebook Post", url: pageUrl }]);
+      }
+      if (savedResponseId) {
+        buttons.push([
+          { text: "Used It", callback_data: `fb_good_${savedResponseId}` },
+          { text: "Bad Match", callback_data: `fb_bad_${savedResponseId}` },
+          { text: "Too Salesy", callback_data: `fb_salesy_${savedResponseId}` },
+          { text: "Wrong Client", callback_data: `fb_wrong_${savedResponseId}` },
+        ]);
+      }
+
+      await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
+
+      res.json({ matched: true, score: match.intent_score });
+    } catch (error) {
+      console.error("FB scan error:", error);
+      res.json({ matched: false, reason: "server_error" });
+    }
+  });
+
+  app.options("/api/fb-scan", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+
+  app.get("/api/download/source", (_req, res) => {
+    try {
+      const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
+      res.setHeader("Content-Type", "application/gzip");
+      res.setHeader("Content-Disposition", "attachment; filename=gemin-eye-source.tar.gz");
+      res.setHeader("Content-Length", buffer.length.toString());
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to serve archive" });
+    }
+  });
+
+  app.get("/download", (_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!DOCTYPE html>
+<html><head><title>Download Gemin-Eye Source</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#111;color:#fff;}
+.box{text-align:center;padding:40px;border:1px solid #333;border-radius:12px;background:#1a1a1a;}
+a{display:inline-block;margin-top:20px;padding:14px 32px;background:#6366f1;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:600;}
+a:hover{background:#4f46e5;}</style></head>
+<body><div class="box"><h1>Gemin-Eye Source Code</h1><p>Click below to download all source files as a .tar.gz archive.</p>
+<a href="/api/download/source">Download Source Code</a></div></body></html>`);
+  });
+
+  return httpServer;
+}
+
+========== server/storage.ts ==========
+
+import {
+  businesses, campaigns, leads, aiResponses,
+  type Business, type InsertBusiness,
+  type Campaign, type InsertCampaign,
+  type Lead, type InsertLead,
+  type AiResponse, type InsertAiResponse,
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+
+export interface IStorage {
+  getBusinessesByUser(userId: string): Promise<Business[]>;
+  createBusiness(data: InsertBusiness): Promise<Business>;
+  getCampaignsByBusiness(businessId: number): Promise<Campaign[]>;
+  getCampaignsByUser(userId: string): Promise<Campaign[]>;
+  createCampaign(data: InsertCampaign): Promise<Campaign>;
+  getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]>;
+  createLead(data: InsertLead): Promise<Lead>;
+  getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]>;
+  createResponse(data: InsertAiResponse): Promise<AiResponse>;
+  updateResponseStatus(id: number, status: string): Promise<AiResponse>;
+}
+
+export class DatabaseStorage implements IStorage {
+  async getBusinessesByUser(userId: string): Promise<Business[]> {
+    return db.select().from(businesses).where(eq(businesses.userId, userId)).orderBy(desc(businesses.createdAt));
+  }
+
+  async createBusiness(data: InsertBusiness): Promise<Business> {
+    const [biz] = await db.insert(businesses).values(data).returning();
+    return biz;
+  }
+
+  async getCampaignsByBusiness(businessId: number): Promise<Campaign[]> {
+    return db.select().from(campaigns).where(eq(campaigns.businessId, businessId)).orderBy(desc(campaigns.createdAt));
+  }
+
+  async getCampaignsByUser(userId: string): Promise<Campaign[]> {
+    const userBiz = await this.getBusinessesByUser(userId);
+    if (userBiz.length === 0) return [];
+    const bizIds = userBiz.map((b) => b.id);
+    const allCampaigns: Campaign[] = [];
+    for (const bizId of bizIds) {
+      const c = await this.getCampaignsByBusiness(bizId);
+      allCampaigns.push(...c);
+    }
+    return allCampaigns;
+  }
+
+  async createCampaign(data: InsertCampaign): Promise<Campaign> {
+    const [camp] = await db.insert(campaigns).values(data).returning();
+    return camp;
+  }
+
+  async getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]> {
+    if (campaignIds.length === 0) return [];
+    const allLeads: Lead[] = [];
+    for (const cid of campaignIds) {
+      const l = await db.select().from(leads).where(eq(leads.campaignId, cid)).orderBy(desc(leads.createdAt));
+      allLeads.push(...l);
+    }
+    return allLeads;
+  }
+
+  async createLead(data: InsertLead): Promise<Lead> {
+    const [lead] = await db.insert(leads).values(data).returning();
+    return lead;
+  }
+
+  async getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]> {
+    if (leadIds.length === 0) return [];
+    const allResponses: AiResponse[] = [];
+    for (const lid of leadIds) {
+      const r = await db.select().from(aiResponses).where(eq(aiResponses.leadId, lid)).orderBy(desc(aiResponses.createdAt));
+      allResponses.push(...r);
+    }
+    return allResponses;
+  }
+
+  async createResponse(data: InsertAiResponse): Promise<AiResponse> {
+    const [resp] = await db.insert(aiResponses).values(data).returning();
+    return resp;
+  }
+
+  async updateResponseStatus(id: number, status: string): Promise<AiResponse> {
+    const [resp] = await db.update(aiResponses).set({ status, approvedAt: status === "approved" ? new Date() : null }).where(eq(aiResponses.id, id)).returning();
+    return resp;
+  }
+}
+
+export const storage = new DatabaseStorage();
+
+========== server/db.ts ==========
+
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
+
+========== shared/schema.ts ==========
+
+import { sql, relations } from "drizzle-orm";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export * from "./models/auth";
+export * from "./models/chat";
+
+export const businesses = pgTable("businesses", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  targetAudience: text("target_audience").notNull(),
+  coreOffering: text("core_offering").notNull(),
+  preferredTone: text("preferred_tone").notNull().default("empathetic"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const businessesRelations = relations(businesses, ({ many }) => ({
+  campaigns: many(campaigns),
+}));
+
+export const campaigns = pgTable("campaigns", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull(),
+  status: text("status").notNull().default("active"),
+  strategy: text("strategy"),
+  targetGroups: jsonb("target_groups").$type<string[]>().default([]),
+  keywords: jsonb("keywords").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [campaigns.businessId],
+    references: [businesses.id],
+  }),
+  leads: many(leads),
+}));
+
+export const leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull(),
+  platform: text("platform").notNull(),
+  groupName: text("group_name").notNull(),
+  authorName: text("author_name").notNull(),
+  originalPost: text("original_post").notNull(),
+  postUrl: text("post_url"),
+  intentScore: integer("intent_score").notNull().default(0),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const leadsRelations = relations(leads, ({ one, many }) => ({
+  campaign: one(campaigns, {
+    fields: [leads.campaignId],
+    references: [campaigns.id],
+  }),
+  responses: many(aiResponses),
+}));
+
+export const aiResponses = pgTable("ai_responses", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(),
+  content: text("content").notNull(),
+  status: text("status").notNull().default("pending"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const aiResponsesRelations = relations(aiResponses, ({ one }) => ({
+  lead: one(leads, {
+    fields: [aiResponses.leadId],
+    references: [leads.id],
+  }),
+}));
+
+export const insertBusinessSchema = createInsertSchema(businesses).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCampaignSchema = createInsertSchema(campaigns).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLeadSchema = createInsertSchema(leads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const responseFeedback = pgTable("response_feedback", {
+  id: serial("id").primaryKey(),
+  responseId: integer("response_id").notNull(),
+  feedback: text("feedback").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const responseFeedbackRelations = relations(responseFeedback, ({ one }) => ({
+  response: one(aiResponses, {
+    fields: [responseFeedback.responseId],
+    references: [aiResponses.id],
+  }),
+}));
+
+export const insertAiResponseSchema = createInsertSchema(aiResponses).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+
+export const insertResponseFeedbackSchema = createInsertSchema(responseFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Business = typeof businesses.$inferSelect;
+export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = z.infer<typeof insertLeadSchema>;
+export type AiResponse = typeof aiResponses.$inferSelect;
+export type InsertAiResponse = z.infer<typeof insertAiResponseSchema>;
+export type ResponseFeedback = typeof responseFeedback.$inferSelect;
+export type InsertResponseFeedback = z.infer<typeof insertResponseFeedbackSchema>;
+
+========== client/public/spy-glass.js ==========
+
+(function() {
+  if (window.__geminEyeActive) return;
+  window.__geminEyeActive = true;
+
+  var params = {};
+  var scripts = document.getElementsByTagName('script');
+  for (var i = 0; i < scripts.length; i++) {
+    var src = scripts[i].src || '';
+    if (src.indexOf('spy-glass.js') !== -1) {
+      var url = new URL(src);
+      params.cid = url.searchParams.get('cid') || '';
+      params.bid = url.searchParams.get('bid') || '';
+      params.tok = url.searchParams.get('tok') || '';
+      break;
+    }
+  }
+
+  if (!params.cid || !params.bid || !params.tok) {
+    alert('Gemin-Eye: Missing configuration. Please re-run setup with /setup in the bot.');
+    return;
+  }
+
+  var API_URL = (function() {
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].src || '';
+      if (src.indexOf('spy-glass.js') !== -1) {
+        var u = new URL(src);
+        return u.origin + '/api/fb-scan';
+      }
+    }
+    return '/api/fb-scan';
+  })();
+
+  var banner = document.createElement('div');
+  banner.id = 'gemin-eye-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#4338ca,#6d28d9);color:white;text-align:center;padding:10px 20px;z-index:99999;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';
+
+  var counter = document.createElement('span');
+  counter.id = 'gemin-eye-count';
+  counter.textContent = '0 posts scanned';
+  counter.style.cssText = 'font-weight:normal;opacity:0.85;font-size:13px;';
+
+  var closeBtn = document.createElement('span');
+  closeBtn.textContent = 'X';
+  closeBtn.style.cssText = 'position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';
+  closeBtn.onclick = function() {
+    banner.remove();
+    window.__geminEyeActive = false;
+    clearInterval(scanInterval);
+  };
+
+  banner.innerHTML = 'Gemin-Eye: Scanning this feed... ';
+  banner.appendChild(counter);
+  banner.appendChild(closeBtn);
+  document.body.appendChild(banner);
+
+  var seenPosts = {};
+  var scannedCount = 0;
+  var sentCount = 0;
+
+  function extractPosts() {
+    var found = [];
+    var candidates = document.querySelectorAll('div[dir="auto"]');
+    candidates.forEach(function(el) {
+      var text = (el.innerText || '').trim();
+      if (text.length < 25) return;
+      if (text.length > 5000) return;
+      if (seenPosts[text]) return;
+
+      var parentLink = el.closest('a');
+      if (parentLink && parentLink.href && parentLink.href.indexOf('/comment') === -1) return;
+
+      found.push({ text: text, element: el });
+    });
+    return found;
+  }
+
+  function sendPost(postText, element) {
+    seenPosts[postText] = true;
+    scannedCount++;
+
+    var groupName = '';
+    var h1 = document.querySelector('h1');
+    if (h1) groupName = h1.innerText || '';
+    if (!groupName) {
+      var titleEl = document.querySelector('[role="banner"] a[href*="/groups/"]');
+      if (titleEl) groupName = titleEl.innerText || '';
+    }
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId: params.cid,
+        businessId: parseInt(params.bid, 10),
+        token: params.tok,
+        postText: postText,
+        groupName: groupName || document.title || 'Facebook Group',
+        pageUrl: window.location.href
+      })
+    }).then(function(res) {
+      return res.json();
+    }).then(function(data) {
+      if (data.matched) {
+        sentCount++;
+        element.style.outline = '3px solid #6d28d9';
+        element.style.outlineOffset = '4px';
+        element.style.borderRadius = '4px';
+      }
+    }).catch(function() {});
+
+    counter.textContent = scannedCount + ' scanned, ' + sentCount + ' leads';
+  }
+
+  function scan() {
+    var posts = extractPosts();
+    posts.forEach(function(p) {
+      sendPost(p.text, p.element);
+    });
+  }
+
+  scan();
+  var scanInterval = setInterval(scan, 3000);
+})();
+
+========== replit.md ==========
+
+# Gemin-Eye - AI-Powered Customer Acquisition Platform
+
+## Overview
+
+Gemin-Eye is an AI-powered customer acquisition platform that monitors niche online communities (Facebook groups, Reddit, etc.) for high-intent questions, then generates helpful, human-sounding responses that subtly promote a client's business. Instead of traditional advertising, it finds people actively seeking recommendations and engages them organically.
+
+The app has three main flows:
+1. **Landing page** - Marketing page with animated demo showing how the product works
+2. **Onboarding** - Multi-step wizard where users describe their business, and AI generates a monitoring strategy (platforms, target groups, keywords, sample responses)
+3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
+
+## Recent Changes (Feb 14, 2026)
+- **Google Alerts RSS Monitor** (`server/google-alerts-monitor.ts`)
+  - Monitors Google Alerts RSS feeds for leads across the entire web (Quora, forums, blogs, news)
+  - Reuses same pipeline: keyword filter → Gemini Flash scoring → Gemini Pro response → Telegram alert
+  - Scans every 2 minutes with dedup key `itemLink::businessId`
+  - Strips HTML from feed items, detects source platform (Quora, Reddit, YouTube, Medium, etc.)
+  - Telegram commands: /addalert, /alerts, /removealert for feed management
+  - Creates `google_alerts` platform campaigns with RSS feed URLs stored in `targetGroups`
+  - Inherits business keywords from existing campaigns when creating alert campaign
+- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/BotName?start=setup`)
+  - 3-step wizard: business name → what they offer → keywords
+  - Works for any Telegram user (not just admin)
+  - Creates business + Facebook campaign in DB automatically
+  - Sends personalized bookmarklet code after setup
+  - Notifies admin when new client onboards
+- **Facebook Spy Glass Bookmarklet** (`client/public/spy-glass.js`)
+  - Clients save a bookmark that loads the scanning script on any Facebook Group page
+  - Script scans posts as user scrolls, filters by keywords, sends to `/api/fb-scan` endpoint
+  - Highlights matched posts with purple outline for visual feedback
+  - Shows scan count banner at top of page
+  - Bookmarklet includes client's chat ID, business ID, and HMAC token for routing
+- **`/api/fb-scan` endpoint** (POST, CORS-enabled) receives Facebook posts from spy-glass
+  - Validates HMAC token, business exists, checks keyword match
+  - Scores with Gemini Flash, generates response with Gemini Pro
+  - Saves leads/responses to DB, sends Telegram alert to client's chat with feedback buttons
+- Added `sendTelegramMessageToChat()` function to message any Telegram chat (not just admin)
+- Reddit RSS monitor now correctly scans each subreddit once and evaluates all business targets per post
+  - Dedup key changed from postId to `postId::businessId` allowing multi-business evaluation
+- Improved Context Upgrade: Bot now matches first, only asks "Which group?" when confidence < 6 AND multiple businesses exist
+- Added feedback deduplication, TTL on pending context requests
+- Added Feedback Loop with inline buttons, feedback-aware response generation
+- Leads and AI responses saved to database when generated via Telegram bot
+- Screenshot/image support via Gemini Flash OCR
+- Admin command center: /newclient, /removeclient, /keywords, /groups, /addalert, /alerts, /removealert
+- Primary domain: Gemin-Eye.com
+
+## Previous Changes (Feb 13, 2026)
+- Built complete frontend: landing page with animated demo, onboarding wizard, and dashboard
+- Built backend API routes with Zod validation, auth protection, and ownership checks
+- Added seed data with 3 demo businesses: Doro Mind, Chicago Bocce, LMAITFY.ai
+- Fixed authorization on response approval endpoint (ownership verification)
+- Added lead scoring endpoint using Gemini 2.5 Flash
+- Strategy generation and response crafting use Gemini 2.5 Pro
+- Implemented Telegram bot with URL detection, business matching, and response generation
+- Added inline keyboard buttons for direct post navigation
+
+## User Preferences
+
+Preferred communication style: Simple, everyday language.
+
+## System Architecture
+
+### Frontend
+- **Framework**: React 18 with TypeScript
+- **Routing**: Wouter (lightweight alternative to React Router)
+- **State/Data fetching**: TanStack React Query for server state management
+- **Styling**: Tailwind CSS with CSS variables for theming (light/dark mode support)
+- **UI Components**: shadcn/ui (new-york style) built on Radix UI primitives
+- **Forms**: React Hook Form with Zod validation via @hookform/resolvers
+- **Build tool**: Vite with HMR support
+- **Path aliases**: `@/` maps to `client/src/`, `@shared/` maps to `shared/`
+- **Brand colors**: Indigo/violet (hsl 258 70% 55%) with Inter sans-serif font
+
+### Backend
+- **Framework**: Express.js running on Node with TypeScript (via tsx)
+- **HTTP server**: Node's built-in `http.createServer` wrapping Express
+- **API pattern**: RESTful JSON APIs under `/api/` prefix
+- **AI Integration**: Google Gemini via `@google/genai` SDK, accessed through Replit's AI Integrations proxy
+- **AI Model Usage**:
+  - `gemini-2.5-pro`: Strategy generation and response crafting (high quality)
+  - `gemini-2.5-flash`: Lead scoring (fast/cheap)
+- **Build for production**: esbuild bundles server to `dist/index.cjs`, Vite builds client to `dist/public/`
+
+### Authentication
+- **Method**: Replit OpenID Connect (OIDC) authentication via Passport.js
+- **Sessions**: Express sessions stored in PostgreSQL via `connect-pg-simple`
+- **Required tables**: `sessions` and `users` tables (defined in `shared/models/auth.ts`) — these are mandatory and should not be dropped
+- **Session duration**: 1 week TTL
+- **Middleware**: `isAuthenticated` middleware protects API routes; user info available at `req.user.claims.sub`
+
+### Database
+- **Database**: PostgreSQL (required, connection via `DATABASE_URL` env var)
+- **ORM**: Drizzle ORM with `drizzle-zod` for schema-to-Zod validation
+- **Schema location**: `shared/schema.ts` (re-exports from `shared/models/auth.ts` and `shared/models/chat.ts`)
+- **Migration tool**: Drizzle Kit with `db:push` command for schema synchronization
+- **Key tables**:
+  - `users` - User accounts (Replit Auth managed)
+  - `sessions` - Session storage (Replit Auth managed)
+  - `businesses` - User's business profiles with target audience, tone preferences
+  - `campaigns` - Monitoring campaigns per business (platform, target groups, keywords)
+  - `response_feedback` - Feedback on AI responses (positive, bad_match, too_salesy, wrong_client)
+  - `leads` - Discovered high-intent posts from communities
+  - `ai_responses` - AI-generated responses to leads with approval status
+  - `conversations` / `messages` - Chat functionality tables
+
+### Storage Layer
+- **Pattern**: Interface-based storage (`IStorage` in `server/storage.ts`) with `DatabaseStorage` implementation
+- **Auth storage**: Separate `IAuthStorage` interface in `server/replit_integrations/auth/storage.ts`
+- **Chat storage**: Separate `IChatStorage` interface in `server/replit_integrations/chat/storage.ts`
+
+### Replit Integrations (server/replit_integrations/)
+Pre-built modules that provide:
+- **auth/**: OIDC authentication setup, session management, user routes
+- **batch/**: Batch processing utilities for Gemini API calls with rate limiting, retries, and concurrency control
+- **chat/**: Conversation/message CRUD routes and storage for AI chat functionality
+- **image/**: Image generation endpoint using Gemini's image model
+
+### Dev vs Production
+- **Development**: Vite dev server with HMR proxied through Express, `tsx` runs TypeScript directly
+- **Production**: Vite builds static assets to `dist/public/`, esbuild bundles server to `dist/index.cjs`, Express serves static files
+
+## External Dependencies
+
+- **PostgreSQL**: Primary database, required via `DATABASE_URL` environment variable
+- **Replit AI Integrations (Gemini)**: AI text and image generation, configured via `AI_INTEGRATIONS_GEMINI_API_KEY` and `AI_INTEGRATIONS_GEMINI_BASE_URL` environment variables
+- **Replit OIDC**: Authentication provider via `ISSUER_URL` (defaults to `https://replit.com/oidc`) and `REPL_ID`
+- **Session Secret**: `SESSION_SECRET` environment variable required for Express session encryption
+- **Google Fonts**: Inter, Playfair Display, JetBrains Mono
+- **react-icons**: Social media icons (Facebook, Reddit) via `react-icons/si`

@@ -369,5 +369,17 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/download", (_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!DOCTYPE html>
+<html><head><title>Download Gemin-Eye Source</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#111;color:#fff;}
+.box{text-align:center;padding:40px;border:1px solid #333;border-radius:12px;background:#1a1a1a;}
+a{display:inline-block;margin-top:20px;padding:14px 32px;background:#6366f1;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:600;}
+a:hover{background:#4f46e5;}</style></head>
+<body><div class="box"><h1>Gemin-Eye Source Code</h1><p>Click below to download all source files as a .tar.gz archive.</p>
+<a href="/api/download/source">Download Source Code</a></div></body></html>`);
+  });
+
   return httpServer;
 }

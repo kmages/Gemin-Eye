@@ -271,7 +271,7 @@ export default function LandingPage() {
               { name: "Doro Mind", type: "Mental Health", icon: Brain, url: "https://doromind.com" },
               { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell, url: "https://www.chicagobocceclub.com/" },
               { name: "LMAITFY.ai", type: "AI Tool", icon: Globe, url: "https://lmaitfy.ai" },
-              { name: "Tony's", type: "Diner", icon: Utensils, url: "https://tonysbrookfield.com" },
+              { name: "Tony's", type: "Diner", icon: Utensils, url: "https://tonysofbrookfield.com/" },
               { name: "Heart of America Whoodles", type: "Dog Breeder", icon: Dog, url: "https://heartofamericawhoodles.com" },
               { name: "Gemin-Eye", type: "AI SaaS", icon: Eye, url: "https://gemin-eye.com" },
             ].map((client) => (

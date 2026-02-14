@@ -149,13 +149,18 @@ Business Details:
 Generate a customer acquisition strategy. Return ONLY valid JSON with this exact structure:
 {
   "platforms": [{"name": "Facebook"}, {"name": "Reddit"}],
-  "groups": ["Group Name 1", "Group Name 2", "Group Name 3", "Group Name 4", "Group Name 5"],
+  "groups": ["Group Name 1", "Group Name 2", "r/subreddit1", "r/subreddit2", "r/subreddit3"],
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
   "sampleResponse": "A sample response that the AI would post in one of these groups when someone asks a relevant question. Make it sound natural and helpful, not like an ad. About 2-3 sentences.",
   "rationale": "2-3 sentences explaining why these platforms and groups were chosen and how this strategy will help the business find customers."
 }
 
-Be specific with real group names that exist on these platforms. Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
+CRITICAL RULES FOR GROUPS:
+- Include at least 3-5 REAL Reddit subreddits that actually exist, prefixed with "r/" (e.g., r/chicago, r/woodworking, r/fitness).
+- NEVER use placeholder names like "r/[yourcity]" or "[Your City Name]". Use REAL specific subreddit names.
+- Pick subreddits where the target audience is likely to ask questions or seek recommendations.
+- Also include 2-3 real Facebook group names if applicable.
+- Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-pro",

@@ -505,6 +505,8 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         return true;
       }
 
+      await sendTelegramMessageToChat(chatId, `Got it! Setting up your monitor now...`);
+
       const biz = await storage.createBusiness({
         userId: `tg-${chatId}`,
         name: wizard.name!,
@@ -513,6 +515,35 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         coreOffering: wizard.offering || wizard.name!,
         preferredTone: "casual",
       });
+
+      let redditSubs: string[] = [];
+      try {
+        const groupResult = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `A business needs REAL Reddit subreddits to monitor for customer leads.
+
+Business: ${wizard.name}
+Offering: ${wizard.offering}
+Keywords: ${wizard.keywords.join(", ")}
+
+Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
+
+RULES:
+- List 5-8 REAL Reddit subreddits that actually exist.
+- NEVER use placeholders like "r/[yourcity]". Use specific real names.
+- Focus on communities where people ask for recommendations related to this business.`,
+          config: { maxOutputTokens: 256 },
+        });
+        const groupJson = safeParseJsonFromAI(groupResult.text || "");
+        if (groupJson?.subreddits?.length > 0) {
+          redditSubs = groupJson.subreddits;
+        }
+      } catch (e) {
+        console.error("Client wizard AI group gen failed:", e);
+      }
+      if (redditSubs.length === 0) {
+        redditSubs = ["r/smallbusiness", "r/Entrepreneur"];
+      }
 
       await storage.createCampaign({
         businessId: biz.id,
@@ -534,6 +565,16 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         keywords: wizard.keywords,
       });
 
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - Reddit`,
+        platform: "Reddit",
+        status: "active",
+        strategy: `Monitor Reddit communities for leads matching ${wizard.name}`,
+        targetGroups: redditSubs,
+        keywords: wizard.keywords,
+      });
+
       clientWizards.delete(chatId);
 
       const baseUrl = getAppBaseUrl();
@@ -544,6 +585,7 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +
         `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
+        `<b>Reddit Monitoring:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}\n\n` +
         `<b>Facebook Spy Glass</b>\n` +
         `To scan Facebook Groups, create a browser bookmark with this code as the URL:\n\n` +
         `1. Right-click your bookmarks bar\n` +
@@ -798,13 +840,46 @@ async function handleClientSetupFlow(chatId: string, text: string, pending: { st
 
     case "keywords": {
       pending.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
-      pending.step = "groups";
-      await sendTelegramMessage(`Keywords: ${pending.keywords.map(k => `<b>${escapeHtml(k)}</b>`).join(", ")}\n\nFinally, list the groups/subreddits to target, separated by commas:\n<i>(e.g., "r/chicagofood, Western Suburbs Foodies, Brookfield IL Community")</i>`);
-      break;
-    }
 
-    case "groups": {
-      pending.groups = text.split(",").map(g => g.trim()).filter(g => g.length > 0);
+      await sendTelegramMessage(`Keywords: ${pending.keywords.map(k => `<b>${escapeHtml(k)}</b>`).join(", ")}\n\nGenerating target communities with AI...`);
+
+      let aiGroups: string[] = [];
+      try {
+        const groupResult = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `You are a social media expert. A business needs REAL Reddit subreddits and Facebook groups to monitor for customer acquisition leads.
+
+Business: ${pending.name} (${pending.type})
+Target audience: ${pending.audience}
+Offering: ${pending.offering}
+Keywords: ${(pending.keywords || []).join(", ")}
+
+Return ONLY valid JSON with this structure:
+{"subreddits": ["r/example1", "r/example2"], "facebook_groups": ["Example Group Name"]}
+
+RULES:
+- List 5-8 REAL Reddit subreddits that actually exist where the target audience asks questions or seeks recommendations.
+- NEVER use placeholders like "r/[yourcity]". Use REAL specific names like "r/chicago", "r/fitness", "r/smallbusiness".
+- List 2-3 relevant Facebook group names.
+- Focus on communities where people actively ask for recommendations related to this business.`,
+          config: { maxOutputTokens: 512 },
+        });
+        const groupJson = safeParseJsonFromAI(groupResult.text || "");
+        if (groupJson) {
+          aiGroups = [
+            ...(groupJson.subreddits || []),
+            ...(groupJson.facebook_groups || []),
+          ];
+        }
+      } catch (e) {
+        console.error("AI group generation failed:", e);
+      }
+
+      if (aiGroups.length === 0) {
+        aiGroups = ["r/smallbusiness", "r/Entrepreneur"];
+      }
+
+      pending.groups = aiGroups;
 
       const biz = await storage.createBusiness({
         userId: "telegram-admin",
@@ -846,9 +921,9 @@ async function handleClientSetupFlow(chatId: string, text: string, pending: { st
         await storage.createCampaign({
           businessId: biz.id,
           name: `${pending.name} - General`,
-          platform: "Facebook",
+          platform: "Reddit",
           status: "active",
-          strategy: `Monitor social media for ${pending.type} leads`,
+          strategy: `Monitor communities for ${pending.type} leads`,
           targetGroups: pending.groups,
           keywords: pending.keywords || [],
         });
@@ -861,8 +936,9 @@ async function handleClientSetupFlow(chatId: string, text: string, pending: { st
       msg += `<b>Type:</b> ${escapeHtml(biz.type)}\n`;
       msg += `<b>Tone:</b> ${escapeHtml(pending.tone!)}\n`;
       msg += `<b>Keywords:</b> ${(pending.keywords || []).map(k => escapeHtml(k)).join(", ")}\n`;
-      msg += `<b>Groups:</b> ${(pending.groups || []).map(g => escapeHtml(g)).join(", ")}\n\n`;
-      msg += `I'm now watching for leads for <b>${escapeHtml(biz.name)}</b>. Send me posts to analyze!`;
+      msg += `<b>Auto-Generated Groups:</b> ${(pending.groups || []).map(g => escapeHtml(g)).join(", ")}\n\n`;
+      msg += `I'm now watching for leads for <b>${escapeHtml(biz.name)}</b>. Send me posts to analyze!\n`;
+      msg += `\n<i>Use /groups to view or change target communities.</i>`;
 
       await sendTelegramMessage(msg);
       break;

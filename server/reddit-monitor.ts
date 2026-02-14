@@ -20,7 +20,7 @@ const parser = new Parser({
   },
   timeout: 10000,
 });
-const SCAN_INTERVAL = 90 * 1000;
+const SCAN_INTERVAL = 5 * 60 * 1000;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
 
 async function hasBeenSeen(dedupKey: string): Promise<boolean> {
@@ -324,7 +324,7 @@ async function runScan(): Promise<void> {
 export function startRedditMonitor(): void {
   if (monitorInterval) return;
 
-  console.log("Reddit monitor: starting (scans every 90 seconds)");
+  console.log("Reddit monitor: starting (scans every 5 minutes)");
 
   setTimeout(() => {
     runScan().catch((err) => console.error("Reddit monitor scan error:", err));

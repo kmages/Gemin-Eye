@@ -27,6 +27,9 @@ import { useToast } from "@/hooks/use-toast";
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
   type: z.string().min(1, "Business type is required"),
+  contactEmail: z.string().email("Please enter a valid email address"),
+  contactPhone: z.string().min(1, "Phone number is required"),
+  website: z.string().optional().default(""),
   location: z.string().optional().default(""),
   targetAudience: z.string().min(1, "Target audience is required"),
   coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
@@ -56,6 +59,9 @@ export default function OnboardingPage() {
     defaultValues: {
       name: "",
       type: "",
+      contactEmail: "",
+      contactPhone: "",
+      website: "",
       location: "",
       targetAudience: "",
       coreOffering: "",
@@ -181,6 +187,48 @@ export default function OnboardingPage() {
                         <FormLabel>Business Type / Niche</FormLabel>
                         <FormControl>
                           <Input placeholder="e.g., Psychiatric care for serious mental illness" {...field} data-testid="input-business-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contactEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="e.g., you@yourbusiness.com" {...field} data-testid="input-email" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contactPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input type="tel" placeholder="e.g., (312) 555-1234" {...field} data-testid="input-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Website <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., https://yourbusiness.com" {...field} data-testid="input-website" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

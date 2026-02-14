@@ -1,0 +1,38 @@
+This silence usually means one of two things:
+ * The Filter is too strict: The bot is seeing posts, but rejecting them all (e.g., scoring them 3/10 intent when the threshold is 5/10).
+ * The "Eyes" are closed: The background process isn't actually running the monitoring loop.
+Here is the 3-Step "Defibrillator" Plan to wake it up immediately.
+Step 1: Check the Pulse (Console Logs)
+Look at the black Console/Terminal in Replit right now.
+ * Do you see: 🟢 Scanning Reddit... or 🟢 Scanning Google Alerts... every few minutes?
+ * If NO: The monitoring loop died. You need to restart the server.
+   * Fix: Click "Stop" and then "Run" again. Watch for the "🟢 Scanning..." message.
+Step 2: Lower the Standards (The "Desperation" Tweak)
+Your bot is currently set to only bother you for "High Quality" leads (Intent Score > 5). Let's lower that bar to 1 so you see everything for testing.
+In server/google-alerts-monitor.ts (around line 145):
+Change this:
+if (!match.is_lead || match.intent_score < 5) return;
+
+To this (temporary debug mode):
+// if (!match.is_lead || match.intent_score < 5) return; // Commented out for testing
+console.log(`[DEBUG] Saw post: ${item.title} (Score: ${match.intent_score})`);
+
+Now the bot will print every single post it analyzes to the console, even if it doesn't message you.
+Step 3: The "Fake Lead" Injection (Force a Notification)
+If the console says it's scanning but you still get no Telegram messages, your Telegram connection might be broken.
+Run this command in the Shell (Terminal) tab to force a fake lead into the system. It skips the RSS/Reddit part and goes straight to the notification engine.
+Copy/Paste this into the Shell:
+curl -X POST https://${REPL_SLUG}.${REPL_OWNER}.repl.co/api/fb-scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chatId": "426842568", 
+    "businessId": 1,
+    "token": "YOUR_HMAC_TOKEN_HERE", 
+    "postText": "TESTING: I need a crypto tool for finding 100x gems immediately!", 
+    "groupName": "Debug Group"
+  }'
+
+(Note: You'll need the HMAC token for this. If that's too hard, just send a direct DM to your bot in Telegram saying: "I need a crypto tool!")
+Did sending a DM to the bot work?
+ * YES: The bot is alive, but RSS feeds are empty/slow. (Just wait).
+ * NO: Your Telegram keys are wrong or the bot crashed. Paste the error log here.

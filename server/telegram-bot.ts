@@ -441,11 +441,14 @@ const REDDIT_POST_TTL = 30 * 60 * 1000;
 const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
 
 interface ClientWizardState {
-  step: "name" | "offering" | "location" | "keywords" | "done";
+  step: "name" | "offering" | "contact" | "location" | "keywords" | "done";
   chatId: string;
   name?: string;
   keywords?: string[];
   offering?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
   location?: string;
 }
 
@@ -503,6 +506,26 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         return true;
       }
       wizard.offering = offering;
+      wizard.step = "contact";
+      await sendTelegramMessageToChat(chatId,
+        `Got it.\n\nNow I need your contact info. Please send your <b>email</b>, <b>phone</b>, and <b>website</b> (one per line):\n\n<i>Example:\njoe@mybusiness.com\n(312) 555-1234\nhttps://mybusiness.com</i>\n\n(If no website, just send email and phone on two lines)`
+      );
+      return true;
+    }
+
+    case "contact": {
+      const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length < 2) {
+        await sendTelegramMessageToChat(chatId, "Please send at least your email and phone number, one per line.");
+        return true;
+      }
+      const emailLine = lines.find(l => l.includes("@")) || lines[0];
+      const phoneLine = lines.find(l => /[\d\(\)\-\+]/.test(l) && !l.includes("@") && !l.includes(".com") && !l.includes("http")) || lines[1];
+      const websiteLine = lines.find(l => l.includes(".") && !l.includes("@") && l !== phoneLine) || "";
+
+      wizard.contactEmail = emailLine;
+      wizard.contactPhone = phoneLine;
+      wizard.website = websiteLine;
       wizard.step = "location";
       await sendTelegramMessageToChat(chatId,
         `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
@@ -538,6 +561,9 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         userId: `tg-${chatId}`,
         name: wizard.name!,
         type: wizard.offering || wizard.name!,
+        contactEmail: wizard.contactEmail || null,
+        contactPhone: wizard.contactPhone || null,
+        website: wizard.website || null,
         targetAudience: locationInfo,
         coreOffering: wizard.offering || wizard.name!,
         preferredTone: "casual",
@@ -663,6 +689,9 @@ RULES:
       await sendTelegramMessage(
         `<b>New Client Onboarded via Wizard</b>\n\n` +
         `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Email:</b> ${escapeHtml(wizard.contactEmail || "N/A")}\n` +
+        `<b>Phone:</b> ${escapeHtml(wizard.contactPhone || "N/A")}\n` +
+        `<b>Website:</b> ${escapeHtml(wizard.website || "N/A")}\n` +
         `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
         `<b>Telegram ID:</b> ${chatId}\n` +
         `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}\n` +
@@ -1448,7 +1477,7 @@ export function registerTelegramWebhook(app: any) {
         clientWizards.set(chatId, { step: "name", chatId });
         await sendTelegramMessageToChat(chatId,
           `<b>Welcome to Gemin-Eye!</b>\n\n` +
-          `I'm going to set up your business monitor in 4 quick steps.\n\n` +
+          `I'm going to set up your business monitor in 5 quick steps.\n\n` +
           `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
         );
         return;

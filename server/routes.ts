@@ -86,12 +86,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
       }
 
-      const { name, type, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
+      const { name, type, contactEmail, contactPhone, website, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
 
       const biz = await storage.createBusiness({
         userId,
         name,
         type,
+        contactEmail: contactEmail || null,
+        contactPhone: contactPhone || null,
+        website: website || null,
         targetAudience,
         coreOffering,
         preferredTone,
@@ -123,6 +126,9 @@ export async function registerRoutes(
       const strategyInputSchema = z.object({
         name: z.string().min(1),
         type: z.string().min(1),
+        contactEmail: z.string().optional().default(""),
+        contactPhone: z.string().optional().default(""),
+        website: z.string().optional().default(""),
         location: z.string().optional().default(""),
         targetAudience: z.string().min(1),
         coreOffering: z.string().min(10),

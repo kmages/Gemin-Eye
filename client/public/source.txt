@@ -1,13 +1,13 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T19:29:29Z
+# Generated: 2026-02-14T20:18:09Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
 
 ============================================================
-FILE: shared/schema.ts (148 lines)
+FILE: shared/schema.ts (151 lines)
 ============================================================
 import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
@@ -22,6 +22,9 @@ export const businesses = pgTable("businesses", {
   userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
   type: text("type").notNull(),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  website: text("website"),
   targetAudience: text("target_audience").notNull(),
   coreOffering: text("core_offering").notNull(),
   preferredTone: text("preferred_tone").notNull().default("empathetic"),
@@ -368,7 +371,7 @@ app.use((req, res, next) => {
 
 
 ============================================================
-FILE: server/routes.ts (909 lines)
+FILE: server/routes.ts (915 lines)
 ============================================================
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -458,12 +461,15 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
       }
 
-      const { name, type, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
+      const { name, type, contactEmail, contactPhone, website, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
 
       const biz = await storage.createBusiness({
         userId,
         name,
         type,
+        contactEmail: contactEmail || null,
+        contactPhone: contactPhone || null,
+        website: website || null,
         targetAudience,
         coreOffering,
         preferredTone,
@@ -495,6 +501,9 @@ export async function registerRoutes(
       const strategyInputSchema = z.object({
         name: z.string().min(1),
         type: z.string().min(1),
+        contactEmail: z.string().optional().default(""),
+        contactPhone: z.string().optional().default(""),
+        website: z.string().optional().default(""),
         location: z.string().optional().default(""),
         targetAudience: z.string().min(1),
         coreOffering: z.string().min(10),
@@ -1570,7 +1579,7 @@ function truncate(text: string, max: number): string {
 
 
 ============================================================
-FILE: server/telegram-bot.ts (1653 lines)
+FILE: server/telegram-bot.ts (1682 lines)
 ============================================================
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
@@ -2015,11 +2024,14 @@ const REDDIT_POST_TTL = 30 * 60 * 1000;
 const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
 
 interface ClientWizardState {
-  step: "name" | "offering" | "location" | "keywords" | "done";
+  step: "name" | "offering" | "contact" | "location" | "keywords" | "done";
   chatId: string;
   name?: string;
   keywords?: string[];
   offering?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
   location?: string;
 }
 
@@ -2077,6 +2089,26 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         return true;
       }
       wizard.offering = offering;
+      wizard.step = "contact";
+      await sendTelegramMessageToChat(chatId,
+        `Got it.\n\nNow I need your contact info. Please send your <b>email</b>, <b>phone</b>, and <b>website</b> (one per line):\n\n<i>Example:\njoe@mybusiness.com\n(312) 555-1234\nhttps://mybusiness.com</i>\n\n(If no website, just send email and phone on two lines)`
+      );
+      return true;
+    }
+
+    case "contact": {
+      const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length < 2) {
+        await sendTelegramMessageToChat(chatId, "Please send at least your email and phone number, one per line.");
+        return true;
+      }
+      const emailLine = lines.find(l => l.includes("@")) || lines[0];
+      const phoneLine = lines.find(l => /[\d\(\)\-\+]/.test(l) && !l.includes("@") && !l.includes(".com") && !l.includes("http")) || lines[1];
+      const websiteLine = lines.find(l => l.includes(".") && !l.includes("@") && l !== phoneLine) || "";
+
+      wizard.contactEmail = emailLine;
+      wizard.contactPhone = phoneLine;
+      wizard.website = websiteLine;
       wizard.step = "location";
       await sendTelegramMessageToChat(chatId,
         `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
@@ -2112,6 +2144,9 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         userId: `tg-${chatId}`,
         name: wizard.name!,
         type: wizard.offering || wizard.name!,
+        contactEmail: wizard.contactEmail || null,
+        contactPhone: wizard.contactPhone || null,
+        website: wizard.website || null,
         targetAudience: locationInfo,
         coreOffering: wizard.offering || wizard.name!,
         preferredTone: "casual",
@@ -2237,6 +2272,9 @@ RULES:
       await sendTelegramMessage(
         `<b>New Client Onboarded via Wizard</b>\n\n` +
         `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Email:</b> ${escapeHtml(wizard.contactEmail || "N/A")}\n` +
+        `<b>Phone:</b> ${escapeHtml(wizard.contactPhone || "N/A")}\n` +
+        `<b>Website:</b> ${escapeHtml(wizard.website || "N/A")}\n` +
         `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
         `<b>Telegram ID:</b> ${chatId}\n` +
         `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}\n` +
@@ -3022,7 +3060,7 @@ export function registerTelegramWebhook(app: any) {
         clientWizards.set(chatId, { step: "name", chatId });
         await sendTelegramMessageToChat(chatId,
           `<b>Welcome to Gemin-Eye!</b>\n\n` +
-          `I'm going to set up your business monitor in 4 quick steps.\n\n` +
+          `I'm going to set up your business monitor in 5 quick steps.\n\n` +
           `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
         );
         return;
@@ -4724,7 +4762,7 @@ export default function Dashboard() {
 
 
 ============================================================
-FILE: client/src/pages/onboarding.tsx (451 lines)
+FILE: client/src/pages/onboarding.tsx (499 lines)
 ============================================================
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -4755,6 +4793,9 @@ import { useToast } from "@/hooks/use-toast";
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
   type: z.string().min(1, "Business type is required"),
+  contactEmail: z.string().email("Please enter a valid email address"),
+  contactPhone: z.string().min(1, "Phone number is required"),
+  website: z.string().optional().default(""),
   location: z.string().optional().default(""),
   targetAudience: z.string().min(1, "Target audience is required"),
   coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
@@ -4784,6 +4825,9 @@ export default function OnboardingPage() {
     defaultValues: {
       name: "",
       type: "",
+      contactEmail: "",
+      contactPhone: "",
+      website: "",
       location: "",
       targetAudience: "",
       coreOffering: "",
@@ -4909,6 +4953,48 @@ export default function OnboardingPage() {
                         <FormLabel>Business Type / Niche</FormLabel>
                         <FormControl>
                           <Input placeholder="e.g., Psychiatric care for serious mental illness" {...field} data-testid="input-business-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contactEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="e.g., you@yourbusiness.com" {...field} data-testid="input-email" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="contactPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input type="tel" placeholder="e.g., (312) 555-1234" {...field} data-testid="input-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Website <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., https://yourbusiness.com" {...field} data-testid="input-website" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -5891,7 +5977,7 @@ FILE: client/public/spy-glass.js (124 lines)
 
 
 ============================================================
-FILE: replit.md (130 lines)
+FILE: replit.md (136 lines)
 ============================================================
 # Gemin-Eye - AI-Powered Customer Acquisition Platform
 
@@ -5913,12 +5999,18 @@ The app has three main flows:
   - Telegram commands: /addalert, /alerts, /removealert for feed management
   - Creates `google_alerts` platform campaigns with RSS feed URLs stored in `targetGroups`
   - Inherits business keywords from existing campaigns when creating alert campaign
-- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/BotName?start=setup`)
-  - 3-step wizard: business name → what they offer → keywords
+- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/kmages_bot?start=setup`)
+  - 4-step wizard: business name → what they offer → location/reach → keywords
+  - Location supports local (city), national, or global/web-based reach
   - Works for any Telegram user (not just admin)
-  - Creates business + Facebook campaign in DB automatically
-  - Sends personalized bookmarklet code after setup
-  - Notifies admin when new client onboards
+  - Creates business + Reddit campaign in DB automatically with AI-generated subreddits
+  - Sends personalized bookmarklet codes (Facebook + LinkedIn) after setup
+  - Sends comprehensive usage guide (auto-scanning, manual scanning, commands)
+  - Notifies admin when new client onboards (includes location + subreddits)
+- **Web Onboarding → Telegram Flow**
+  - Web onboarding completion page directs clients to connect Telegram bot
+  - Deep link button opens `t.me/kmages_bot?start=setup` for quick connection
+  - Shows "What Happens Next" guide explaining auto-scanning, alerts, bookmarklets, feedback
 - **Facebook Spy Glass Bookmarklet** (`client/public/spy-glass.js`)
   - Clients save a bookmark that loads the scanning script on any Facebook Group page
   - Script scans posts as user scrolls, filters by keywords, sends to `/api/fb-scan` endpoint

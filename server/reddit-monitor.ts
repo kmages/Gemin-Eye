@@ -16,6 +16,9 @@ function safeParseJsonFromAI(text: string): any | null {
   }
 }
 
+const MIN_MONITOR_INTENT_SCORE = 5;
+const SALESY_FEEDBACK_THRESHOLD = 0.3;
+
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
   httpOptions: {
@@ -142,7 +145,7 @@ Return ONLY valid JSON:
 
   console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 
-  if (!match.is_lead || match.intent_score < 5) return;
+  if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
 
   let feedbackGuidance = "";
   try {
@@ -161,7 +164,7 @@ Return ONLY valid JSON:
     const total = recentFeedback.length;
 
     if (total > 0) {
-      if (salesyCount > total * 0.3) {
+      if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
         feedbackGuidance =
           "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
       } else if (negCount > total * 0.5) {

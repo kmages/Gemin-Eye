@@ -29,6 +29,11 @@ function safeParseJsonFromAI(text: string): any | null {
   }
 }
 
+const MIN_POST_LENGTH = 25;
+const MIN_SCAN_INTENT_SCORE = 4;
+const MIN_MONITOR_INTENT_SCORE = 5;
+const SALESY_FEEDBACK_THRESHOLD = 0.3;
+
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
   httpOptions: {
@@ -43,6 +48,14 @@ export async function registerRoutes(
 ): Promise<Server> {
   await setupAuth(app);
   registerAuthRoutes(app);
+
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   app.get("/api/businesses", isAuthenticated, async (req: any, res) => {
     try {
@@ -413,7 +426,7 @@ Return ONLY valid JSON with this structure:
         return;
       }
 
-      if (postText.length < 25) {
+      if (postText.length < MIN_POST_LENGTH) {
         res.json({ matched: false, reason: "too_short" });
         return;
       }
@@ -458,7 +471,7 @@ Return ONLY valid JSON:
         return;
       }
 
-      if (!match.is_lead || match.intent_score < 4) {
+      if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
         res.json({ matched: false, reason: "low_intent", score: match.intent_score });
         return;
       }
@@ -480,7 +493,7 @@ Return ONLY valid JSON:
         const total = recentFeedback.length;
 
         if (total > 0) {
-          if (salesyCount > total * 0.3) {
+          if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
             feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
           } else if (negCount > total * 0.5) {
             feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";
@@ -617,7 +630,7 @@ Return ONLY the response text, no quotes or formatting.`,
         return;
       }
 
-      if (postText.length < 25) {
+      if (postText.length < MIN_POST_LENGTH) {
         res.json({ matched: false, reason: "too_short" });
         return;
       }
@@ -662,7 +675,7 @@ Return ONLY valid JSON:
         return;
       }
 
-      if (!match.is_lead || match.intent_score < 4) {
+      if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
         res.json({ matched: false, reason: "low_intent", score: match.intent_score });
         return;
       }
@@ -684,7 +697,7 @@ Return ONLY valid JSON:
         const total = recentFeedback.length;
 
         if (total > 0) {
-          if (salesyCount > total * 0.3) {
+          if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
             feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
           } else if (negCount > total * 0.5) {
             feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";

@@ -5,6 +5,22 @@ import { createServer } from "http";
 import { execSync } from "child_process";
 import fs from "fs";
 
+const requiredEnvVars = ["DATABASE_URL", "SESSION_SECRET"];
+const optionalEnvVars = ["TELEGRAM_BOT_TOKEN", "AI_INTEGRATIONS_GEMINI_API_KEY"];
+
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`FATAL: Missing required environment variable: ${envVar}`);
+    process.exit(1);
+  }
+}
+
+for (const envVar of optionalEnvVars) {
+  if (!process.env[envVar]) {
+    console.warn(`WARNING: Missing optional environment variable: ${envVar} — some features will be disabled`);
+  }
+}
+
 const app = express();
 const httpServer = createServer(app);
 

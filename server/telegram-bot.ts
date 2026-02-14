@@ -19,7 +19,7 @@ function safeParseJsonFromAI(text: string): any | null {
 
 export function generateScanToken(chatId: string, businessId: number): string {
   const secret = process.env.SESSION_SECRET || "gemin-eye-default";
-  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 16);
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
 }
 
 const ai = new GoogleGenAI({

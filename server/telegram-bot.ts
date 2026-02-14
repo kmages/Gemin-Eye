@@ -6,6 +6,17 @@ import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
 import { storage } from "./storage";
 
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
 export function generateScanToken(chatId: string, businessId: number): string {
   const secret = process.env.SESSION_SECRET || "gemin-eye-default";
   return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 16);
@@ -180,10 +191,8 @@ If you cannot read any text from the image, return: {"post_text": "", "platform"
     });
 
     const responseText = result.text || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = safeParseJsonFromAI(responseText);
+    if (!parsed) return null;
     if (!parsed.post_text || parsed.post_text.length < 3) return null;
 
     let platform: "reddit" | "facebook" | null = null;
@@ -254,8 +263,8 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text || "";
-  const matchJson = matchText.match(/\{[\s\S]*\}/);
-  if (!matchJson) {
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) {
     return {
       message: "Could not analyze this post. Try again.",
       postUrl: postUrl || null,
@@ -264,8 +273,6 @@ Return ONLY valid JSON:
       needsGroupContext: false,
     };
   }
-
-  const match = JSON.parse(matchJson[0]);
   const confidence = match.confidence || 10;
 
   if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {

@@ -6,7 +6,7 @@ import {
   type AiResponse, type InsertAiResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getBusinessesByUser(userId: string): Promise<Business[]>;
@@ -39,12 +39,7 @@ export class DatabaseStorage implements IStorage {
     const userBiz = await this.getBusinessesByUser(userId);
     if (userBiz.length === 0) return [];
     const bizIds = userBiz.map((b) => b.id);
-    const allCampaigns: Campaign[] = [];
-    for (const bizId of bizIds) {
-      const c = await this.getCampaignsByBusiness(bizId);
-      allCampaigns.push(...c);
-    }
-    return allCampaigns;
+    return db.select().from(campaigns).where(inArray(campaigns.businessId, bizIds)).orderBy(desc(campaigns.createdAt));
   }
 
   async createCampaign(data: InsertCampaign): Promise<Campaign> {
@@ -54,12 +49,7 @@ export class DatabaseStorage implements IStorage {
 
   async getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]> {
     if (campaignIds.length === 0) return [];
-    const allLeads: Lead[] = [];
-    for (const cid of campaignIds) {
-      const l = await db.select().from(leads).where(eq(leads.campaignId, cid)).orderBy(desc(leads.createdAt));
-      allLeads.push(...l);
-    }
-    return allLeads;
+    return db.select().from(leads).where(inArray(leads.campaignId, campaignIds)).orderBy(desc(leads.createdAt));
   }
 
   async createLead(data: InsertLead): Promise<Lead> {
@@ -69,12 +59,7 @@ export class DatabaseStorage implements IStorage {
 
   async getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]> {
     if (leadIds.length === 0) return [];
-    const allResponses: AiResponse[] = [];
-    for (const lid of leadIds) {
-      const r = await db.select().from(aiResponses).where(eq(aiResponses.leadId, lid)).orderBy(desc(aiResponses.createdAt));
-      allResponses.push(...r);
-    }
-    return allResponses;
+    return db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
   }
 
   async createResponse(data: InsertAiResponse): Promise<AiResponse> {

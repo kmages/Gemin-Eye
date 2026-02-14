@@ -18,6 +18,17 @@ import { businesses as businessesTable, campaigns as campaignsTable, leads as le
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
   httpOptions: {
@@ -140,12 +151,10 @@ Be specific with real group names that exist on these platforms. Make the sample
       });
 
       const text = response.text || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const strategyData = safeParseJsonFromAI(text);
+      if (!strategyData) {
         throw new Error("No JSON found in response");
       }
-
-      const strategyData = JSON.parse(jsonMatch[0]);
       res.json(strategyData);
     } catch (error) {
       console.error("Error generating strategy:", error);
@@ -273,12 +282,11 @@ Return ONLY valid JSON with this structure:
       });
 
       const text = response.text || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const scored = safeParseJsonFromAI(text);
+      if (!scored) {
         throw new Error("No JSON found in response");
       }
-
-      res.json(JSON.parse(jsonMatch[0]));
+      res.json(scored);
     } catch (error) {
       console.error("Error scoring lead:", error);
       res.status(500).json({ error: "Failed to score lead" });
@@ -444,17 +452,9 @@ Return ONLY valid JSON:
       });
 
       const matchText = matchResult.text || "";
-      const matchJson = matchText.match(/\{[\s\S]*\}/);
-      if (!matchJson) {
+      const match = safeParseJsonFromAI(matchText);
+      if (!match) {
         res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      let match;
-      try {
-        match = JSON.parse(matchJson[0]);
-      } catch {
-        res.json({ matched: false, reason: "json_parse_error" });
         return;
       }
 
@@ -656,17 +656,9 @@ Return ONLY valid JSON:
       });
 
       const matchText = matchResult.text || "";
-      const matchJson = matchText.match(/\{[\s\S]*\}/);
-      if (!matchJson) {
+      const match = safeParseJsonFromAI(matchText);
+      if (!match) {
         res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      let match;
-      try {
-        match = JSON.parse(matchJson[0]);
-      } catch {
-        res.json({ matched: false, reason: "json_parse_error" });
         return;
       }
 
@@ -798,7 +790,7 @@ Return ONLY the response text, no quotes or formatting.`,
     res.sendStatus(204);
   });
 
-  app.get("/api/download/source", (_req, res) => {
+  app.get("/api/download/source", isAuthenticated, (_req: any, res) => {
     try {
       const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
       res.setHeader("Content-Type", "application/gzip");
@@ -810,7 +802,7 @@ Return ONLY the response text, no quotes or formatting.`,
     }
   });
 
-  app.get("/download", (_req, res) => {
+  app.get("/download", isAuthenticated, (_req: any, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(`<!DOCTYPE html>
 <html><head><title>Download Gemin-Eye Source</title>
@@ -822,7 +814,7 @@ a:hover{background:#4f46e5;}</style></head>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
   });
 
-  app.get("/api/source", (_req, res) => {
+  app.get("/api/source", isAuthenticated, (_req: any, res) => {
     const coreFiles = [
       "shared/schema.ts",
       "shared/models/auth.ts",

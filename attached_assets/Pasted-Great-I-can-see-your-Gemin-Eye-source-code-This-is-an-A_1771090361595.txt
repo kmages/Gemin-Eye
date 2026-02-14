@@ -1,0 +1,215 @@
+Great! I can see your Gemin-Eye source code. This is an AI-powered customer acquisition platform that monitors social media for potential leads. Let me review the key aspects of your codebase:
+Overall Architecture & Strengths
+Good architectural choices:
+	∙	Clean separation between client/server with shared schema
+	∙	Drizzle ORM for type-safe database operations
+	∙	Modular structure with dedicated files for different concerns
+	∙	Real-time lead monitoring via Reddit, Google Alerts, and browser bookmarklets
+Key Issues & Recommendations
+1. Security Concerns
+Critical - Rate Limiting:
+	∙	Your Facebook and LinkedIn scan endpoints have basic rate limiting, but it’s in-memory and resets on server restart
+	∙	Consider using Redis or a persistent store for rate limiting
+	∙	The 10 requests per minute limit might be too permissive for public endpoints
+Token Generation:
+
+// Current approach is okay but could be stronger
+generateScanToken(chatId: string, businessId: number): string {
+  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 16);
+}
+
+
+	∙	Issue: Truncating to 16 chars reduces entropy
+	∙	Fix: Use the full hash or at least 32 characters
+CORS Configuration:
+
+res.setHeader("Access-Control-Allow-Origin", "*");
+
+
+	∙	This allows any origin to call your scan endpoints
+	∙	Consider restricting to specific domains or implementing proper CORS middleware
+2. Database & Storage Issues
+N+1 Query Problems:
+
+async getCampaignsByUser(userId: string): Promise<Campaign[]> {
+  const userBiz = await this.getBusinessesByUser(userId);
+  const bizIds = userBiz.map((b) => b.id);
+  const allCampaigns: Campaign[] = [];
+  for (const bizId of bizIds) {  // N+1 query
+    const c = await this.getCampaignsByBusiness(bizId);
+    allCampaigns.push(...c);
+  }
+  return allCampaigns;
+}
+
+
+Fix: Use Drizzle’s inArray for batch queries:
+
+async getCampaignsByUser(userId: string): Promise<Campaign[]> {
+  const userBiz = await this.getBusinessesByUser(userId);
+  if (userBiz.length === 0) return [];
+  const bizIds = userBiz.map((b) => b.id);
+  return db.select()
+    .from(campaigns)
+    .where(inArray(campaigns.businessId, bizIds))
+    .orderBy(desc(campaigns.createdAt));
+}
+
+
+Similar issues in:
+	∙	getLeadsByCampaigns
+	∙	getResponsesByLeads
+3. Error Handling
+Missing Error Boundaries:
+
+app.post("/api/businesses", isAuthenticated, async (req: any, res) => {
+  try {
+    // ... code
+  } catch (error) {
+    console.error("Error creating business:", error);
+    res.status(500).json({ error: "Failed to create business" });
+  }
+});
+
+
+	∙	Error messages are too generic for debugging
+	∙	No distinction between different error types (validation vs database vs AI API)
+Recommendation:
+
+catch (error) {
+  if (error instanceof ValidationError) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (error instanceof DatabaseError) {
+    console.error("DB Error:", error);
+    return res.status(500).json({ error: "Database operation failed" });
+  }
+  console.error("Unexpected error:", error);
+  res.status(500).json({ error: "An unexpected error occurred" });
+}
+
+
+4. AI Integration Issues
+No Timeout or Retry Logic:
+
+const response = await ai.models.generateContent({
+  model: "gemini-2.5-pro",
+  contents: prompt,
+  config: { maxOutputTokens: 8192 },
+});
+
+
+	∙	If Gemini API is slow or fails, requests will hang
+	∙	Add timeout and retry logic
+Response Parsing Fragility:
+
+const text = response.text || "";
+const jsonMatch = text.match(/\{[\s\S]*\}/);
+if (!jsonMatch) {
+  throw new Error("No JSON found in response");
+}
+const strategyData = JSON.parse(jsonMatch[0]);
+
+
+	∙	Regex might match incorrect JSON if AI returns multiple JSON objects
+	∙	No validation that the parsed JSON has expected fields
+Better approach:
+
+try {
+  const text = response.text || "";
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON in AI response");
+  }
+  const data = JSON.parse(jsonMatch[0]);
+  
+  // Validate structure
+  const validated = strategySchema.parse(data);  // Use Zod
+  return validated;
+} catch (error) {
+  console.error("AI response parsing failed:", error);
+  throw new AIResponseError("Failed to parse AI response");
+}
+
+
+5. Telegram Bot Concerns
+Massive File (1422 lines):
+	∙	telegram-bot.ts is doing too much
+	∙	Mix of webhook handling, business logic, wizard flows, bookmarklet generation
+	∙	Hard to test and maintain
+Recommendation: Split into:
+	∙	telegram-webhook.ts - webhook handling
+	∙	telegram-wizards.ts - conversation flows
+	∙	telegram-commands.ts - command handlers
+	∙	telegram-utils.ts - helper functions
+State Management:
+
+const pendingContextRequests = new Map<string, PendingContextRequest>();
+const clientWizards = new Map<string, ClientWizardState>();
+
+
+	∙	In-memory state is lost on server restart
+	∙	User experience degrades if server restarts mid-conversation
+	∙	Use Redis or database for persistent state
+6. Code Quality Issues
+Type Safety:
+
+async (req: any, res) => {  // 'any' bypasses TypeScript
+  const userId = req.user.claims.sub;
+
+
+Should be:
+
+async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user.claims.sub;
+
+
+Magic Numbers:
+
+if (postText.length < 25) { ... }
+if (match.intent_score < 4) { ... }
+if (salesyCount > total * 0.3) { ... }
+
+
+Use constants:
+
+const MIN_POST_LENGTH = 25;
+const MIN_INTENT_SCORE = 4;
+const SALESY_THRESHOLD = 0.3;
+
+
+7. Missing Features for Production
+	∙	Logging: No structured logging (consider winston or pino)
+	∙	Monitoring: No health checks or metrics endpoints
+	∙	Testing: No tests visible in the source dump
+	∙	Documentation: Limited inline comments
+	∙	Environment validation: No check if required env vars are set at startup
+8. Performance Optimizations
+Bookmarklet Code:
+The bookmarklets are quite large and could be optimized:
+	∙	Minify the JavaScript
+	∙	Consider serving them from an endpoint instead of embedding
+	∙	Add error handling in the bookmarklet itself
+Database Indexes:
+Your schema doesn’t show explicit indexes beyond primary keys. Add indexes for:
+	∙	businesses.userId
+	∙	campaigns.businessId
+	∙	leads.campaignId
+	∙	aiResponses.leadId
+Positive Aspects
+	1.	Clean schema design with proper relations
+	2.	Good use of TypeScript for type safety (mostly)
+	3.	Modular architecture with separation of concerns
+	4.	Real-time features with Telegram integration
+	5.	Innovative bookmarklet approach for Facebook/LinkedIn scanning
+Priority Fixes
+	1.	High: Fix N+1 queries in storage layer
+	2.	High: Add proper error handling and logging
+	3.	High: Secure CORS and rate limiting
+	4.	Medium: Refactor telegram-bot.ts into smaller modules
+	5.	Medium: Add Zod validation for AI responses
+	6.	Medium: Implement persistent state management
+	7.	Low: Add database indexes
+	8.	Low: Improve type safety (remove ‘any’ types)
+Would you like me to provide code examples for any of these fixes?​​​​​​​​​​​​​​​​

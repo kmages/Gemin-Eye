@@ -1,16 +1,16 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T17:29:44Z
+# Generated: 2026-02-14T17:33:14Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
 
 ============================================================
-FILE: shared/schema.ts (138 lines)
+FILE: shared/schema.ts (148 lines)
 ============================================================
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -26,7 +26,9 @@ export const businesses = pgTable("businesses", {
   coreOffering: text("core_offering").notNull(),
   preferredTone: text("preferred_tone").notNull().default("empathetic"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_businesses_user_id").on(table.userId),
+]);
 
 export const businessesRelations = relations(businesses, ({ many }) => ({
   campaigns: many(campaigns),
@@ -42,7 +44,9 @@ export const campaigns = pgTable("campaigns", {
   targetGroups: jsonb("target_groups").$type<string[]>().default([]),
   keywords: jsonb("keywords").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_campaigns_business_id").on(table.businessId),
+]);
 
 export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   business: one(businesses, {
@@ -63,7 +67,10 @@ export const leads = pgTable("leads", {
   intentScore: integer("intent_score").notNull().default(0),
   status: text("status").notNull().default("new"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_leads_campaign_id").on(table.campaignId),
+  index("idx_leads_created_at").on(table.createdAt),
+]);
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   campaign: one(campaigns, {
@@ -80,7 +87,10 @@ export const aiResponses = pgTable("ai_responses", {
   status: text("status").notNull().default("pending"),
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_ai_responses_lead_id").on(table.leadId),
+  index("idx_ai_responses_status").on(table.status),
+]);
 
 export const aiResponsesRelations = relations(aiResponses, ({ one }) => ({
   lead: one(leads, {
@@ -342,7 +352,7 @@ app.use((req, res, next) => {
 
 
 ============================================================
-FILE: server/routes.ts (887 lines)
+FILE: server/routes.ts (879 lines)
 ============================================================
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -363,6 +373,17 @@ import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable, responseFeedback as responseFeedbackTable } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
+
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -486,12 +507,10 @@ Be specific with real group names that exist on these platforms. Make the sample
       });
 
       const text = response.text || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const strategyData = safeParseJsonFromAI(text);
+      if (!strategyData) {
         throw new Error("No JSON found in response");
       }
-
-      const strategyData = JSON.parse(jsonMatch[0]);
       res.json(strategyData);
     } catch (error) {
       console.error("Error generating strategy:", error);
@@ -619,12 +638,11 @@ Return ONLY valid JSON with this structure:
       });
 
       const text = response.text || "";
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const scored = safeParseJsonFromAI(text);
+      if (!scored) {
         throw new Error("No JSON found in response");
       }
-
-      res.json(JSON.parse(jsonMatch[0]));
+      res.json(scored);
     } catch (error) {
       console.error("Error scoring lead:", error);
       res.status(500).json({ error: "Failed to score lead" });
@@ -790,17 +808,9 @@ Return ONLY valid JSON:
       });
 
       const matchText = matchResult.text || "";
-      const matchJson = matchText.match(/\{[\s\S]*\}/);
-      if (!matchJson) {
+      const match = safeParseJsonFromAI(matchText);
+      if (!match) {
         res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      let match;
-      try {
-        match = JSON.parse(matchJson[0]);
-      } catch {
-        res.json({ matched: false, reason: "json_parse_error" });
         return;
       }
 
@@ -1002,17 +1012,9 @@ Return ONLY valid JSON:
       });
 
       const matchText = matchResult.text || "";
-      const matchJson = matchText.match(/\{[\s\S]*\}/);
-      if (!matchJson) {
+      const match = safeParseJsonFromAI(matchText);
+      if (!match) {
         res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      let match;
-      try {
-        match = JSON.parse(matchJson[0]);
-      } catch {
-        res.json({ matched: false, reason: "json_parse_error" });
         return;
       }
 
@@ -1144,7 +1146,7 @@ Return ONLY the response text, no quotes or formatting.`,
     res.sendStatus(204);
   });
 
-  app.get("/api/download/source", (_req, res) => {
+  app.get("/api/download/source", isAuthenticated, (_req: any, res) => {
     try {
       const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
       res.setHeader("Content-Type", "application/gzip");
@@ -1156,7 +1158,7 @@ Return ONLY the response text, no quotes or formatting.`,
     }
   });
 
-  app.get("/download", (_req, res) => {
+  app.get("/download", isAuthenticated, (_req: any, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(`<!DOCTYPE html>
 <html><head><title>Download Gemin-Eye Source</title>
@@ -1168,7 +1170,7 @@ a:hover{background:#4f46e5;}</style></head>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
   });
 
-  app.get("/api/source", (_req, res) => {
+  app.get("/api/source", isAuthenticated, (_req: any, res) => {
     const coreFiles = [
       "shared/schema.ts",
       "shared/models/auth.ts",
@@ -1234,7 +1236,7 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
-FILE: server/storage.ts (91 lines)
+FILE: server/storage.ts (76 lines)
 ============================================================
 import {
   businesses, campaigns, leads, aiResponses,
@@ -1244,7 +1246,7 @@ import {
   type AiResponse, type InsertAiResponse,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getBusinessesByUser(userId: string): Promise<Business[]>;
@@ -1277,12 +1279,7 @@ export class DatabaseStorage implements IStorage {
     const userBiz = await this.getBusinessesByUser(userId);
     if (userBiz.length === 0) return [];
     const bizIds = userBiz.map((b) => b.id);
-    const allCampaigns: Campaign[] = [];
-    for (const bizId of bizIds) {
-      const c = await this.getCampaignsByBusiness(bizId);
-      allCampaigns.push(...c);
-    }
-    return allCampaigns;
+    return db.select().from(campaigns).where(inArray(campaigns.businessId, bizIds)).orderBy(desc(campaigns.createdAt));
   }
 
   async createCampaign(data: InsertCampaign): Promise<Campaign> {
@@ -1292,12 +1289,7 @@ export class DatabaseStorage implements IStorage {
 
   async getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]> {
     if (campaignIds.length === 0) return [];
-    const allLeads: Lead[] = [];
-    for (const cid of campaignIds) {
-      const l = await db.select().from(leads).where(eq(leads.campaignId, cid)).orderBy(desc(leads.createdAt));
-      allLeads.push(...l);
-    }
-    return allLeads;
+    return db.select().from(leads).where(inArray(leads.campaignId, campaignIds)).orderBy(desc(leads.createdAt));
   }
 
   async createLead(data: InsertLead): Promise<Lead> {
@@ -1307,12 +1299,7 @@ export class DatabaseStorage implements IStorage {
 
   async getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]> {
     if (leadIds.length === 0) return [];
-    const allResponses: AiResponse[] = [];
-    for (const lid of leadIds) {
-      const r = await db.select().from(aiResponses).where(eq(aiResponses.leadId, lid)).orderBy(desc(aiResponses.createdAt));
-      allResponses.push(...r);
-    }
-    return allResponses;
+    return db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
   }
 
   async createResponse(data: InsertAiResponse): Promise<AiResponse> {
@@ -1537,7 +1524,7 @@ function truncate(text: string, max: number): string {
 
 
 ============================================================
-FILE: server/telegram-bot.ts (1422 lines)
+FILE: server/telegram-bot.ts (1429 lines)
 ============================================================
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
@@ -1546,6 +1533,17 @@ import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@sh
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
 import { storage } from "./storage";
+
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
 
 export function generateScanToken(chatId: string, businessId: number): string {
   const secret = process.env.SESSION_SECRET || "gemin-eye-default";
@@ -1721,10 +1719,8 @@ If you cannot read any text from the image, return: {"post_text": "", "platform"
     });
 
     const responseText = result.text || "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = safeParseJsonFromAI(responseText);
+    if (!parsed) return null;
     if (!parsed.post_text || parsed.post_text.length < 3) return null;
 
     let platform: "reddit" | "facebook" | null = null;
@@ -1795,8 +1791,8 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text || "";
-  const matchJson = matchText.match(/\{[\s\S]*\}/);
-  if (!matchJson) {
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) {
     return {
       message: "Could not analyze this post. Try again.",
       postUrl: postUrl || null,
@@ -1805,8 +1801,6 @@ Return ONLY valid JSON:
       needsGroupContext: false,
     };
   }
-
-  const match = JSON.parse(matchJson[0]);
   const confidence = match.confidence || 10;
 
   if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {
@@ -2964,7 +2958,7 @@ async function registerWebhook(token: string) {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (352 lines)
+FILE: server/reddit-monitor.ts (356 lines)
 ============================================================
 import Parser from "rss-parser";
 import { GoogleGenAI } from "@google/genai";
@@ -2972,6 +2966,17 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
+
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -3094,15 +3099,8 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text || "";
-  const matchJson = matchText.match(/\{[\s\S]*\}/);
-  if (!matchJson) return;
-
-  let match;
-  try {
-    match = JSON.parse(matchJson[0]);
-  } catch {
-    return;
-  }
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) return;
 
   console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 
@@ -3321,7 +3319,7 @@ export function stopRedditMonitor(): void {
 
 
 ============================================================
-FILE: server/google-alerts-monitor.ts (370 lines)
+FILE: server/google-alerts-monitor.ts (374 lines)
 ============================================================
 import Parser from "rss-parser";
 import { GoogleGenAI } from "@google/genai";
@@ -3329,6 +3327,17 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
+
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -3473,15 +3482,8 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text || "";
-  const matchJson = matchText.match(/\{[\s\S]*\}/);
-  if (!matchJson) return;
-
-  let match;
-  try {
-    match = JSON.parse(matchJson[0]);
-  } catch {
-    return;
-  }
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) return;
 
   if (!match.is_lead || match.intent_score < 5) return;
 

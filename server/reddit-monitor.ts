@@ -5,6 +5,17 @@ import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems 
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 
+function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
   httpOptions: {
@@ -126,15 +137,8 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text || "";
-  const matchJson = matchText.match(/\{[\s\S]*\}/);
-  if (!matchJson) return;
-
-  let match;
-  try {
-    match = JSON.parse(matchJson[0]);
-  } catch {
-    return;
-  }
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) return;
 
   console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 

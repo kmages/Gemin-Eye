@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -15,7 +15,9 @@ export const businesses = pgTable("businesses", {
   coreOffering: text("core_offering").notNull(),
   preferredTone: text("preferred_tone").notNull().default("empathetic"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_businesses_user_id").on(table.userId),
+]);
 
 export const businessesRelations = relations(businesses, ({ many }) => ({
   campaigns: many(campaigns),
@@ -31,7 +33,9 @@ export const campaigns = pgTable("campaigns", {
   targetGroups: jsonb("target_groups").$type<string[]>().default([]),
   keywords: jsonb("keywords").$type<string[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_campaigns_business_id").on(table.businessId),
+]);
 
 export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   business: one(businesses, {
@@ -52,7 +56,10 @@ export const leads = pgTable("leads", {
   intentScore: integer("intent_score").notNull().default(0),
   status: text("status").notNull().default("new"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_leads_campaign_id").on(table.campaignId),
+  index("idx_leads_created_at").on(table.createdAt),
+]);
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   campaign: one(campaigns, {
@@ -69,7 +76,10 @@ export const aiResponses = pgTable("ai_responses", {
   status: text("status").notNull().default("pending"),
   approvedAt: timestamp("approved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_ai_responses_lead_id").on(table.leadId),
+  index("idx_ai_responses_status").on(table.status),
+]);
 
 export const aiResponsesRelations = relations(aiResponses, ({ one }) => ({
   lead: one(leads, {

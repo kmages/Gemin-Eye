@@ -505,7 +505,7 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
       wizard.offering = offering;
       wizard.step = "location";
       await sendTelegramMessageToChat(chatId,
-        `Got it.\n\nWhere is ${escapeHtml(wizard.name!)} located? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago, IL", "Online / nationwide", "Austin, Texas")</i>`
+        `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
       );
       return true;
     }
@@ -559,7 +559,8 @@ Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
 RULES:
 - List 5-8 REAL Reddit subreddits that actually exist.
 - NEVER use placeholders like "r/[yourcity]". Use specific real names.
-- If the business has a specific location, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business has a specific local area, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business is national or global/web-based, focus on industry and topic subreddits instead of geographic ones.
 - Focus on communities where people ask for recommendations related to this business.`,
           config: { maxOutputTokens: 256 },
         });

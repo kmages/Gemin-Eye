@@ -160,7 +160,8 @@ Generate a customer acquisition strategy. Return ONLY valid JSON with this exact
 CRITICAL RULES FOR GROUPS:
 - Include at least 3-5 REAL Reddit subreddits that actually exist, prefixed with "r/" (e.g., r/chicago, r/woodworking, r/fitness).
 - NEVER use placeholder names like "r/[yourcity]" or "[Your City Name]". Use REAL specific subreddit names.
-- If the business has a specific location, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business has a specific local area, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business is national or global/web-based, focus on industry and topic subreddits instead of geographic ones.
 - Pick subreddits where the target audience is likely to ask questions or seek recommendations.
 - Also include 2-3 real Facebook group names if applicable.
 - Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;

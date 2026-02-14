@@ -192,9 +192,9 @@ export default function OnboardingPage() {
                     name="location"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Location <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormLabel>Location / Reach</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Chicago, IL or Online" {...field} data-testid="input-location" />
+                          <Input placeholder="e.g., Chicago IL, National, or Global / Web-based" {...field} data-testid="input-location" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

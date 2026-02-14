@@ -1,0 +1,100 @@
+Here is the exact code to make your bot a "Reply Generator."
+
+This version waits for YOU to find a post on Facebook or Reddit. When you copy/paste that post into Telegram, the bot instantly checks your client list (Tony's, Doro, etc.), picks the right one, and writes the perfect reply for you to copy back.
+
+The "Compliant Spy" Code
+1. Delete everything in your Replit index.js.
+2. Paste this code.
+3. Hit "Run".
+
+JavaScript
+/* 👁️ GEMIN-EYE: THE COMPLIANT SPY (Manual Mode) */
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const TelegramBot = require("node-telegram-bot-api");
+
+// --- YOUR KEYS ---
+const BOT_TOKEN = "8293816436:AAHglCt5ODKrLUTlyMuwPqM1Pyjjzmkd_DM";
+const GEMINI_KEY = "AIzaSyC3SMCGRSM69NI2GUUBCMeK7iLiMEBx6Ww";
+
+// --- THE CLIENT DOSSIER (The Brain) ---
+const CLIENTS = `
+1. TONY'S (Keywords: food, pizza, dinner, hungry, Brookfield, La Grange)
+   - Voice: Friendly local, family-oriented.
+   - Offer: "Best thin crust in the burbs. Come by for a slice!"
+
+2. DORO MIND (Keywords: anxiety, bipolar, schizophrenia, mental health, therapy, support)
+   - Voice: Empathetic, professional, supportive, soft.
+   - Offer: "We have a VR tool that helps manage triggers safely."
+
+3. LMAITFY.ai (Keywords: AI tool, ChatGPT, productivity, tech help, automation)
+   - Voice: Sarcastic tech expert, helpful but snarky.
+   - Offer: "Stop Googling, let me AI that for you."
+`;
+
+// Initialize
+const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+const bot = new TelegramBot(BOT_TOKEN, { polling: true }); 
+
+console.log("👁️ Gemin-Eye is online. Send me a post to analyze!");
+
+// --- THE LISTENER ---
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const incomingText = msg.text;
+
+  // Ignore short messages like "hi"
+  if (!incomingText || incomingText.length < 5) return;
+
+  console.log(`📥 Analyzing: "${incomingText.substring(0, 20)}..."`);
+  
+  try {
+    // 1. Send "Thinking..." status
+    await bot.sendChatAction(chatId, 'typing');
+
+    // 2. Ask Gemini to write the reply
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    const prompt = `
+    You are a strategic marketing expert. Here are my clients:
+    ${CLIENTS}
+
+    I just found this post on social media: 
+    "${incomingText}"
+
+    TASK:
+    1. Identify which client this post is a lead for. (If none, say "NO MATCH").
+    2. Write a short, natural reply I can copy/paste back to the group.
+    
+    FORMAT:
+    🎯 **Client:** [Name]
+    📝 **Draft Reply:** [The Reply]
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text();
+
+    // 3. Send the draft back to you
+    await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
+
+  } catch (error) {
+    console.error("❌ Error:", error.message);
+    bot.sendMessage(chatId, "❌ Brain freeze. Try again.");
+  }
+});
+How to Test It Immediately:
+Once you hit Run and see "Gemin-Eye is online" in the console:
+
+Open Telegram.
+
+Paste this (pretend you found it on Facebook):
+
+"Does anyone know a good pizza place near Brookfield? I'm starving."
+
+Watch the Bot. It should reply with a pitch for Tony's.
+
+Then paste this:
+
+"My son was just diagnosed with schizophrenia and I'm overwhelmed."
+It should switch to Doro Mind mode.
+
+You are now the Eyes. The Bot is the Voice.

@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { execSync } from "child_process";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -59,6 +60,11 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  console.log("creating source archive...");
+  execSync(
+    `tar -czf dist/public/gemin-eye-source.tar.gz --exclude='node_modules' --exclude='dist' --exclude='.cache' --exclude='.local' --exclude='attached_assets' --exclude='.git' --exclude='*.log' shared/ server/ client/src/ client/index.html tailwind.config.ts vite.config.ts drizzle.config.ts package.json tsconfig.json replit.md`
+  );
 }
 
 buildAll().catch((err) => {

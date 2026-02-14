@@ -432,6 +432,12 @@ interface ClientWizardState {
 
 const clientWizards = new Map<string, ClientWizardState>();
 
+export function generateLinkedInBookmarkletCode(baseUrl: string, chatId: string, businessId: number, token: string): string {
+  const apiUrl = `${baseUrl}/api/li-scan`;
+  const code = `javascript:void((function(){if(window.__geminEyeLiActive){alert('Gemin-Eye is already scanning this page. Click X on the banner to stop first.');return}window.__geminEyeLiActive=true;var CID='${chatId}',BID=${businessId},TOK='${token}',API='${apiUrl}';var seenPosts={},scannedCount=0,sentCount=0,autoScrolling=true,scrollsDone=0,maxScrolls=150;var banner=document.createElement('div');banner.id='gemin-eye-li-banner';banner.style.cssText='position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#0077B5,#00A0DC);color:white;text-align:center;padding:10px 20px;z-index:2147483647;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';var counter=document.createElement('span');counter.style.cssText='font-weight:normal;opacity:0.85;font-size:13px;';counter.textContent='0 posts scanned';var pauseBtn=document.createElement('span');pauseBtn.textContent='Pause';pauseBtn.style.cssText='cursor:pointer;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:4px;font-size:12px;margin-left:8px;';pauseBtn.onclick=function(){autoScrolling=!autoScrolling;pauseBtn.textContent=autoScrolling?'Pause':'Resume'};var closeBtn=document.createElement('span');closeBtn.textContent='X';closeBtn.style.cssText='position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';closeBtn.onclick=function(){banner.remove();window.__geminEyeLiActive=false;autoScrolling=false;clearInterval(si);clearInterval(scrollInterval)};banner.appendChild(document.createTextNode('Gemin-Eye LinkedIn: Scanning... '));banner.appendChild(counter);banner.appendChild(pauseBtn);banner.appendChild(closeBtn);document.body.appendChild(banner);function extractPosts(){var found=[];var els=document.querySelectorAll('.feed-shared-update-v2__description,.feed-shared-inline-show-more-text,.feed-shared-text,.update-components-text,.break-words');els.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<25||t.length>5000||seenPosts[t])return;found.push({text:t,element:el})});var articles=document.querySelectorAll('[data-urn]');articles.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<50||t.length>5000||seenPosts[t])return;var hasDesc=el.querySelector('.feed-shared-update-v2__description,.feed-shared-text,.update-components-text,.break-words');if(!hasDesc){found.push({text:t.slice(0,2000),element:el})}});return found}function getAuthor(el){var c=el.closest('[data-urn]')||el.closest('.feed-shared-update-v2');if(!c)return'LinkedIn user';var a=c.querySelector('.update-components-actor__name span[aria-hidden],.feed-shared-actor__name span');return a?(a.innerText||'').trim():'LinkedIn user'}function sendPost(postText,element){seenPosts[postText]=true;scannedCount++;fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:CID,businessId:BID,token:TOK,postText:postText,authorName:getAuthor(element),pageUrl:window.location.href})}).then(function(r){return r.json()}).then(function(d){if(d.matched){sentCount++;element.style.outline='3px solid #0077B5';element.style.outlineOffset='4px';element.style.borderRadius='4px'}}).catch(function(){});counter.textContent=scannedCount+' scanned, '+sentCount+' leads'}function scan(){var posts=extractPosts();posts.forEach(function(p){sendPost(p.text,p.element)})}scan();var si=setInterval(scan,3000);var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;pauseBtn.textContent='Done';clearInterval(scrollInterval);return}window.scrollBy(0,600)},2000)})())`;
+  return code;
+}
+
 export function generateBookmarkletCode(baseUrl: string, chatId: string, businessId: number, token: string): string {
   const apiUrl = `${baseUrl}/api/fb-scan`;
   const code = `javascript:void((function(){if(window.__geminEyeActive){alert('Gemin-Eye is already scanning this page. Click X on the banner to stop first.');return}window.__geminEyeActive=true;var CID='${chatId}',BID=${businessId},TOK='${token}',API='${apiUrl}';var seenPosts={},scannedCount=0,sentCount=0,autoScrolling=true,scrollsDone=0,maxScrolls=150;var banner=document.createElement('div');banner.id='gemin-eye-banner';banner.style.cssText='position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#4338ca,#6d28d9);color:white;text-align:center;padding:10px 20px;z-index:2147483647;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';var counter=document.createElement('span');counter.style.cssText='font-weight:normal;opacity:0.85;font-size:13px;';counter.textContent='0 posts scanned';var pauseBtn=document.createElement('span');pauseBtn.textContent='Pause';pauseBtn.style.cssText='cursor:pointer;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:4px;font-size:12px;margin-left:8px;';pauseBtn.onclick=function(){autoScrolling=!autoScrolling;pauseBtn.textContent=autoScrolling?'Pause':'Resume'};var closeBtn=document.createElement('span');closeBtn.textContent='X';closeBtn.style.cssText='position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';closeBtn.onclick=function(){banner.remove();window.__geminEyeActive=false;autoScrolling=false;clearInterval(si);clearInterval(scrollInterval)};banner.appendChild(document.createTextNode('Gemin-Eye: Auto-scanning... '));banner.appendChild(counter);banner.appendChild(pauseBtn);banner.appendChild(closeBtn);document.body.appendChild(banner);function extractPosts(){var found=[];var els=document.querySelectorAll('div[dir=\"auto\"]');els.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<25||t.length>5000||seenPosts[t])return;var a=el.closest('a');if(a&&a.href&&a.href.indexOf('/comment')===-1)return;found.push({text:t,element:el})});return found}function sendPost(postText,element){seenPosts[postText]=true;scannedCount++;var gn='';var h1=document.querySelector('h1');if(h1)gn=h1.innerText||'';if(!gn){var te=document.querySelector('[role=\"banner\"] a[href*=\"/groups/\"]');if(te)gn=te.innerText||''}fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:CID,businessId:BID,token:TOK,postText:postText,groupName:gn||document.title||'Facebook Group',pageUrl:window.location.href})}).then(function(r){return r.json()}).then(function(d){if(d.matched){sentCount++;element.style.outline='3px solid #6d28d9';element.style.outlineOffset='4px';element.style.borderRadius='4px'}}).catch(function(){});counter.textContent=scannedCount+' scanned, '+sentCount+' leads'}function scan(){var posts=extractPosts();posts.forEach(function(p){sendPost(p.text,p.element)})}scan();var si=setInterval(scan,3000);var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;pauseBtn.textContent='Done';clearInterval(scrollInterval);return}window.scrollBy(0,600)},2000)})())`;
@@ -511,30 +517,52 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         keywords: wizard.keywords,
       });
 
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - LinkedIn`,
+        platform: "LinkedIn",
+        status: "active",
+        strategy: `Monitor LinkedIn feed for leads matching ${wizard.name}`,
+        targetGroups: [],
+        keywords: wizard.keywords,
+      });
+
       clientWizards.delete(chatId);
 
       const baseUrl = getAppBaseUrl();
       const token = generateScanToken(chatId, biz.id);
-      const bookmarkletCode = generateBookmarkletCode(baseUrl, chatId, biz.id, token);
+      const fbBookmarkletCode = generateBookmarkletCode(baseUrl, chatId, biz.id, token);
+      const liBookmarkletCode = generateLinkedInBookmarkletCode(baseUrl, chatId, biz.id, token);
 
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +
         `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
-        `<b>Step 3: The Spy Glass</b>\n` +
-        `To scan a Facebook Group, create a browser bookmark with the code below as the URL:\n\n` +
+        `<b>Facebook Spy Glass</b>\n` +
+        `To scan Facebook Groups, create a browser bookmark with this code as the URL:\n\n` +
         `1. Right-click your bookmarks bar\n` +
-        `2. Click "Add bookmark" (or "Add page")\n` +
-        `3. Name it: <b>Scan Group</b>\n` +
+        `2. Click "Add bookmark"\n` +
+        `3. Name it: <b>Scan FB Group</b>\n` +
         `4. Paste this as the URL:`
       );
 
-      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(bookmarkletCode)}</code>`);
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(fbBookmarkletCode)}</code>`);
 
       await sendTelegramMessageToChat(chatId,
-        `<b>How to use it:</b>\n` +
-        `1. Go to any Facebook Group page\n` +
-        `2. Click your "Scan Group" bookmark\n` +
-        `3. Scroll through the feed\n` +
+        `<b>LinkedIn Spy Glass</b>\n` +
+        `Same idea for LinkedIn! Create a second bookmark:\n\n` +
+        `1. Right-click your bookmarks bar\n` +
+        `2. Click "Add bookmark"\n` +
+        `3. Name it: <b>Scan LinkedIn</b>\n` +
+        `4. Paste this as the URL:`
+      );
+
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(liBookmarkletCode)}</code>`);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>How to use them:</b>\n` +
+        `1. Go to any Facebook Group or LinkedIn feed/search\n` +
+        `2. Click the matching bookmark\n` +
+        `3. It auto-scrolls and scans posts\n` +
         `4. I'll message you here instantly when I spot a lead!\n\n` +
         `That's it - you're all set!`
       );
@@ -1095,6 +1123,60 @@ export function registerTelegramWebhook(app: any) {
               }
             } catch (err) {
               console.error("Error saving feedback:", err);
+            }
+
+            const feedbackLabels: Record<string, string> = {
+              positive: "Marked as used - great!",
+              bad_match: "Noted: bad match. I'll learn from this.",
+              too_salesy: "Noted: too salesy. I'll adjust the tone.",
+              wrong_client: "Noted: wrong client matched.",
+            };
+
+            await answerCallbackQuery(cbq.id, feedbackLabels[feedbackValue] || "Feedback saved!");
+
+            if (cbq.message?.message_id && cbqChatId) {
+              const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+              const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+              const selectedLabel = feedbackType === "good" ? "Used It" : feedbackType === "salesy" ? "Too Salesy" : feedbackType === "wrong" ? "Wrong Client" : "Bad Match";
+              const confirmRow = [{ text: `[${selectedLabel}]`, callback_data: "noop" }];
+              const newKeyboard = [...urlButtons, confirmRow];
+              await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+            }
+          } else {
+            await answerCallbackQuery(cbq.id);
+          }
+        } else if (data.startsWith("li_")) {
+          const parts = data.split("_");
+          const feedbackType = parts[1];
+          const responseId = parseInt(parts[2]);
+
+          if (!isNaN(responseId)) {
+            const feedbackMap: Record<string, string> = {
+              good: "positive",
+              bad: "bad_match",
+              salesy: "too_salesy",
+              wrong: "wrong_client",
+            };
+
+            const feedbackValue = feedbackMap[feedbackType] || feedbackType;
+
+            try {
+              const existing = await db.select().from(responseFeedback).where(eq(responseFeedback.responseId, responseId)).limit(1);
+              if (existing.length > 0) {
+                await answerCallbackQuery(cbq.id, "Feedback already recorded for this response.");
+                return;
+              }
+
+              await db.insert(responseFeedback).values({
+                responseId,
+                feedback: feedbackValue,
+              });
+
+              if (feedbackValue === "positive") {
+                await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId));
+              }
+            } catch (err) {
+              console.error("Error saving LinkedIn feedback:", err);
             }
 
             const feedbackLabels: Record<string, string> = {

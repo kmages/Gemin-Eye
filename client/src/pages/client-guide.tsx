@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, ArrowLeft, MessageCircle, Globe, Facebook, BookOpen } from "lucide-react";
-import { SiReddit, SiFacebook, SiTelegram } from "react-icons/si";
+import { SiReddit, SiFacebook, SiTelegram, SiLinkedin } from "react-icons/si";
 import { useLocation } from "wouter";
 
 function Section({ number, title, icon, children }: { number: number; title: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -127,6 +127,23 @@ export default function ClientGuidePage() {
       <div class="section">
         <div class="section-header">
           <div class="section-number">5</div>
+          <div class="section-title">Set Up the LinkedIn Spy Glass</div>
+          <span class="section-badge">RECOMMENDED</span>
+        </div>
+        <p>The LinkedIn Spy Glass works just like the Facebook one, but for your LinkedIn feed and search results.</p>
+        <ul>
+          <li>After setup, the bot also sends a second bookmarklet code for LinkedIn</li>
+          <li>Create another bookmark the same way (name it <strong>Scan LinkedIn</strong>)</li>
+          <li>Paste the LinkedIn code as the URL</li>
+        </ul>
+        <div class="note">
+          <strong>Where to use it:</strong> Open your LinkedIn feed, search results, or any LinkedIn page with posts. Click the "Scan LinkedIn" bookmark and it will auto-scroll and scan for leads matching your keywords. Matched posts get highlighted in blue.
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <div class="section-number">6</div>
           <div class="section-title">Reddit Monitoring</div>
           <span class="section-badge">AUTOMATIC</span>
         </div>
@@ -294,7 +311,19 @@ export default function ClientGuidePage() {
             </ul>
           </Section>
 
-          <Section number={5} title="Reddit Monitoring" icon={<SiReddit className="w-5 h-5 text-[#FF4500]" />}>
+          <Section number={5} title="Set Up the LinkedIn Spy Glass" icon={<SiLinkedin className="w-5 h-5 text-[#0077B5]" />}>
+            <p>The LinkedIn Spy Glass works just like the Facebook one, but for your LinkedIn feed and search results.</p>
+            <ul className="list-disc pl-5 space-y-1 mt-2">
+              <li>After setup, the bot also sends a second bookmarklet code for LinkedIn</li>
+              <li>Create another bookmark the same way (name it <strong>"Scan LinkedIn"</strong>)</li>
+              <li>Paste the LinkedIn code as the URL</li>
+            </ul>
+            <div className="bg-muted/50 border-l-2 border-primary p-3 rounded-r-md mt-3 text-sm">
+              <strong>Where to use it:</strong> Open your LinkedIn feed, search results, or any LinkedIn page with posts. Click the "Scan LinkedIn" bookmark and it will auto-scroll and scan for leads matching your keywords. Matched posts get highlighted in blue.
+            </div>
+          </Section>
+
+          <Section number={6} title="Reddit Monitoring" icon={<SiReddit className="w-5 h-5 text-[#FF4500]" />}>
             <p className="font-medium text-green-600 dark:text-green-400">Fully automatic — no action needed from you.</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>The system scans relevant subreddits every 90 seconds</li>
@@ -304,7 +333,7 @@ export default function ClientGuidePage() {
             </ul>
           </Section>
 
-          <Section number={6} title="Google Alerts — Web-Wide Monitoring" icon={<Globe className="w-5 h-5 text-primary" />}>
+          <Section number={7} title="Google Alerts — Web-Wide Monitoring" icon={<Globe className="w-5 h-5 text-primary" />}>
             <p>Monitor the entire web (Quora, forums, blogs, news) for people talking about your topic.</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>Go to <a href="https://google.com/alerts" target="_blank" rel="noopener noreferrer" className="text-primary underline">google.com/alerts</a></li>
@@ -320,7 +349,7 @@ export default function ClientGuidePage() {
             </div>
           </Section>
 
-          <Section number={7} title="Manual Post Scanning via Telegram" icon={<MessageCircle className="w-5 h-5 text-primary" />}>
+          <Section number={8} title="Manual Post Scanning via Telegram" icon={<MessageCircle className="w-5 h-5 text-primary" />}>
             <p>You can manually send any post to the bot for instant analysis.</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li><strong>Text posts:</strong> Paste the URL + post text into Telegram</li>
@@ -329,7 +358,7 @@ export default function ClientGuidePage() {
             </ul>
           </Section>
 
-          <Section number={8} title="Responding to Leads" icon={<BookOpen className="w-5 h-5 text-primary" />}>
+          <Section number={9} title="Responding to Leads" icon={<BookOpen className="w-5 h-5 text-primary" />}>
             <p>When you get a lead alert on Telegram:</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>Read the suggested response — it's written to sound natural, not salesy</li>
@@ -349,7 +378,7 @@ export default function ClientGuidePage() {
             </div>
           </Section>
 
-          <Section number={9} title="Telegram Bot Commands" icon={<SiTelegram className="w-5 h-5 text-[#229ED9]" />}>
+          <Section number={10} title="Telegram Bot Commands" icon={<SiTelegram className="w-5 h-5 text-[#229ED9]" />}>
             <ul className="list-disc pl-5 space-y-1">
               <li><code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">/setup</code> — Start the onboarding wizard</li>
               <li><code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">/keywords</code> — Update your monitoring keywords</li>

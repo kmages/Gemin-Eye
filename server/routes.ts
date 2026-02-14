@@ -10,7 +10,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
 import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
-import { registerTelegramWebhook, generateScanToken } from "./telegram-bot";
+import { registerTelegramWebhook, generateScanToken, generateLinkedInBookmarkletCode } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
@@ -570,6 +570,219 @@ Return ONLY the response text, no quotes or formatting.`,
   });
 
   app.options("/api/fb-scan", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.sendStatus(204);
+  });
+
+  const liScanRateLimit = new Map<string, { count: number; resetAt: number }>();
+  app.post("/api/li-scan", async (req, res) => {
+    const rateLimitKey = String(req.body.chatId || req.ip);
+    const now = Date.now();
+    const bucket = liScanRateLimit.get(rateLimitKey);
+    if (bucket && now < bucket.resetAt) {
+      if (bucket.count >= 10) {
+        res.json({ matched: false, reason: "rate_limited" });
+        return;
+      }
+      bucket.count++;
+    } else {
+      liScanRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60000 });
+    }
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    try {
+      const { chatId, businessId, token, postText, authorName, pageUrl } = req.body;
+
+      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
+        res.json({ matched: false, reason: "missing_fields" });
+        return;
+      }
+
+      const expectedToken = generateScanToken(String(chatId), Number(businessId));
+      if (token !== expectedToken) {
+        res.json({ matched: false, reason: "invalid_token" });
+        return;
+      }
+
+      if (postText.length < 25) {
+        res.json({ matched: false, reason: "too_short" });
+        return;
+      }
+
+      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
+      if (biz.length === 0) {
+        res.json({ matched: false, reason: "business_not_found" });
+        return;
+      }
+
+      const business = biz[0];
+      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+      const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
+
+      const lower = postText.toLowerCase();
+      const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
+      if (!hasKeyword) {
+        res.json({ matched: false, reason: "no_keyword_match" });
+        return;
+      }
+
+      const matchResult = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `You are a lead scout for "${business.name}" (${business.type}).
+They offer: ${business.coreOffering}
+
+Analyze this LinkedIn post by "${authorName || "someone"}":
+"${postText.slice(0, 500)}"
+
+Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+        config: { maxOutputTokens: 512 },
+      });
+
+      const matchText = matchResult.text || "";
+      const matchJson = matchText.match(/\{[\s\S]*\}/);
+      if (!matchJson) {
+        res.json({ matched: false, reason: "ai_parse_error" });
+        return;
+      }
+
+      let match;
+      try {
+        match = JSON.parse(matchJson[0]);
+      } catch {
+        res.json({ matched: false, reason: "json_parse_error" });
+        return;
+      }
+
+      if (!match.is_lead || match.intent_score < 4) {
+        res.json({ matched: false, reason: "low_intent", score: match.intent_score });
+        return;
+      }
+
+      let feedbackGuidance = "";
+      try {
+        const recentFeedback = await db
+          .select({ feedback: responseFeedbackTable.feedback })
+          .from(responseFeedbackTable)
+          .innerJoin(aiResponsesTable, eq(responseFeedbackTable.responseId, aiResponsesTable.id))
+          .innerJoin(leadsTable, eq(aiResponsesTable.leadId, leadsTable.id))
+          .innerJoin(campaignsTable, eq(leadsTable.campaignId, campaignsTable.id))
+          .where(eq(campaignsTable.businessId, businessId))
+          .orderBy(responseFeedbackTable.id)
+          .limit(20);
+
+        const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
+        const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
+        const total = recentFeedback.length;
+
+        if (total > 0) {
+          if (salesyCount > total * 0.3) {
+            feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
+          } else if (negCount > total * 0.5) {
+            feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";
+          }
+        }
+      } catch {}
+
+      const toneMap: Record<string, string> = {
+        empathetic: "empathetic, warm, and supportive",
+        professional: "professional, authoritative, and informative",
+        casual: "casual, friendly, and approachable",
+        helpful: "helpful, knowledgeable, and conversational",
+      };
+
+      const responseResult = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: `You are writing a LinkedIn comment on a professional post. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post by ${authorName || "someone"}: "${postText.slice(0, 500)}"
+
+Business to recommend: ${business.name}
+What they do: ${business.coreOffering}
+Tone: ${toneMap[business.preferredTone] || "professional and helpful"}
+${feedbackGuidance}
+
+Write a natural, professional LinkedIn comment (2-3 sentences). Sound like a real professional sharing knowledge or a recommendation. Keep it conversational but polished for LinkedIn. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const responseText = (responseResult.text || "").trim();
+      if (!responseText) {
+        res.json({ matched: true, score: match.intent_score, reason: "no_response_generated" });
+        return;
+      }
+
+      let savedResponseId: number | null = null;
+      const liCampaign = bizCampaigns.find(c => c.platform === "LinkedIn") || bizCampaigns[0];
+      if (liCampaign) {
+        try {
+          const [savedLead] = await db.insert(leadsTable).values({
+            campaignId: liCampaign.id,
+            platform: "linkedin",
+            groupName: "LinkedIn Feed",
+            authorName: authorName || "LinkedIn user",
+            originalPost: postText.slice(0, 2000),
+            postUrl: pageUrl || null,
+            intentScore: match.intent_score,
+            status: "matched",
+          }).returning();
+
+          if (savedLead) {
+            const [savedResponse] = await db.insert(aiResponsesTable).values({
+              leadId: savedLead.id,
+              content: responseText,
+              status: "pending",
+            }).returning();
+            savedResponseId = savedResponse?.id || null;
+          }
+        } catch (err) {
+          console.error("Error saving LinkedIn scan lead:", err);
+        }
+      }
+
+      const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+      let msg = `<b>LinkedIn Lead Found</b>\n\n`;
+      msg += `<b>Business:</b> ${escHtml(business.name)}\n`;
+      msg += `<b>Author:</b> ${escHtml(authorName || "LinkedIn user")}\n`;
+      msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+      msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
+      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>\n\n`;
+      msg += `<b>Copy this response:</b>\n<code>${escHtml(responseText)}</code>`;
+
+      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+      if (pageUrl) {
+        buttons.push([{ text: "Open LinkedIn Post", url: pageUrl }]);
+      }
+      if (savedResponseId) {
+        buttons.push([
+          { text: "Used It", callback_data: `li_good_${savedResponseId}` },
+          { text: "Bad Match", callback_data: `li_bad_${savedResponseId}` },
+          { text: "Too Salesy", callback_data: `li_salesy_${savedResponseId}` },
+          { text: "Wrong Client", callback_data: `li_wrong_${savedResponseId}` },
+        ]);
+      }
+
+      await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
+
+      res.json({ matched: true, score: match.intent_score });
+    } catch (error) {
+      console.error("LinkedIn scan error:", error);
+      res.json({ matched: false, reason: "server_error" });
+    }
+  });
+
+  app.options("/api/li-scan", (_req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");

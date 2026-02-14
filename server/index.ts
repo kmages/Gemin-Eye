@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { execSync } from "child_process";
+import fs from "fs";
 
 const app = express();
 const httpServer = createServer(app);
@@ -60,6 +62,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    if (fs.existsSync("generate-source-dump.sh")) {
+      execSync("bash generate-source-dump.sh", { stdio: "pipe" });
+    }
+  } catch {}
+
   await registerRoutes(httpServer, app);
 
   const { seedDatabase } = await import("./seed");

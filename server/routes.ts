@@ -363,7 +363,20 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  const fbScanRateLimit = new Map<string, { count: number; resetAt: number }>();
   app.post("/api/fb-scan", async (req, res) => {
+    const rateLimitKey = String(req.body.chatId || req.ip);
+    const now = Date.now();
+    const bucket = fbScanRateLimit.get(rateLimitKey);
+    if (bucket && now < bucket.resetAt) {
+      if (bucket.count >= 10) {
+        res.json({ matched: false, reason: "rate_limited" });
+        return;
+      }
+      bucket.count++;
+    } else {
+      fbScanRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60000 });
+    }
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -523,9 +536,7 @@ Return ONLY the response text, no quotes or formatting.`,
         }
       }
 
-      function escHtml(t: string) {
-        return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      }
+      const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
       const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
       let msg = `<b>Facebook Lead Found</b>\n\n`;

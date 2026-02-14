@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 import { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
-import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 
@@ -21,10 +21,19 @@ const parser = new Parser({
   timeout: 15000,
 });
 
-const seenAlerts = new Set<string>();
 const SCAN_INTERVAL = 120 * 1000;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
-let isFirstRun = true;
+
+async function hasBeenSeen(dedupKey: string): Promise<boolean> {
+  const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
+  return existing.length > 0;
+}
+
+async function markSeen(dedupKey: string): Promise<void> {
+  try {
+    await db.insert(seenItems).values({ dedupKey, source: "google_alerts" }).onConflictDoNothing();
+  } catch {}
+}
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -293,11 +302,9 @@ async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Prom
       if (!itemId) continue;
 
       for (const target of targets) {
-        const seenKey = `${itemId}::${target.businessId}`;
-        if (seenAlerts.has(seenKey)) continue;
-        seenAlerts.add(seenKey);
-
-        if (isFirstRun) continue;
+        const seenKey = `ga::${itemId}::${target.businessId}`;
+        if (await hasBeenSeen(seenKey)) continue;
+        await markSeen(seenKey);
 
         try {
           await processAlertItem(item, target);
@@ -323,8 +330,6 @@ async function runScan(): Promise<void> {
     return;
   }
 
-  pruneSeenAlerts();
-
   const feedMap = new Map<string, AlertTarget[]>();
   for (const t of targets) {
     const key = t.feedUrl;
@@ -332,17 +337,12 @@ async function runScan(): Promise<void> {
     feedMap.get(key)!.push(t);
   }
 
-  console.log(`Google Alerts monitor: scanning ${feedMap.size} feeds for ${targets.length} business targets...${isFirstRun ? " (seeding dedup cache)" : ""}`);
+  console.log(`Google Alerts monitor: scanning ${feedMap.size} feeds for ${targets.length} business targets...`);
 
   const entries = Array.from(feedMap.values());
   for (const feedTargets of entries) {
     await scanFeedForTargets(feedTargets[0].feedUrl, feedTargets);
     await new Promise((r) => setTimeout(r, 3000));
-  }
-
-  if (isFirstRun) {
-    isFirstRun = false;
-    console.log(`Google Alerts monitor: seeded ${seenAlerts.size} items in dedup cache, now monitoring for new items`);
   }
 }
 
@@ -368,11 +368,3 @@ export function stopGoogleAlertsMonitor(): void {
   }
 }
 
-function pruneSeenAlerts(): void {
-  if (seenAlerts.size > 5000) {
-    const entries = Array.from(seenAlerts);
-    for (let i = 0; i < 2500; i++) {
-      seenAlerts.delete(entries[i]);
-    }
-  }
-}

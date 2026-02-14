@@ -119,6 +119,13 @@ export const insertResponseFeedbackSchema = createInsertSchema(responseFeedback)
   createdAt: true,
 });
 
+export const seenItems = pgTable("seen_items", {
+  id: serial("id").primaryKey(),
+  dedupKey: text("dedup_key").notNull().unique(),
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
 export type Campaign = typeof campaigns.$inferSelect;

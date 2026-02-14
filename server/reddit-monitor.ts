@@ -1,7 +1,7 @@
 import Parser from "rss-parser";
 import { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
-import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 
@@ -20,9 +20,19 @@ const parser = new Parser({
   },
   timeout: 10000,
 });
-const seenPosts = new Set<string>();
 const SCAN_INTERVAL = 90 * 1000;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
+
+async function hasBeenSeen(dedupKey: string): Promise<boolean> {
+  const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
+  return existing.length > 0;
+}
+
+async function markSeen(dedupKey: string): Promise<void> {
+  try {
+    await db.insert(seenItems).values({ dedupKey, source: "reddit" }).onConflictDoNothing();
+  } catch {}
+}
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -265,9 +275,9 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
       if (!postId) continue;
 
       for (const target of targets) {
-        const seenKey = `${postId}::${target.businessId}`;
-        if (seenPosts.has(seenKey)) continue;
-        seenPosts.add(seenKey);
+        const seenKey = `rd::${postId}::${target.businessId}`;
+        if (await hasBeenSeen(seenKey)) continue;
+        await markSeen(seenKey);
 
         try {
           await processPostForTarget(post, target);
@@ -294,8 +304,6 @@ async function runScan(): Promise<void> {
   if (targets.length === 0) {
     return;
   }
-
-  pruneSeenPosts();
 
   const subMap = new Map<string, SubredditTarget[]>();
   for (const t of targets) {
@@ -335,11 +343,3 @@ export function stopRedditMonitor(): void {
   }
 }
 
-function pruneSeenPosts(): void {
-  if (seenPosts.size > 5000) {
-    const entries = Array.from(seenPosts);
-    for (let i = 0; i < 2500; i++) {
-      seenPosts.delete(entries[i]);
-    }
-  }
-}

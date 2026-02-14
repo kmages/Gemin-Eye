@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T20:21:28Z
+# Generated: 2026-02-14T20:25:38Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -371,7 +371,7 @@ app.use((req, res, next) => {
 
 
 ============================================================
-FILE: server/routes.ts (915 lines)
+FILE: server/routes.ts (1038 lines)
 ============================================================
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -718,6 +718,129 @@ Return ONLY valid JSON with this structure:
       console.error("Error approving response:", error);
       res.status(500).json({ error: "Failed to approve response" });
     }
+  });
+
+  const ADMIN_USER_ID = "40011074";
+
+  function isAdmin(req: any, res: any, next: any) {
+    if (!req.user || req.user.claims.sub !== ADMIN_USER_ID) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  }
+
+  app.get("/api/admin/businesses", isAuthenticated, isAdmin, async (_req: any, res) => {
+    try {
+      const allBiz = await storage.getAllBusinesses();
+      const result = [];
+      for (const biz of allBiz) {
+        const camps = await storage.getCampaignsByBusiness(biz.id);
+        const campaignIds = camps.map(c => c.id);
+        const bizLeads = campaignIds.length > 0 ? await storage.getLeadsByCampaigns(campaignIds) : [];
+        result.push({ ...biz, campaigns: camps, leadCount: bizLeads.length });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Admin: Error fetching businesses:", error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  app.patch("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        type: z.string().optional(),
+        contactEmail: z.string().nullable().optional(),
+        contactPhone: z.string().nullable().optional(),
+        website: z.string().nullable().optional(),
+        targetAudience: z.string().optional(),
+        coreOffering: z.string().optional(),
+        preferredTone: z.string().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const biz = await storage.updateBusiness(id, parsed.data);
+      res.json(biz);
+    } catch (error) {
+      console.error("Admin: Error updating business:", error);
+      res.status(500).json({ error: "Failed to update business" });
+    }
+  });
+
+  app.delete("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteBusiness(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Admin: Error deleting business:", error);
+      res.status(500).json({ error: "Failed to delete business" });
+    }
+  });
+
+  app.patch("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        platform: z.string().optional(),
+        status: z.string().optional(),
+        targetGroups: z.array(z.string()).optional(),
+        keywords: z.array(z.string()).optional(),
+        strategy: z.string().nullable().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const camp = await storage.updateCampaign(id, parsed.data);
+      res.json(camp);
+    } catch (error) {
+      console.error("Admin: Error updating campaign:", error);
+      res.status(500).json({ error: "Failed to update campaign" });
+    }
+  });
+
+  app.post("/api/admin/campaigns", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const createSchema = z.object({
+        businessId: z.number(),
+        name: z.string().min(1),
+        platform: z.string().min(1),
+        status: z.string().default("active"),
+        targetGroups: z.array(z.string()).default([]),
+        keywords: z.array(z.string()).default([]),
+        strategy: z.string().nullable().default(null),
+      });
+      const parsed = createSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const camp = await storage.createCampaign(parsed.data);
+      res.json(camp);
+    } catch (error) {
+      console.error("Admin: Error creating campaign:", error);
+      res.status(500).json({ error: "Failed to create campaign" });
+    }
+  });
+
+  app.delete("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCampaign(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Admin: Error deleting campaign:", error);
+      res.status(500).json({ error: "Failed to delete campaign" });
+    }
+  });
+
+  app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
+    res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
   });
 
   registerTelegramWebhook(app);
@@ -1291,7 +1414,7 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
-FILE: server/storage.ts (76 lines)
+FILE: server/storage.ts (113 lines)
 ============================================================
 import {
   businesses, campaigns, leads, aiResponses,
@@ -1314,6 +1437,12 @@ export interface IStorage {
   getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]>;
   createResponse(data: InsertAiResponse): Promise<AiResponse>;
   updateResponseStatus(id: number, status: string): Promise<AiResponse>;
+  getAllBusinesses(): Promise<Business[]>;
+  getBusinessById(id: number): Promise<Business | undefined>;
+  updateBusiness(id: number, data: Partial<InsertBusiness>): Promise<Business>;
+  updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign>;
+  deleteCampaign(id: number): Promise<void>;
+  deleteBusiness(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1365,6 +1494,37 @@ export class DatabaseStorage implements IStorage {
   async updateResponseStatus(id: number, status: string): Promise<AiResponse> {
     const [resp] = await db.update(aiResponses).set({ status, approvedAt: status === "approved" ? new Date() : null }).where(eq(aiResponses.id, id)).returning();
     return resp;
+  }
+
+  async getAllBusinesses(): Promise<Business[]> {
+    return db.select().from(businesses).orderBy(desc(businesses.createdAt));
+  }
+
+  async getBusinessById(id: number): Promise<Business | undefined> {
+    const [biz] = await db.select().from(businesses).where(eq(businesses.id, id)).limit(1);
+    return biz;
+  }
+
+  async updateBusiness(id: number, data: Partial<InsertBusiness>): Promise<Business> {
+    const [biz] = await db.update(businesses).set(data).where(eq(businesses.id, id)).returning();
+    return biz;
+  }
+
+  async updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign> {
+    const [camp] = await db.update(campaigns).set(data).where(eq(campaigns.id, id)).returning();
+    return camp;
+  }
+
+  async deleteCampaign(id: number): Promise<void> {
+    await db.delete(campaigns).where(eq(campaigns.id, id));
+  }
+
+  async deleteBusiness(id: number): Promise<void> {
+    const bizCampaigns = await this.getCampaignsByBusiness(id);
+    for (const c of bizCampaigns) {
+      await db.delete(campaigns).where(eq(campaigns.id, c.id));
+    }
+    await db.delete(businesses).where(eq(businesses.id, id));
   }
 }
 
@@ -4031,7 +4191,7 @@ export function stopGoogleAlertsMonitor(): void {
 
 
 ============================================================
-FILE: client/src/App.tsx (44 lines)
+FILE: client/src/App.tsx (46 lines)
 ============================================================
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
@@ -4045,6 +4205,7 @@ import Dashboard from "@/pages/dashboard";
 import OnboardingPage from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
 import ClientGuidePage from "@/pages/client-guide";
+import AdminPage from "@/pages/admin";
 
 function AuthRouter() {
   const { user, isLoading } = useAuth();
@@ -4058,6 +4219,7 @@ function AuthRouter() {
       <Route path="/" component={user ? Dashboard : LandingPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/guide" component={ClientGuidePage} />
+      <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -4434,7 +4596,7 @@ export default function LandingPage() {
 
 
 ============================================================
-FILE: client/src/pages/dashboard.tsx (329 lines)
+FILE: client/src/pages/dashboard.tsx (339 lines)
 ============================================================
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -4447,7 +4609,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
-  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send
+  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -4607,6 +4769,11 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/check"],
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (!authLoading && !user) {
       window.location.href = "/api/login";
@@ -4654,6 +4821,11 @@ export default function Dashboard() {
             <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-3">
+            {adminCheck?.isAdmin && (
+              <Button variant="ghost" size="icon" onClick={() => setLocation("/admin")} data-testid="button-admin">
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
             <Avatar className="w-8 h-8">
               <AvatarImage src={user.profileImageUrl || ""} />
               <AvatarFallback className="text-xs">{user.firstName?.[0] || user.email?.[0] || "U"}</AvatarFallback>

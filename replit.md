@@ -4,12 +4,23 @@
 
 Gemin-Eye is an AI-powered customer acquisition platform that monitors niche online communities (Facebook groups, Reddit, etc.) for high-intent questions, then generates helpful, human-sounding responses that subtly promote a client's business. Instead of traditional advertising, it finds people actively seeking recommendations and engages them organically.
 
-The app has three main flows:
+The app has four main flows:
 1. **Landing page** - Marketing page with animated demo showing how the product works
 2. **Onboarding** - Multi-step wizard where users describe their business, and AI generates a monitoring strategy (platforms, target groups, keywords, sample responses)
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
+4. **Admin Panel** (`/admin`) - Admin-only page to manage all clients, their businesses, campaigns, keywords, and groups
 
 ## Recent Changes (Feb 14, 2026)
+- **Admin Panel** (`/admin`, `client/src/pages/admin.tsx`)
+  - Admin-only web panel at `/admin` accessible via gear icon in dashboard header
+  - View all clients/businesses with expandable detail panels
+  - Edit business details: name, type, contact info, audience, offering, tone
+  - Full campaign management: create, edit, delete campaigns per business
+  - Inline tag editors for keywords and target groups (subreddits, Facebook groups)
+  - Campaign status toggle (active/paused)
+  - Delete business with cascade (removes campaigns, leads, and AI responses)
+  - Admin access gated by user ID check middleware
+  - API routes: GET/PATCH/DELETE /api/admin/businesses, POST/PATCH/DELETE /api/admin/campaigns
 - **Google Alerts RSS Monitor** (`server/google-alerts-monitor.ts`)
   - Monitors Google Alerts RSS feeds for leads across the entire web (Quora, forums, blogs, news)
   - Reuses same pipeline: keyword filter → Gemini Flash scoring → Gemini Pro response → Telegram alert

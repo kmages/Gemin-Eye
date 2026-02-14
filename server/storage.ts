@@ -19,6 +19,12 @@ export interface IStorage {
   getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]>;
   createResponse(data: InsertAiResponse): Promise<AiResponse>;
   updateResponseStatus(id: number, status: string): Promise<AiResponse>;
+  getAllBusinesses(): Promise<Business[]>;
+  getBusinessById(id: number): Promise<Business | undefined>;
+  updateBusiness(id: number, data: Partial<InsertBusiness>): Promise<Business>;
+  updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign>;
+  deleteCampaign(id: number): Promise<void>;
+  deleteBusiness(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -70,6 +76,42 @@ export class DatabaseStorage implements IStorage {
   async updateResponseStatus(id: number, status: string): Promise<AiResponse> {
     const [resp] = await db.update(aiResponses).set({ status, approvedAt: status === "approved" ? new Date() : null }).where(eq(aiResponses.id, id)).returning();
     return resp;
+  }
+
+  async getAllBusinesses(): Promise<Business[]> {
+    return db.select().from(businesses).orderBy(desc(businesses.createdAt));
+  }
+
+  async getBusinessById(id: number): Promise<Business | undefined> {
+    const [biz] = await db.select().from(businesses).where(eq(businesses.id, id)).limit(1);
+    return biz;
+  }
+
+  async updateBusiness(id: number, data: Partial<InsertBusiness>): Promise<Business> {
+    const [biz] = await db.update(businesses).set(data).where(eq(businesses.id, id)).returning();
+    return biz;
+  }
+
+  async updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign> {
+    const [camp] = await db.update(campaigns).set(data).where(eq(campaigns.id, id)).returning();
+    return camp;
+  }
+
+  async deleteCampaign(id: number): Promise<void> {
+    const campLeads = await db.select().from(leads).where(eq(leads.campaignId, id));
+    for (const lead of campLeads) {
+      await db.delete(aiResponses).where(eq(aiResponses.leadId, lead.id));
+    }
+    await db.delete(leads).where(eq(leads.campaignId, id));
+    await db.delete(campaigns).where(eq(campaigns.id, id));
+  }
+
+  async deleteBusiness(id: number): Promise<void> {
+    const bizCampaigns = await this.getCampaignsByBusiness(id);
+    for (const c of bizCampaigns) {
+      await this.deleteCampaign(c.id);
+    }
+    await db.delete(businesses).where(eq(businesses.id, id));
   }
 }
 

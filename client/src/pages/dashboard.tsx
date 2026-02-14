@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
-  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send
+  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -169,6 +169,11 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/check"],
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (!authLoading && !user) {
       window.location.href = "/api/login";
@@ -216,6 +221,11 @@ export default function Dashboard() {
             <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-3">
+            {adminCheck?.isAdmin && (
+              <Button variant="ghost" size="icon" onClick={() => setLocation("/admin")} data-testid="button-admin">
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
             <Avatar className="w-8 h-8">
               <AvatarImage src={user.profileImageUrl || ""} />
               <AvatarFallback className="text-xs">{user.firstName?.[0] || user.email?.[0] || "U"}</AvatarFallback>

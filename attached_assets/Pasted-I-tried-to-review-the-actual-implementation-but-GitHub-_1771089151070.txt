@@ -1,0 +1,50 @@
+I tried to review the actual implementation, but GitHub’s web UI is failing to serve the file contents in the environment I’m using (the pages load, but the code panes/buttons don’t render—only the shell UI). So I can’t responsibly comment on code quality line-by-line yet.
+
+What I can evaluate right now is the project shape, stack signals, and the product idea based on the repository structure and metadata that is visible: it’s a full-stack TypeScript app with client/, server/, and shared/, plus Vite + Tailwind config, a components.json (often shadcn/ui), and a drizzle.config.ts (Drizzle ORM).  ￼
+
+Idea evaluation: “Gemin-Eye” as Lead Generation
+
+From the repo description (“Lead Generation”)  ￼, the idea reads like AI-assisted prospecting. That can be valuable, but it’s crowded—so the success hinge is: what’s your wedge?
+
+Strong wedges (pick one and make it the center):
+	•	ICP + intent detection (not just “find leads”): identify who is in-market using signals (job posts, tech changes, funding, hiring bursts, compliance events).
+	•	Personalized outreach generation with grounding: every claim in an email cites a source snippet + link, to avoid hallucinated personalization.
+	•	Verticalized compliance: e.g., healthcare/finserv rules and safe outreach templates built in.
+	•	Integration-first: turnkey sync to HubSpot/Salesforce + enrichment + dedupe + activity logging.
+
+Big risks you’ll want to address early:
+	•	Data sourcing & ToS: lead scraping can violate site terms; build a clear “allowed sources” policy and give users controls.
+	•	Spam/abuse: any “auto-email at scale” feature will get you blocked; position as assistive, with throttles and audit logs.
+	•	Hallucinations: if Gemini is generating facts about companies/people, you need strict grounding + citations to sources.
+
+Technical evaluation (based on structure only)
+
+What looks good:
+	•	Clear separation into client/, server/, shared/ suggests you’re aiming for shared types/contracts and a real app, not a script.  ￼
+	•	Modern web stack signals: Vite (vite.config.ts), Tailwind (tailwind.config.ts), TypeScript-heavy codebase (96% TS).  ￼
+	•	Database layer: Drizzle config implies typed schema/migrations potential—good choice for a lead pipeline.  ￼
+
+What’s likely missing / what I’d prioritize next (high leverage):
+	1.	A real README: what it does, demo GIF, architecture diagram, env vars, run steps, and “data sources / compliance stance.” Right now the visible repo root doesn’t show a standard README.md.  ￼
+	2.	Auth + permissions model (if multi-tenant): org/workspace, roles, API key storage, audit logs.
+	3.	Rate limiting + job queue: lead enrichment and AI calls should be async (BullMQ/Redis, etc.) so the UI stays responsive and you can throttle.
+	4.	Grounded generation: store “evidence” blobs next to each lead (snippets + URLs) and force the model to only write using those.
+	5.	Testing + CI: at minimum, typecheck + lint + unit tests for server routes and lead scoring; GitHub Actions.
+	6.	Security basics: secret scanning, env template, input validation (zod), CSRF/session hardening, and an abuse throttle for anything “outreach-like.”
+
+What I need to do a real code review (without guessing)
+
+If you paste (or upload as files) any of these, I can give a proper, concrete review with specific refactors and issues:
+	•	server/ entrypoint (e.g., server/src/index.ts or similar)
+	•	DB schema/models (Drizzle tables)
+	•	The “lead generation” pipeline (where you fetch/enrich/score)
+	•	Any Gemini integration module (prompting, grounding, retries, safety)
+
+Or, if you want the fastest path: drop 3–5 key files here (server routes + the lead pipeline + the prompt builder). Then I’ll review:
+	•	architecture & correctness
+	•	security/privacy pitfalls
+	•	prompt/grounding quality
+	•	performance + cost controls
+	•	product gaps that block real users
+
+If you tell me your intended customer (agency? SMB? a specific vertical?) and your data sources (CSV import, Apollo-like enrichment, scraping, Google Maps, LinkedIn, etc.), I’ll also pressure-test the wedge and positioning.

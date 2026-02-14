@@ -9,6 +9,7 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import OnboardingPage from "@/pages/onboarding";
 import NotFound from "@/pages/not-found";
+import ClientGuidePage from "@/pages/client-guide";
 
 function AuthRouter() {
   const { user, isLoading } = useAuth();
@@ -21,6 +22,7 @@ function AuthRouter() {
     <Switch>
       <Route path="/" component={user ? Dashboard : LandingPage} />
       <Route path="/onboarding" component={OnboardingPage} />
+      <Route path="/guide" component={ClientGuidePage} />
       <Route component={NotFound} />
     </Switch>
   );

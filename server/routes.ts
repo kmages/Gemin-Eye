@@ -123,6 +123,7 @@ export async function registerRoutes(
       const strategyInputSchema = z.object({
         name: z.string().min(1),
         type: z.string().min(1),
+        location: z.string().optional().default(""),
         targetAudience: z.string().min(1),
         coreOffering: z.string().min(10),
         preferredTone: z.string().min(1),
@@ -133,7 +134,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
       }
 
-      const { name, type, targetAudience, coreOffering, preferredTone } = parsed.data;
+      const { name, type, location, targetAudience, coreOffering, preferredTone } = parsed.data;
+      const locationLine = location ? `\n- Location: ${location}` : "";
 
       const prompt = `You are a marketing strategist specializing in social media community engagement.
 
@@ -141,7 +143,7 @@ A business wants to find customers by monitoring social media groups for high-in
 
 Business Details:
 - Name: ${name}
-- Type/Niche: ${type}
+- Type/Niche: ${type}${locationLine}
 - Target Audience: ${targetAudience}
 - Core Offering: ${coreOffering}
 - Preferred Tone: ${preferredTone}
@@ -158,6 +160,7 @@ Generate a customer acquisition strategy. Return ONLY valid JSON with this exact
 CRITICAL RULES FOR GROUPS:
 - Include at least 3-5 REAL Reddit subreddits that actually exist, prefixed with "r/" (e.g., r/chicago, r/woodworking, r/fitness).
 - NEVER use placeholder names like "r/[yourcity]" or "[Your City Name]". Use REAL specific subreddit names.
+- If the business has a specific location, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
 - Pick subreddits where the target audience is likely to ask questions or seek recommendations.
 - Also include 2-3 real Facebook group names if applicable.
 - Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;

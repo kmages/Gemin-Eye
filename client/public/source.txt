@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T19:20:58Z
+# Generated: 2026-02-14T19:23:44Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -368,7 +368,7 @@ app.use((req, res, next) => {
 
 
 ============================================================
-FILE: server/routes.ts (905 lines)
+FILE: server/routes.ts (908 lines)
 ============================================================
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -495,6 +495,7 @@ export async function registerRoutes(
       const strategyInputSchema = z.object({
         name: z.string().min(1),
         type: z.string().min(1),
+        location: z.string().optional().default(""),
         targetAudience: z.string().min(1),
         coreOffering: z.string().min(10),
         preferredTone: z.string().min(1),
@@ -505,7 +506,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
       }
 
-      const { name, type, targetAudience, coreOffering, preferredTone } = parsed.data;
+      const { name, type, location, targetAudience, coreOffering, preferredTone } = parsed.data;
+      const locationLine = location ? `\n- Location: ${location}` : "";
 
       const prompt = `You are a marketing strategist specializing in social media community engagement.
 
@@ -513,7 +515,7 @@ A business wants to find customers by monitoring social media groups for high-in
 
 Business Details:
 - Name: ${name}
-- Type/Niche: ${type}
+- Type/Niche: ${type}${locationLine}
 - Target Audience: ${targetAudience}
 - Core Offering: ${coreOffering}
 - Preferred Tone: ${preferredTone}
@@ -530,6 +532,7 @@ Generate a customer acquisition strategy. Return ONLY valid JSON with this exact
 CRITICAL RULES FOR GROUPS:
 - Include at least 3-5 REAL Reddit subreddits that actually exist, prefixed with "r/" (e.g., r/chicago, r/woodworking, r/fitness).
 - NEVER use placeholder names like "r/[yourcity]" or "[Your City Name]". Use REAL specific subreddit names.
+- If the business has a specific location, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
 - Pick subreddits where the target audience is likely to ask questions or seek recommendations.
 - Also include 2-3 real Facebook group names if applicable.
 - Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
@@ -4706,7 +4709,7 @@ export default function Dashboard() {
 
 
 ============================================================
-FILE: client/src/pages/onboarding.tsx (382 lines)
+FILE: client/src/pages/onboarding.tsx (398 lines)
 ============================================================
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -4729,7 +4732,7 @@ import {
 } from "@/components/ui/select";
 import {
   Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
-  CheckCircle, Bot, Zap
+  CheckCircle, Bot, Zap, MapPin
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
@@ -4737,6 +4740,7 @@ import { useToast } from "@/hooks/use-toast";
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
   type: z.string().min(1, "Business type is required"),
+  location: z.string().optional().default(""),
   targetAudience: z.string().min(1, "Target audience is required"),
   coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
   preferredTone: z.string().min(1, "Please select a tone"),
@@ -4765,6 +4769,7 @@ export default function OnboardingPage() {
     defaultValues: {
       name: "",
       type: "",
+      location: "",
       targetAudience: "",
       coreOffering: "",
       preferredTone: "empathetic",
@@ -4889,6 +4894,20 @@ export default function OnboardingPage() {
                         <FormLabel>Business Type / Niche</FormLabel>
                         <FormControl>
                           <Input placeholder="e.g., Psychiatric care for serious mental illness" {...field} data-testid="input-business-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Chicago, IL or Online" {...field} data-testid="input-location" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

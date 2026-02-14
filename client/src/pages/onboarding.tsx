@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
   Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
-  CheckCircle, Bot, Zap
+  CheckCircle, Bot, Zap, MapPin
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
   type: z.string().min(1, "Business type is required"),
+  location: z.string().optional().default(""),
   targetAudience: z.string().min(1, "Target audience is required"),
   coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
   preferredTone: z.string().min(1, "Please select a tone"),
@@ -55,6 +56,7 @@ export default function OnboardingPage() {
     defaultValues: {
       name: "",
       type: "",
+      location: "",
       targetAudience: "",
       coreOffering: "",
       preferredTone: "empathetic",
@@ -179,6 +181,20 @@ export default function OnboardingPage() {
                         <FormLabel>Business Type / Niche</FormLabel>
                         <FormControl>
                           <Input placeholder="e.g., Psychiatric care for serious mental illness" {...field} data-testid="input-business-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Chicago, IL or Online" {...field} data-testid="input-location" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

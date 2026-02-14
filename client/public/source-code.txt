@@ -1,0 +1,3504 @@
+========== FILE: shared/schema.ts ==========
+import { sql, relations } from "drizzle-orm";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export * from "./models/auth";
+export * from "./models/chat";
+
+export const businesses = pgTable("businesses", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  targetAudience: text("target_audience").notNull(),
+  coreOffering: text("core_offering").notNull(),
+  preferredTone: text("preferred_tone").notNull().default("empathetic"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const businessesRelations = relations(businesses, ({ many }) => ({
+  campaigns: many(campaigns),
+}));
+
+export const campaigns = pgTable("campaigns", {
+  id: serial("id").primaryKey(),
+  businessId: integer("business_id").notNull(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull(),
+  status: text("status").notNull().default("active"),
+  strategy: text("strategy"),
+  targetGroups: jsonb("target_groups").$type<string[]>().default([]),
+  keywords: jsonb("keywords").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [campaigns.businessId],
+    references: [businesses.id],
+  }),
+  leads: many(leads),
+}));
+
+export const leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull(),
+  platform: text("platform").notNull(),
+  groupName: text("group_name").notNull(),
+  authorName: text("author_name").notNull(),
+  originalPost: text("original_post").notNull(),
+  postUrl: text("post_url"),
+  intentScore: integer("intent_score").notNull().default(0),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const leadsRelations = relations(leads, ({ one, many }) => ({
+  campaign: one(campaigns, {
+    fields: [leads.campaignId],
+    references: [campaigns.id],
+  }),
+  responses: many(aiResponses),
+}));
+
+export const aiResponses = pgTable("ai_responses", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(),
+  content: text("content").notNull(),
+  status: text("status").notNull().default("pending"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const aiResponsesRelations = relations(aiResponses, ({ one }) => ({
+  lead: one(leads, {
+    fields: [aiResponses.leadId],
+    references: [leads.id],
+  }),
+}));
+
+export const insertBusinessSchema = createInsertSchema(businesses).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCampaignSchema = createInsertSchema(campaigns).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLeadSchema = createInsertSchema(leads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAiResponseSchema = createInsertSchema(aiResponses).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+
+export type Business = typeof businesses.$inferSelect;
+export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+export type Lead = typeof leads.$inferSelect;
+export type InsertLead = z.infer<typeof insertLeadSchema>;
+export type AiResponse = typeof aiResponses.$inferSelect;
+export type InsertAiResponse = z.infer<typeof insertAiResponseSchema>;
+
+
+========== FILE: shared/models/auth.ts ==========
+import { sql } from "drizzle-orm";
+import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+
+// Session storage table.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)]
+);
+
+// User storage table.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type UpsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
+
+
+========== FILE: shared/models/chat.ts ==========
+import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+import { sql } from "drizzle-orm";
+
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertConversationSchema = createInsertSchema(conversations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Conversation = typeof conversations.$inferSelect;
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+
+
+========== FILE: server/index.ts ==========
+import express, { type Request, Response, NextFunction } from "express";
+import { registerRoutes } from "./routes";
+import { serveStatic } from "./static";
+import { createServer } from "http";
+
+const app = express();
+const httpServer = createServer(app);
+
+declare module "http" {
+  interface IncomingMessage {
+    rawBody: unknown;
+  }
+}
+
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+
+app.use(express.urlencoded({ extended: false }));
+
+export function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path = req.path;
+  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+
+  const originalResJson = res.json;
+  res.json = function (bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path.startsWith("/api")) {
+      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+
+      log(logLine);
+    }
+  });
+
+  next();
+});
+
+(async () => {
+  await registerRoutes(httpServer, app);
+
+  const { seedDatabase } = await import("./seed");
+  await seedDatabase().catch((e) => console.error("Seed error:", e));
+
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+
+    console.error("Internal Server Error:", err);
+
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    return res.status(status).json({ message });
+  });
+
+  // importantly only setup vite in development and after
+  // setting up all the other routes so the catch-all route
+  // doesn't interfere with the other routes
+  if (process.env.NODE_ENV === "production") {
+    serveStatic(app);
+  } else {
+    const { setupVite } = await import("./vite");
+    await setupVite(httpServer, app);
+  }
+
+  // ALWAYS serve the app on the port specified in the environment variable PORT
+  // Other ports are firewalled. Default to 5000 if not specified.
+  // this serves both the API and the client.
+  // It is the only port that is not firewalled.
+  const port = parseInt(process.env.PORT || "5000", 10);
+  httpServer.listen(
+    {
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    },
+    () => {
+      log(`serving on port ${port}`);
+    },
+  );
+})();
+
+
+========== FILE: server/routes.ts ==========
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { execSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { storage } from "./storage";
+import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { insertBusinessSchema } from "@shared/schema";
+import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { registerTelegramWebhook } from "./telegram-bot";
+import { SOURCE_ARCHIVE_B64 } from "./source-archive";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+export async function registerRoutes(
+  httpServer: Server,
+  app: Express
+): Promise<Server> {
+  await setupAuth(app);
+  registerAuthRoutes(app);
+
+  app.get("/api/businesses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const biz = await storage.getBusinessesByUser(userId);
+      res.json(biz);
+    } catch (error) {
+      console.error("Error fetching businesses:", error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  app.post("/api/businesses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const bodySchema = insertBusinessSchema.omit({ userId: true }).extend({
+        strategy: z.object({
+          platforms: z.array(z.object({ name: z.string() })),
+          groups: z.array(z.string()),
+          keywords: z.array(z.string()),
+          sampleResponse: z.string(),
+          rationale: z.string(),
+        }).optional(),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+
+      const { name, type, targetAudience, coreOffering, preferredTone, strategy } = parsed.data;
+
+      const biz = await storage.createBusiness({
+        userId,
+        name,
+        type,
+        targetAudience,
+        coreOffering,
+        preferredTone,
+      });
+
+      if (strategy && strategy.platforms) {
+        for (const platform of strategy.platforms) {
+          await storage.createCampaign({
+            businessId: biz.id,
+            name: `${platform.name} Campaign`,
+            platform: platform.name,
+            status: "active",
+            strategy: strategy.rationale,
+            targetGroups: strategy.groups.filter((_: string, i: number) => i < 5),
+            keywords: strategy.keywords,
+          });
+        }
+      }
+
+      res.json(biz);
+    } catch (error) {
+      console.error("Error creating business:", error);
+      res.status(500).json({ error: "Failed to create business" });
+    }
+  });
+
+  app.post("/api/strategy/generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const strategyInputSchema = z.object({
+        name: z.string().min(1),
+        type: z.string().min(1),
+        targetAudience: z.string().min(1),
+        coreOffering: z.string().min(10),
+        preferredTone: z.string().min(1),
+      });
+
+      const parsed = strategyInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+
+      const { name, type, targetAudience, coreOffering, preferredTone } = parsed.data;
+
+      const prompt = `You are a marketing strategist specializing in social media community engagement.
+
+A business wants to find customers by monitoring social media groups for high-intent questions and responding helpfully.
+
+Business Details:
+- Name: ${name}
+- Type/Niche: ${type}
+- Target Audience: ${targetAudience}
+- Core Offering: ${coreOffering}
+- Preferred Tone: ${preferredTone}
+
+Generate a customer acquisition strategy. Return ONLY valid JSON with this exact structure:
+{
+  "platforms": [{"name": "Facebook"}, {"name": "Reddit"}],
+  "groups": ["Group Name 1", "Group Name 2", "Group Name 3", "Group Name 4", "Group Name 5"],
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
+  "sampleResponse": "A sample response that the AI would post in one of these groups when someone asks a relevant question. Make it sound natural and helpful, not like an ad. About 2-3 sentences.",
+  "rationale": "2-3 sentences explaining why these platforms and groups were chosen and how this strategy will help the business find customers."
+}
+
+Be specific with real group names that exist on these platforms. Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: prompt,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const text = response.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON found in response");
+      }
+
+      const strategyData = JSON.parse(jsonMatch[0]);
+      res.json(strategyData);
+    } catch (error) {
+      console.error("Error generating strategy:", error);
+      res.status(500).json({ error: "Failed to generate strategy" });
+    }
+  });
+
+  app.get("/api/campaigns", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      res.json(camps);
+    } catch (error) {
+      console.error("Error fetching campaigns:", error);
+      res.status(500).json({ error: "Failed to fetch campaigns" });
+    }
+  });
+
+  app.get("/api/leads", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const leadIds = allLeads.map((l) => l.id);
+      const responses = await storage.getResponsesByLeads(leadIds);
+      res.json({ leads: allLeads, responses });
+    } catch (error) {
+      console.error("Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  app.post("/api/leads/:id/generate-response", isAuthenticated, async (req: any, res) => {
+    try {
+      const leadId = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const lead = allLeads.find((l) => l.id === leadId);
+
+      if (!lead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
+
+      const campaign = camps.find((c) => c.id === lead.campaignId);
+      const bizList = await storage.getBusinessesByUser(userId);
+      const business = bizList.find((b) => b.id === campaign?.businessId);
+
+      if (!business) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      const toneMap: Record<string, string> = {
+        empathetic: "empathetic, warm, and supportive",
+        professional: "professional, authoritative, and informative",
+        casual: "casual, friendly, and approachable",
+      };
+
+      const prompt = `You are writing a response to a social media post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post was in the group "${lead.groupName}" on ${lead.platform}.
+The original post: "${lead.originalPost}"
+Posted by: ${lead.authorName}
+
+Business to recommend: ${business.name}
+What they do: ${business.coreOffering}
+Tone: ${toneMap[business.preferredTone] || "friendly and helpful"}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-pro",
+        contents: prompt,
+        config: { maxOutputTokens: 8192 },
+      });
+
+      const responseText = response.text || "";
+
+      const aiResp = await storage.createResponse({
+        leadId,
+        content: responseText.trim(),
+        status: "pending",
+      });
+
+      sendTelegramMessage(formatResponseNotification(
+        lead, business.name, responseText.trim()
+      )).catch((e) => console.error("Telegram notification failed:", e));
+
+      res.json(aiResp);
+    } catch (error) {
+      console.error("Error generating response:", error);
+      res.status(500).json({ error: "Failed to generate response" });
+    }
+  });
+
+  app.post("/api/leads/score", isAuthenticated, async (req: any, res) => {
+    try {
+      const { post, businessType, targetAudience } = req.body;
+      if (!post || !businessType) {
+        return res.status(400).json({ error: "Missing required fields: post, businessType" });
+      }
+
+      const prompt = `You are a lead scoring AI. Analyze this social media post and rate how likely this person is to become a customer for the described business.
+
+Post: "${post}"
+Business Type: ${businessType}
+Target Audience: ${targetAudience || "general"}
+
+Return ONLY valid JSON with this structure:
+{
+  "score": <number 1-10>,
+  "reasoning": "<one sentence explaining the score>",
+  "keywords_matched": ["keyword1", "keyword2"]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: { maxOutputTokens: 1024 },
+      });
+
+      const text = response.text || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON found in response");
+      }
+
+      res.json(JSON.parse(jsonMatch[0]));
+    } catch (error) {
+      console.error("Error scoring lead:", error);
+      res.status(500).json({ error: "Failed to score lead" });
+    }
+  });
+
+  app.post("/api/responses/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const leadIds = allLeads.map((l) => l.id);
+      const allResponses = await storage.getResponsesByLeads(leadIds);
+      const owned = allResponses.find((r) => r.id === id);
+
+      if (!owned) {
+        return res.status(404).json({ error: "Response not found" });
+      }
+
+      const resp = await storage.updateResponseStatus(id, "approved");
+      res.json(resp);
+    } catch (error) {
+      console.error("Error approving response:", error);
+      res.status(500).json({ error: "Failed to approve response" });
+    }
+  });
+
+  registerTelegramWebhook(app);
+
+  app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
+    try {
+      const success = await sendTelegramMessage(
+        "<b>Gemin-Eye Connected!</b>\n\nYour Telegram notifications are working. You'll receive alerts here when new leads are found and AI responses are ready to copy & paste."
+      );
+      if (success) {
+        res.json({ success: true, message: "Test message sent!" });
+      } else {
+        res.status(500).json({ error: "Failed to send. Check bot token and chat ID." });
+      }
+    } catch (error) {
+      console.error("Telegram test error:", error);
+      res.status(500).json({ error: "Failed to send test message" });
+    }
+  });
+
+  app.post("/api/telegram/notify-lead", isAuthenticated, async (req: any, res) => {
+    try {
+      const { leadId } = req.body;
+      if (!leadId) return res.status(400).json({ error: "leadId required" });
+
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const campaignIds = camps.map((c) => c.id);
+      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const lead = allLeads.find((l) => l.id === leadId);
+
+      if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+      const bizList = await storage.getBusinessesByUser(userId);
+      const campaign = camps.find((c) => c.id === lead.campaignId);
+      const business = bizList.find((b) => b.id === campaign?.businessId);
+
+      const leadResponses = await storage.getResponsesByLeads([lead.id]);
+      const latestResponse = leadResponses[0];
+
+      const msg = formatLeadNotification(
+        lead,
+        business?.name || "Unknown",
+        latestResponse?.content
+      );
+
+      const success = await sendTelegramMessage(msg);
+      res.json({ success });
+    } catch (error) {
+      console.error("Telegram notify error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
+  app.get("/api/download/source", (_req, res) => {
+    try {
+      const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
+      res.setHeader("Content-Type", "application/gzip");
+      res.setHeader("Content-Disposition", "attachment; filename=gemin-eye-source.tar.gz");
+      res.setHeader("Content-Length", buffer.length.toString());
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to serve archive" });
+    }
+  });
+
+  app.get("/download", (_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!DOCTYPE html>
+<html><head><title>Download Gemin-Eye Source</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#111;color:#fff;}
+.box{text-align:center;padding:40px;border:1px solid #333;border-radius:12px;background:#1a1a1a;}
+a{display:inline-block;margin-top:20px;padding:14px 32px;background:#6366f1;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:600;}
+a:hover{background:#4f46e5;}</style></head>
+<body><div class="box"><h1>Gemin-Eye Source Code</h1><p>Click below to download all source files as a .tar.gz archive.</p>
+<a href="/api/download/source">Download Source Code</a></div></body></html>`);
+  });
+
+  return httpServer;
+}
+
+
+========== FILE: server/storage.ts ==========
+import {
+  businesses, campaigns, leads, aiResponses,
+  type Business, type InsertBusiness,
+  type Campaign, type InsertCampaign,
+  type Lead, type InsertLead,
+  type AiResponse, type InsertAiResponse,
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+
+export interface IStorage {
+  getBusinessesByUser(userId: string): Promise<Business[]>;
+  createBusiness(data: InsertBusiness): Promise<Business>;
+  getCampaignsByBusiness(businessId: number): Promise<Campaign[]>;
+  getCampaignsByUser(userId: string): Promise<Campaign[]>;
+  createCampaign(data: InsertCampaign): Promise<Campaign>;
+  getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]>;
+  createLead(data: InsertLead): Promise<Lead>;
+  getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]>;
+  createResponse(data: InsertAiResponse): Promise<AiResponse>;
+  updateResponseStatus(id: number, status: string): Promise<AiResponse>;
+}
+
+export class DatabaseStorage implements IStorage {
+  async getBusinessesByUser(userId: string): Promise<Business[]> {
+    return db.select().from(businesses).where(eq(businesses.userId, userId)).orderBy(desc(businesses.createdAt));
+  }
+
+  async createBusiness(data: InsertBusiness): Promise<Business> {
+    const [biz] = await db.insert(businesses).values(data).returning();
+    return biz;
+  }
+
+  async getCampaignsByBusiness(businessId: number): Promise<Campaign[]> {
+    return db.select().from(campaigns).where(eq(campaigns.businessId, businessId)).orderBy(desc(campaigns.createdAt));
+  }
+
+  async getCampaignsByUser(userId: string): Promise<Campaign[]> {
+    const userBiz = await this.getBusinessesByUser(userId);
+    if (userBiz.length === 0) return [];
+    const bizIds = userBiz.map((b) => b.id);
+    const allCampaigns: Campaign[] = [];
+    for (const bizId of bizIds) {
+      const c = await this.getCampaignsByBusiness(bizId);
+      allCampaigns.push(...c);
+    }
+    return allCampaigns;
+  }
+
+  async createCampaign(data: InsertCampaign): Promise<Campaign> {
+    const [camp] = await db.insert(campaigns).values(data).returning();
+    return camp;
+  }
+
+  async getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]> {
+    if (campaignIds.length === 0) return [];
+    const allLeads: Lead[] = [];
+    for (const cid of campaignIds) {
+      const l = await db.select().from(leads).where(eq(leads.campaignId, cid)).orderBy(desc(leads.createdAt));
+      allLeads.push(...l);
+    }
+    return allLeads;
+  }
+
+  async createLead(data: InsertLead): Promise<Lead> {
+    const [lead] = await db.insert(leads).values(data).returning();
+    return lead;
+  }
+
+  async getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]> {
+    if (leadIds.length === 0) return [];
+    const allResponses: AiResponse[] = [];
+    for (const lid of leadIds) {
+      const r = await db.select().from(aiResponses).where(eq(aiResponses.leadId, lid)).orderBy(desc(aiResponses.createdAt));
+      allResponses.push(...r);
+    }
+    return allResponses;
+  }
+
+  async createResponse(data: InsertAiResponse): Promise<AiResponse> {
+    const [resp] = await db.insert(aiResponses).values(data).returning();
+    return resp;
+  }
+
+  async updateResponseStatus(id: number, status: string): Promise<AiResponse> {
+    const [resp] = await db.update(aiResponses).set({ status, approvedAt: status === "approved" ? new Date() : null }).where(eq(aiResponses.id, id)).returning();
+    return resp;
+  }
+}
+
+export const storage = new DatabaseStorage();
+
+
+========== FILE: server/seed.ts ==========
+import { db } from "./db";
+import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+export async function seedDatabase() {
+  const existing = await db.select().from(businesses);
+  if (existing.length > 0) return;
+
+  console.log("Seeding database with demo data...");
+
+  const demoBiz = [
+    {
+      userId: "demo",
+      name: "Doro Mind",
+      type: "Psychiatric care for serious mental illness",
+      targetAudience: "Caregivers of patients with schizophrenia, bipolar disorder, and schizoaffective disorder",
+      coreOffering: "Comprehensive psychiatric care and support network for individuals and families dealing with serious mental illness. We provide personalized treatment plans, caregiver support groups, and access to a network of specialized mental health professionals.",
+      preferredTone: "empathetic",
+    },
+    {
+      userId: "demo",
+      name: "Chicago Bocce",
+      type: "Recreational bocce ball club",
+      targetAudience: "Adults in the Chicago area looking for social recreational activities, Italian-American community members, corporate team building groups",
+      coreOffering: "Chicago's premier bocce ball club offering leagues, tournaments, private events, and drop-in play. Located in the heart of the city with indoor and outdoor courts, great food, and a welcoming community atmosphere.",
+      preferredTone: "casual",
+    },
+    {
+      userId: "demo",
+      name: "Tony's",
+      type: "Diner in Brookfield, IL",
+      targetAudience: "Families and food lovers in the Western Suburbs of Chicago looking for a great local diner, comfort food, breakfast spots, and casual dining",
+      coreOffering: "Classic American diner in Brookfield, IL serving hearty breakfasts, comfort food favorites, and homestyle cooking. Family-owned with a warm, welcoming atmosphere. Known for generous portions, fresh ingredients, and friendly service.",
+      preferredTone: "casual",
+    },
+    {
+      userId: "demo",
+      name: "LMAITFY.ai",
+      type: "AI productivity tool",
+      targetAudience: "Tech-savvy individuals, productivity enthusiasts, people who frequently share AI prompts with colleagues",
+      coreOffering: "Let Me AI That For You - a shareable link tool that lets you create links encoding questions for specific AI assistants. Perfect for sharing complex prompts with colleagues or playfully redirecting friends to ask AI themselves.",
+      preferredTone: "casual",
+    },
+  ];
+
+  for (const biz of demoBiz) {
+    const [b] = await db.insert(businesses).values(biz).returning();
+
+    if (biz.name === "Doro Mind") {
+      const [camp1] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Facebook SMI Groups",
+        platform: "Facebook",
+        status: "active",
+        strategy: "Monitor schizophrenia, bipolar, and schizoaffective support groups on Facebook where caregivers actively seek help and recommendations.",
+        targetGroups: [
+          "Schizophrenia Support Group",
+          "Bipolar Disorder & Family Support",
+          "Schizoaffective Disorder Awareness",
+          "Mental Health Caregivers Network",
+          "NAMI Family Support"
+        ],
+        keywords: ["looking for help", "recommendations", "good psychiatrist", "treatment options", "caregiver support", "new diagnosis", "where to find", "anyone know"],
+      }).returning();
+
+      const [camp2] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Reddit Mental Health",
+        platform: "Reddit",
+        status: "active",
+        strategy: "Monitor Reddit communities focused on schizophrenia and mental health where people openly discuss treatment options and seek advice.",
+        targetGroups: [
+          "r/schizophrenia",
+          "r/bipolar",
+          "r/mentalhealth",
+          "r/AskPsychiatry"
+        ],
+        keywords: ["treatment center", "help for my", "care facility", "support group", "new diagnosis", "looking for doctor"],
+      }).returning();
+
+      const demoLeads = [
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "Schizophrenia Support Group",
+          authorName: "Maria G.",
+          originalPost: "Hi everyone, my son was recently diagnosed with schizophrenia and we're struggling to find a good care team. We're in the Midwest area. Does anyone have recommendations for comprehensive psychiatric care that also supports families?",
+          postUrl: "https://facebook.com/groups/example/post/1",
+          intentScore: 9,
+          status: "responded",
+        },
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "Mental Health Caregivers Network",
+          authorName: "David R.",
+          originalPost: "I've been caring for my sister with schizoaffective disorder for 3 years now and I'm completely burned out. Are there any organizations that help caregivers directly? I need support too.",
+          postUrl: "https://facebook.com/groups/example/post/2",
+          intentScore: 8,
+          status: "new",
+        },
+        {
+          campaignId: camp2.id,
+          platform: "Reddit",
+          groupName: "r/schizophrenia",
+          authorName: "u/hopeful_parent_23",
+          originalPost: "My daughter just turned 18 and was diagnosed last month. We're looking for a place that treats young adults with schizophrenia and also has family therapy. Cost is a concern but we'll figure it out. Any suggestions?",
+          postUrl: "https://reddit.com/r/schizophrenia/example",
+          intentScore: 10,
+          status: "new",
+        },
+      ];
+
+      for (const leadData of demoLeads) {
+        const [lead] = await db.insert(leads).values(leadData).returning();
+
+        if (leadData.status === "responded") {
+          await db.insert(aiResponses).values({
+            leadId: lead.id,
+            content: "Hi Maria, I'm so sorry to hear about your son's diagnosis -- I know how overwhelming that can be for the whole family. A friend of mine connected with Doro Mind when her family was going through something similar, and she said their approach of supporting both the patient and the family really made a difference. They have a network of specialized professionals and even caregiver support groups. Might be worth reaching out to them.",
+            status: "approved",
+          });
+        }
+      }
+    }
+
+    if (biz.name === "Chicago Bocce") {
+      const [camp] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Chicago Social Groups",
+        platform: "Facebook",
+        status: "active",
+        strategy: "Target Chicago-area social and recreational groups where people look for fun group activities, date ideas, and team building events.",
+        targetGroups: [
+          "Things to Do in Chicago",
+          "Chicago Social Club",
+          "Italian Americans of Chicago",
+          "Chicago Corporate Events",
+          "Brookfield & Western Suburbs Social"
+        ],
+        keywords: ["fun things to do", "team building", "date night", "group activity", "social sports", "where to play", "bocce"],
+      }).returning();
+
+      const [lead] = await db.insert(leads).values({
+        campaignId: camp.id,
+        platform: "Facebook",
+        groupName: "Things to Do in Chicago",
+        authorName: "Jake T.",
+        originalPost: "Looking for something different for our office team building event next month. We're tired of escape rooms. Any unique ideas in the Chicago area? About 20 people, would love something active but not too intense.",
+        postUrl: "https://facebook.com/groups/example/post/3",
+        intentScore: 8,
+        status: "responded",
+      }).returning();
+
+      await db.insert(aiResponses).values({
+        leadId: lead.id,
+        content: "Hey Jake! Have you considered bocce? Chicago Bocce is a blast for team events -- they have indoor and outdoor courts, and it's the kind of thing where everyone can play regardless of skill level. Plus they do food and drinks which makes it feel more like a party than a forced team activity. A few of us from my office went last month and people are still talking about it.",
+        status: "approved",
+      });
+    }
+
+    if (biz.name === "Tony's") {
+      const [camp1] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Western Suburbs Facebook Groups",
+        platform: "Facebook",
+        status: "active",
+        strategy: "Monitor Western Suburbs and Brookfield community groups where people ask for restaurant recommendations, date night ideas, and catering services.",
+        targetGroups: [
+          "Brookfield IL Community",
+          "Western Suburbs Foodies",
+          "La Grange & Brookfield Moms",
+          "Best Restaurants in the Western Suburbs",
+          "Brookfield & Riverside Neighbors"
+        ],
+        keywords: ["restaurant recommendation", "Italian food", "date night", "catering", "best pizza", "good pasta", "where to eat", "Brookfield restaurant", "private dining"],
+      }).returning();
+
+      const [camp2] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Reddit Chicago Food",
+        platform: "Reddit",
+        status: "active",
+        strategy: "Monitor Chicago-area food subreddits where people seek restaurant recommendations in the suburbs.",
+        targetGroups: [
+          "r/chicagofood",
+          "r/chicago",
+          "r/ChicagoSuburbs"
+        ],
+        keywords: ["Italian restaurant", "suburbs restaurant", "Brookfield", "pasta", "pizza", "date night suburbs"],
+      }).returning();
+
+      const demoLeads = [
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "Western Suburbs Foodies",
+          authorName: "Lisa M.",
+          originalPost: "Looking for a really good Italian restaurant near Brookfield for our anniversary dinner. We want somewhere with great pasta and a cozy atmosphere, not a chain. Any suggestions?",
+          postUrl: "https://facebook.com/groups/example/post/10",
+          intentScore: 9,
+          status: "responded",
+        },
+        {
+          campaignId: camp1.id,
+          platform: "Facebook",
+          groupName: "La Grange & Brookfield Moms",
+          authorName: "Karen W.",
+          originalPost: "Need a restaurant that can do catering for my daughter's communion party -- about 40 people. Preferably Italian. Anyone have a good experience with a local place?",
+          postUrl: "https://facebook.com/groups/example/post/11",
+          intentScore: 10,
+          status: "new",
+        },
+        {
+          campaignId: camp2.id,
+          platform: "Reddit",
+          groupName: "r/chicagofood",
+          authorName: "u/suburb_foodie",
+          originalPost: "Any hidden gem Italian spots in the western suburbs? Tired of the same old chains. Looking for somewhere with handmade pasta and a good wine list. Bonus if it's family-friendly.",
+          postUrl: "https://reddit.com/r/chicagofood/example",
+          intentScore: 8,
+          status: "new",
+        },
+      ];
+
+      for (const leadData of demoLeads) {
+        const [lead] = await db.insert(leads).values(leadData).returning();
+
+        if (leadData.status === "responded") {
+          await db.insert(aiResponses).values({
+            leadId: lead.id,
+            content: "Happy anniversary! You should check out Tony's in Brookfield -- my family goes there all the time. The breakfast is unreal, and it has that cozy, old-school diner vibe that just feels right. Portions are huge and the staff treats you like family. You won't be disappointed!",
+            status: "approved",
+          });
+        }
+      }
+    }
+
+    if (biz.name === "LMAITFY.ai") {
+      const [camp] = await db.insert(campaigns).values({
+        businessId: b.id,
+        name: "Reddit AI & Productivity",
+        platform: "Reddit",
+        status: "active",
+        strategy: "Monitor tech and productivity subreddits where people discuss AI tools, share prompts, and look for ways to improve their workflow.",
+        targetGroups: [
+          "r/ChatGPT",
+          "r/artificial",
+          "r/productivity",
+          "r/LifeProTips",
+          "r/cooltools"
+        ],
+        keywords: ["share prompts", "AI tool", "chatgpt link", "productivity hack", "share question", "ask AI"],
+      }).returning();
+
+      const [lead] = await db.insert(leads).values({
+        campaignId: camp.id,
+        platform: "Reddit",
+        groupName: "r/ChatGPT",
+        authorName: "u/techbro_42",
+        originalPost: "Is there an easy way to share a ChatGPT prompt with someone? Like I want to send my coworker a link that automatically loads a specific question into ChatGPT. Copy-paste is getting old.",
+        postUrl: "https://reddit.com/r/ChatGPT/example",
+        intentScore: 9,
+        status: "responded",
+      }).returning();
+
+      await db.insert(aiResponses).values({
+        leadId: lead.id,
+        content: "Oh yeah, check out LMAITFY.ai -- it does exactly this. You type in your prompt, pick which AI (ChatGPT, Gemini, Copilot), and it generates a shareable link. When someone opens it, the question auto-copies to their clipboard and redirects them. It's like the old LMGTFY but for AI. Super handy for sharing complex prompts.",
+        status: "approved",
+      });
+    }
+  }
+
+  console.log("Seed data created successfully.");
+}
+
+
+========== FILE: server/telegram.ts ==========
+const TELEGRAM_API = "https://api.telegram.org/bot";
+
+function getBotToken(): string | undefined {
+  return process.env.TELEGRAM_BOT_TOKEN;
+}
+
+function getChatId(): string | undefined {
+  return process.env.TELEGRAM_CHAT_ID;
+}
+
+export interface InlineButton {
+  text: string;
+  url?: string;
+  callback_data?: string;
+}
+
+export async function sendTelegramMessage(
+  text: string,
+  options?: { buttons?: InlineButton[][] }
+): Promise<boolean> {
+  const token = getBotToken();
+  const chatId = getChatId();
+
+  if (!token || !chatId) {
+    console.warn("Telegram not configured: missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
+    return false;
+  }
+
+  try {
+    const body: Record<string, any> = {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    };
+
+    if (options?.buttons && options.buttons.length > 0) {
+      body.reply_markup = {
+        inline_keyboard: options.buttons,
+      };
+    }
+
+    const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Telegram API error:", err);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Telegram send error:", error);
+    return false;
+  }
+}
+
+export function formatLeadNotification(lead: {
+  authorName: string;
+  groupName: string;
+  platform: string;
+  originalPost: string;
+  intentScore: number;
+}, businessName: string, aiResponse?: string): string {
+  const scoreBar = "█".repeat(lead.intentScore) + "░".repeat(10 - lead.intentScore);
+
+  let msg = `<b>New Lead Found</b>\n`;
+  msg += `<b>Business:</b> ${escapeHtml(businessName)}\n`;
+  msg += `<b>Platform:</b> ${escapeHtml(lead.platform)} / ${escapeHtml(lead.groupName)}\n`;
+  msg += `<b>Author:</b> ${escapeHtml(lead.authorName)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${lead.intentScore}/10\n\n`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(lead.originalPost)}"</i>\n`;
+
+  if (aiResponse) {
+    msg += `\n<b>Suggested Response (copy & paste):</b>\n<code>${escapeHtml(aiResponse)}</code>`;
+  }
+
+  return msg;
+}
+
+export function formatResponseNotification(lead: {
+  authorName: string;
+  groupName: string;
+  platform: string;
+  originalPost: string;
+}, businessName: string, aiResponse: string): string {
+  let msg = `<b>AI Response Ready</b>\n`;
+  msg += `<b>Business:</b> ${escapeHtml(businessName)}\n`;
+  msg += `<b>For:</b> ${escapeHtml(lead.authorName)} in ${escapeHtml(lead.groupName)}\n\n`;
+  msg += `<b>Original post:</b>\n<i>"${escapeHtml(truncate(lead.originalPost, 200))}"</i>\n\n`;
+  msg += `<b>Copy & paste this response:</b>\n<code>${escapeHtml(aiResponse)}</code>`;
+
+  return msg;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + "...";
+}
+
+
+========== FILE: server/telegram-bot.ts ==========
+import { GoogleGenAI } from "@google/genai";
+import { db } from "./db";
+import { businesses, campaigns } from "@shared/schema";
+import { sendTelegramMessage } from "./telegram";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+interface BusinessWithCampaigns {
+  id: number;
+  name: string;
+  type: string;
+  targetAudience: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaigns: Array<{
+    id: number;
+    name: string;
+    platform: string;
+    keywords: string[];
+    targetGroups: string[];
+  }>;
+}
+
+async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampaigns[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  return allBiz.map((b) => ({
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    targetAudience: b.targetAudience,
+    coreOffering: b.coreOffering,
+    preferredTone: b.preferredTone,
+    campaigns: allCamps
+      .filter((c) => c.businessId === b.id && c.status === "active")
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        platform: c.platform,
+        keywords: (c.keywords as string[]) || [],
+        targetGroups: (c.targetGroups as string[]) || [],
+      })),
+  }));
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;
+
+function extractPostUrl(text: string): string | null {
+  const matches = text.match(URL_REGEX);
+  return matches ? matches[0] : null;
+}
+
+function stripUrls(text: string): string {
+  return text.replace(URL_REGEX, "").trim();
+}
+
+function detectPlatformFromUrl(url: string): "reddit" | "facebook" | null {
+  if (/reddit\.com|redd\.it/i.test(url)) return "reddit";
+  if (/facebook\.com|fb\.com/i.test(url)) return "facebook";
+  return null;
+}
+
+function detectPlatformFromText(text: string): "reddit" | "facebook" | null {
+  const lower = text.toLowerCase();
+  if (lower.includes("reddit") || lower.includes("r/") || lower.includes("/r/")) return "reddit";
+  if (lower.includes("facebook") || lower.includes("fb group")) return "facebook";
+  return null;
+}
+
+interface PostAnalysis {
+  message: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+}
+
+async function handlePost(postText: string, groupName?: string, postUrl?: string | null): Promise<PostAnalysis> {
+  const allBiz = await getAllBusinessesWithCampaigns();
+  const platform = (postUrl ? detectPlatformFromUrl(postUrl) : null) || detectPlatformFromText(postText) || null;
+
+  if (allBiz.length === 0) {
+    return {
+      message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard first.",
+      postUrl: postUrl || null,
+      platform,
+    };
+  }
+
+  const bizSummaries = allBiz.map((b) => {
+    const kws = b.campaigns.flatMap((c) => c.keywords);
+    return `- ${b.name} (${b.type}): keywords=[${kws.join(", ")}], audience="${b.targetAudience}"`;
+  }).join("\n");
+
+  const matchPrompt = `You are a lead matching AI. Given a social media post, determine which business (if any) is the best match and score the lead intent.
+
+Available businesses:
+${bizSummaries}
+
+Post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Return ONLY valid JSON:
+{
+  "matched_business": "<exact business name or null if no match>",
+  "intent_score": <1-10>,
+  "reasoning": "<one sentence>"
+}`;
+
+  const matchResult = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: matchPrompt,
+    config: { maxOutputTokens: 1024 },
+  });
+
+  const matchText = matchResult.text || "";
+  const matchJson = matchText.match(/\{[\s\S]*\}/);
+  if (!matchJson) {
+    return {
+      message: "Could not analyze this post. Try again.",
+      postUrl: postUrl || null,
+      platform,
+    };
+  }
+
+  const match = JSON.parse(matchJson[0]);
+
+  if (!match.matched_business || match.matched_business === "null") {
+    return {
+      message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+    };
+  }
+
+  const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business.toLowerCase());
+  if (!biz) {
+    return {
+      message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      postUrl: postUrl || null,
+      platform,
+    };
+  }
+
+  if (match.intent_score < 4) {
+    return {
+      message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"█".repeat(match.intent_score)}${"░".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
+      postUrl: postUrl || null,
+      platform,
+    };
+  }
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
+
+  const responsePrompt = `You are writing a response to a ${platformLabel} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Business to recommend: ${biz.name}
+What they do: ${biz.coreOffering}
+Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`;
+
+  const responseResult = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: responsePrompt,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = (responseResult.text || "").trim();
+
+  const scoreBar = "█".repeat(match.intent_score) + "░".repeat(10 - match.intent_score);
+  const platformEmoji = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
+
+  let msg = `<b>Lead Matched!</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
+  if (platform) msg += `<b>Platform:</b> ${platformEmoji}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
+  msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>\n\n`;
+  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+
+  if (postUrl) {
+    msg += `\n\nTap the button below to open the post and paste your reply.`;
+  }
+
+  return {
+    message: msg,
+    postUrl: postUrl || null,
+    platform,
+  };
+}
+
+export function registerTelegramWebhook(app: any) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.warn("TELEGRAM_BOT_TOKEN not set, skipping bot webhook setup");
+    return;
+  }
+
+  app.post(`/api/telegram/webhook/${token}`, async (req: any, res: any) => {
+    try {
+      res.sendStatus(200);
+
+      const update = req.body;
+      if (!update?.message?.text) return;
+
+      const chatId = String(update.message.chat.id);
+      if (!ALLOWED_CHAT_ID) {
+        console.warn("TELEGRAM_CHAT_ID not set, ignoring incoming message");
+        return;
+      }
+      if (chatId !== ALLOWED_CHAT_ID) return;
+
+      const text = update.message.text.trim();
+
+      if (text === "/start") {
+        await sendTelegramMessage(
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nPaste any social media post here and I'll:\n\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n\n<b>Include the post URL</b> and I'll add an "Open Post" button so you can jump straight there to paste the reply.\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
+        );
+        return;
+      }
+
+      if (text === "/help") {
+        await sendTelegramMessage(
+          `<b>How to use Gemin-Eye Bot:</b>\n\n<b>1.</b> Browse Facebook groups or Reddit communities\n<b>2.</b> When you see a promising post, copy the URL and the post text\n<b>3.</b> Paste both here (URL + text)\n<b>4.</b> Get an AI response back in seconds\n<b>5.</b> Tap "Open Post" to jump to the post\n<b>6.</b> Paste the response as a comment\n\n<b>Formats that work:</b>\n\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<code>Western Suburbs Foodies: Looking for a good Italian place...</code>\n\n<b>Commands:</b>\n/businesses - List your businesses\n/help - Show this message`
+        );
+        return;
+      }
+
+      if (text === "/businesses") {
+        const allBiz = await getAllBusinessesWithCampaigns();
+        if (allBiz.length === 0) {
+          await sendTelegramMessage("No businesses set up yet. Add one through the Gemin-Eye dashboard.");
+          return;
+        }
+
+        let msg = `<b>Your Businesses:</b>\n\n`;
+        for (const b of allBiz) {
+          const kws = b.campaigns.flatMap((c) => c.keywords).slice(0, 5);
+          const groups = b.campaigns.flatMap((c) => c.targetGroups).slice(0, 3);
+          msg += `<b>${escapeHtml(b.name)}</b> (${escapeHtml(b.type)})\n`;
+          msg += `Groups: ${groups.map((g) => escapeHtml(g)).join(", ")}\n`;
+          msg += `Keywords: ${kws.map((k) => escapeHtml(k)).join(", ")}\n\n`;
+        }
+        await sendTelegramMessage(msg);
+        return;
+      }
+
+      if (text.startsWith("/")) return;
+
+      await sendTelegramMessage("Analyzing post...");
+
+      const postUrl = extractPostUrl(text);
+      let postText = postUrl ? stripUrls(text) : text;
+
+      let groupName: string | undefined;
+      const colonMatch = postText.match(/^([^:]{3,50}):\s+([\s\S]+)/);
+      if (colonMatch) {
+        groupName = colonMatch[1].trim();
+        postText = colonMatch[2].trim();
+      }
+
+      if (!postText || postText.length < 5) {
+        await sendTelegramMessage(
+          "I need more text to analyze. Please paste the post content along with the URL.\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>"
+        );
+        return;
+      }
+
+      const result = await handlePost(postText, groupName, postUrl);
+
+      const buttons = [];
+      if (result.postUrl) {
+        const label = result.platform === "reddit" ? "Open Reddit Post" : result.platform === "facebook" ? "Open Facebook Post" : "Open Post";
+        buttons.push([{ text: label, url: result.postUrl }]);
+      }
+
+      await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+    } catch (error) {
+      console.error("Telegram webhook error:", error);
+      await sendTelegramMessage("Something went wrong analyzing that post. Please try again.").catch(() => {});
+    }
+  });
+
+  registerWebhook(token).catch((e) => console.error("Failed to register Telegram webhook:", e));
+}
+
+async function registerWebhook(token: string) {
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+
+  let webhookUrl: string;
+  if (replitDevDomain) {
+    webhookUrl = `https://${replitDevDomain}/api/telegram/webhook/${token}`;
+  } else if (replSlug && replOwner) {
+    webhookUrl = `https://${replSlug}.${replOwner}.repl.co/api/telegram/webhook/${token}`;
+  } else {
+    console.warn("Could not determine public URL for Telegram webhook");
+    return;
+  }
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: webhookUrl }),
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      console.log("Telegram webhook registered successfully");
+    } else {
+      console.error("Telegram webhook registration failed:", data.description || "unknown error");
+    }
+  } catch (error) {
+    console.error("Error registering Telegram webhook:", error);
+  }
+}
+
+
+========== FILE: server/db.ts ==========
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "@shared/schema";
+
+const { Pool } = pg;
+
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
+}
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });
+
+
+========== FILE: server/static.ts ==========
+import express, { type Express } from "express";
+import fs from "fs";
+import path from "path";
+
+export function serveStatic(app: Express) {
+  const distPath = path.resolve(__dirname, "public");
+  if (!fs.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+    );
+  }
+
+  app.use(express.static(distPath));
+
+  // fall through to index.html if the file doesn't exist
+  app.use("/{*path}", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
+}
+
+
+========== FILE: client/src/App.tsx ==========
+import { Switch, Route } from "wouter";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/theme-provider";
+import { useAuth } from "@/hooks/use-auth";
+import LandingPage from "@/pages/landing";
+import Dashboard from "@/pages/dashboard";
+import OnboardingPage from "@/pages/onboarding";
+import NotFound from "@/pages/not-found";
+
+function AuthRouter() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return null;
+  }
+
+  return (
+    <Switch>
+      <Route path="/" component={user ? Dashboard : LandingPage} />
+      <Route path="/onboarding" component={OnboardingPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <Toaster />
+          <AuthRouter />
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
+
+
+========== FILE: client/src/main.tsx ==========
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+createRoot(document.getElementById("root")!).render(<App />);
+
+
+========== FILE: client/src/pages/landing.tsx ==========
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send } from "lucide-react";
+import { SiFacebook, SiReddit } from "react-icons/si";
+import { useTheme } from "@/components/theme-provider";
+
+const demoPost = {
+  author: "Sarah M.",
+  group: "West Suburbs Community",
+  text: "Hey everyone, looking for a reliable estate planning lawyer in the West Suburbs. Any recommendations?",
+};
+
+const demoResponse = "Hi Sarah! A friend of mine recently worked with Mitchell & Associates on their estate plan and had a wonderful experience. They're based right in Brookfield and really take the time to explain everything. Might be worth giving them a call!";
+
+function TypingAnimation({ text, onComplete }: { text: string; onComplete?: () => void }) {
+  const [displayed, setDisplayed] = useState("");
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (index < text.length) {
+      const timer = setTimeout(() => {
+        setDisplayed((prev) => prev + text[index]);
+        setIndex((prev) => prev + 1);
+      }, 18);
+      return () => clearTimeout(timer);
+    } else {
+      onComplete?.();
+    }
+  }, [index, text, onComplete]);
+
+  return (
+    <span>
+      {displayed}
+      {index < text.length && (
+        <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse" />
+      )}
+    </span>
+  );
+}
+
+function DemoPreview() {
+  const [stage, setStage] = useState<"post" | "thinking" | "response">("post");
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setStage("thinking"), 2500);
+    const t2 = setTimeout(() => setStage("response"), 4500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+
+  return (
+    <div className="relative">
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center">
+            <Users className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-medium" data-testid="text-demo-author">{demoPost.author}</p>
+            <p className="text-xs text-muted-foreground">{demoPost.group}</p>
+          </div>
+        </div>
+        <p className="text-sm leading-relaxed text-foreground/90" data-testid="text-demo-post">
+          "{demoPost.text}"
+        </p>
+
+        {stage === "thinking" && (
+          <div className="flex items-center gap-2 pt-2">
+            <Bot className="w-4 h-4 text-primary animate-pulse" />
+            <span className="text-xs text-primary font-medium">AI Agent Thinking...</span>
+            <div className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
+        )}
+
+        {stage === "response" && (
+          <div className="border-t pt-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-chart-2/20 flex items-center justify-center">
+                <Send className="w-3 h-3 text-chart-2" />
+              </div>
+              <span className="text-xs font-medium text-chart-2">Gemin-Eye Response</span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/80" data-testid="text-demo-response">
+              <TypingAnimation text={demoResponse} />
+            </p>
+          </div>
+        )}
+      </Card>
+      <div className="absolute -top-3 -right-3">
+        <Badge variant="secondary" className="text-xs">Live Demo</Badge>
+      </div>
+    </div>
+  );
+}
+
+export default function LandingPage() {
+  const { theme, toggleTheme } = useTheme();
+
+  const features = [
+    {
+      icon: Target,
+      title: "Hyper-Targeted",
+      description: "We find the exact people asking for your service right now. No wasted impressions.",
+      color: "text-primary",
+      bg: "bg-primary/10",
+    },
+    {
+      icon: MessageCircle,
+      title: "Subtle & Human",
+      description: "Our AI crafts responses that look like friendly advice, not disruptive ads.",
+      color: "text-chart-2",
+      bg: "bg-chart-2/10",
+    },
+    {
+      icon: Shield,
+      title: "Trusted Channels",
+      description: "By participating in niche groups, your brand leverages built-in community trust.",
+      color: "text-chart-3",
+      bg: "bg-chart-3/10",
+    },
+  ];
+
+  const howItWorks = [
+    {
+      step: "01",
+      title: "Describe Your Business",
+      description: "Tell us who you are, what you offer, and who your ideal customer is.",
+      icon: Users,
+    },
+    {
+      step: "02",
+      title: "AI Generates Your Strategy",
+      description: "Our top-tier AI analyzes your business and identifies the best groups, keywords, and platforms to target.",
+      icon: Bot,
+    },
+    {
+      step: "03",
+      title: "Monitor & Respond",
+      description: "Gemin-Eye watches for high-intent posts and crafts human-like responses. You approve and post in seconds via Telegram alerts.",
+      icon: Zap,
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-background/80 border-b">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Eye className="w-6 h-6 text-primary" />
+            <span className="font-semibold text-lg tracking-tight" data-testid="text-brand-name">Gemin-Eye</span>
+          </div>
+          <div className="hidden md:flex items-center gap-6">
+            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
+            <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" asChild data-testid="button-login">
+              <a href="/api/login">Log In</a>
+            </Button>
+            <Button size="sm" asChild data-testid="button-get-started">
+              <a href="/api/login">Get Started <ArrowRight className="w-4 h-4 ml-1" /></a>
+            </Button>
+          </div>
+        </div>
+      </nav>
+
+      <section className="pt-32 pb-20 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div className="space-y-6">
+            <Badge variant="secondary" className="text-xs" data-testid="badge-tagline">
+              <Zap className="w-3 h-3 mr-1" /> AI-Powered Customer Acquisition
+            </Badge>
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-serif font-bold leading-tight tracking-tight" data-testid="text-hero-title">
+              Customer Acquisition,{" "}
+              <span className="text-primary">Reimagined.</span>
+            </h1>
+            <p className="text-lg text-muted-foreground max-w-lg leading-relaxed" data-testid="text-hero-subtitle">
+              Stop blasting ads to millions. Gemin-Eye monitors specific interest groups and responds to high-intent questions as a helpful human.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="lg" asChild data-testid="button-hero-cta">
+                <a href="/api/login">
+                  Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
+                </a>
+              </Button>
+              <Button variant="outline" size="lg" asChild data-testid="button-hero-demo">
+                <a href="#how-it-works">View Demo</a>
+              </Button>
+            </div>
+            <div className="flex items-center gap-4 pt-2">
+              <div className="flex items-center gap-1.5">
+                <SiFacebook className="w-4 h-4 text-muted-foreground" />
+                <SiReddit className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <span className="text-xs text-muted-foreground">Monitors Facebook, Reddit & more</span>
+            </div>
+          </div>
+
+          <div className="lg:pl-8">
+            <DemoPreview />
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className="py-20 px-4 sm:px-6 bg-card/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-serif font-bold mb-3" data-testid="text-features-title">The Smartest Way to Sell</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Direct, intentional response advertising that finds your customers where they're already asking.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {features.map((f) => (
+              <Card key={f.title} className="p-6 space-y-4 hover-elevate" data-testid={`card-feature-${f.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                <div className={`w-10 h-10 rounded-md ${f.bg} flex items-center justify-center`}>
+                  <f.icon className={`w-5 h-5 ${f.color}`} />
+                </div>
+                <h3 className="font-semibold text-lg">{f.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" className="py-20 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-serif font-bold mb-3" data-testid="text-how-title">How It Works</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              From setup to your first lead in minutes, not months.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-8">
+            {howItWorks.map((step) => (
+              <div key={step.step} className="text-center space-y-4" data-testid={`step-${step.step}`}>
+                <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                  <step.icon className="w-6 h-6 text-primary" />
+                </div>
+                <div className="text-xs font-mono text-primary font-semibold">STEP {step.step}</div>
+                <h3 className="font-semibold text-lg">{step.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 bg-card/50">
+        <div className="max-w-2xl mx-auto text-center space-y-6">
+          <h2 className="text-3xl font-serif font-bold" data-testid="text-cta-title">Ready to Find Your Next Customer?</h2>
+          <p className="text-muted-foreground">
+            Join businesses that are already using AI to turn community conversations into qualified leads.
+          </p>
+          <Button size="lg" asChild data-testid="button-cta-final">
+            <a href="/api/login">
+              Start For Free <ArrowRight className="w-4 h-4 ml-2" />
+            </a>
+          </Button>
+        </div>
+      </section>
+
+      <footer className="border-t py-8 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Eye className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">Gemin-Eye</span>
+          </div>
+          <p className="text-xs text-muted-foreground">&copy; 2026 Gemin-Eye. All rights reserved.</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+
+========== FILE: client/src/pages/dashboard.tsx ==========
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
+  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send
+} from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
+
+function StatCard({ title, value, icon: Icon, trend, color }: {
+  title: string; value: string | number; icon: any; trend?: string; color: string;
+}) {
+  return (
+    <Card className="p-5 space-y-3" data-testid={`stat-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm text-muted-foreground">{title}</span>
+        <div className={`w-9 h-9 rounded-md ${color} flex items-center justify-center`}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      <div className="flex items-end justify-between gap-4">
+        <span className="text-2xl font-bold">{value}</span>
+        {trend && (
+          <span className="text-xs text-chart-2 flex items-center gap-1">
+            <TrendingUp className="w-3 h-3" /> {trend}
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
+  const { toast } = useToast();
+
+  const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
+    new: { label: "New", variant: "default", icon: AlertCircle },
+    responded: { label: "Responded", variant: "secondary", icon: CheckCircle },
+    pending: { label: "Pending", variant: "secondary", icon: Clock },
+  };
+
+  const config = statusConfig[lead.status] || statusConfig.new;
+
+  const handleCopy = () => {
+    if (response) {
+      navigator.clipboard.writeText(response.content);
+      toast({ title: "Copied!", description: "Response copied to clipboard." });
+    }
+  };
+
+  const sendToTelegram = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/telegram/notify-lead", { leadId: lead.id });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Sent to Telegram", description: "Lead notification sent to your Telegram." });
+    },
+    onError: () => {
+      toast({ title: "Failed", description: "Could not send to Telegram.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card className="p-5 space-y-4" data-testid={`card-lead-${lead.id}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center">
+            <MessageCircle className="w-4 h-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{lead.authorName}</p>
+            <p className="text-xs text-muted-foreground truncate">{lead.groupName} &middot; {lead.platform}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant={config.variant} className="text-xs">
+            <config.icon className="w-3 h-3 mr-1" />
+            {config.label}
+          </Badge>
+          <Badge variant="secondary" className="text-xs">
+            {lead.intentScore}/10
+          </Badge>
+        </div>
+      </div>
+
+      <p className="text-sm leading-relaxed bg-muted/50 p-3 rounded-md" data-testid={`text-lead-post-${lead.id}`}>
+        "{lead.originalPost}"
+      </p>
+
+      {response && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Zap className="w-3 h-3 text-chart-2" />
+            <span className="text-xs font-medium text-chart-2">AI Response</span>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground" data-testid={`text-response-${lead.id}`}>
+            {response.content}
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={handleCopy} data-testid={`button-copy-${lead.id}`}>
+              <Copy className="w-3 h-3 mr-1" /> Copy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendToTelegram.mutate()}
+              disabled={sendToTelegram.isPending}
+              data-testid={`button-telegram-${lead.id}`}
+            >
+              <Send className="w-3 h-3 mr-1" /> {sendToTelegram.isPending ? "Sending..." : "Send to Telegram"}
+            </Button>
+            {lead.postUrl && (
+              <Button variant="outline" size="sm" asChild data-testid={`button-link-${lead.id}`}>
+                <a href={lead.postUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="w-3 h-3 mr-1" /> Open Post
+                </a>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CampaignCard({ campaign }: { campaign: Campaign }) {
+  return (
+    <Card className="p-5 space-y-3 hover-elevate" data-testid={`card-campaign-${campaign.id}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold truncate">{campaign.name}</h3>
+        <Badge variant={campaign.status === "active" ? "default" : "secondary"} className="text-xs flex-shrink-0">
+          {campaign.status}
+        </Badge>
+      </div>
+      <div className="flex items-center gap-3">
+        <Badge variant="secondary" className="text-xs">{campaign.platform}</Badge>
+        <span className="text-xs text-muted-foreground">
+          {(campaign.targetGroups as string[])?.length || 0} groups
+        </span>
+      </div>
+      {campaign.keywords && (campaign.keywords as string[]).length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {(campaign.keywords as string[]).slice(0, 4).map((kw, i) => (
+            <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded-md text-muted-foreground">
+              {kw}
+            </span>
+          ))}
+          {(campaign.keywords as string[]).length > 4 && (
+            <span className="text-xs text-muted-foreground">+{(campaign.keywords as string[]).length - 4} more</span>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function Dashboard() {
+  const { user, isLoading: authLoading, logout } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      window.location.href = "/api/login";
+    }
+  }, [authLoading, user]);
+
+  const { data: businesses, isLoading: bizLoading } = useQuery<Business[]>({
+    queryKey: ["/api/businesses"],
+    enabled: !!user,
+  });
+
+  const { data: campaigns, isLoading: campLoading } = useQuery<Campaign[]>({
+    queryKey: ["/api/campaigns"],
+    enabled: !!user,
+  });
+
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
+    queryKey: ["/api/leads"],
+    enabled: !!user,
+  });
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="space-y-4 text-center">
+          <Eye className="w-8 h-8 text-primary mx-auto animate-pulse" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  const leads = leadsData?.leads || [];
+  const responses = leadsData?.responses || [];
+  const hasBusiness = businesses && businesses.length > 0;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={user.profileImageUrl || ""} />
+              <AvatarFallback className="text-xs">{user.firstName?.[0] || user.email?.[0] || "U"}</AvatarFallback>
+            </Avatar>
+            <span className="text-sm hidden sm:block">{user.firstName || user.email}</span>
+            <Button variant="ghost" size="icon" onClick={() => logout()} data-testid="button-logout">
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+        {!hasBusiness ? (
+          <div className="text-center py-20 space-y-6">
+            <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+              <Eye className="w-8 h-8 text-primary" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-serif font-bold">Welcome to Gemin-Eye</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Set up your business profile and let AI generate your customer acquisition strategy.
+              </p>
+            </div>
+            <Button size="lg" onClick={() => setLocation("/onboarding")} data-testid="button-setup-business">
+              Set Up Your Business <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+                <p className="text-sm text-muted-foreground">{businesses?.[0]?.name}</p>
+              </div>
+              <Button onClick={() => setLocation("/onboarding")} data-testid="button-new-campaign">
+                <Plus className="w-4 h-4 mr-1" /> New Campaign
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard
+                title="Active Campaigns"
+                value={campaigns?.filter((c) => c.status === "active").length || 0}
+                icon={Target}
+                color="bg-primary/10 text-primary"
+              />
+              <StatCard
+                title="Leads Found"
+                value={leads.length}
+                icon={Users}
+                trend="+12%"
+                color="bg-chart-2/10 text-chart-2"
+              />
+              <StatCard
+                title="Responses Sent"
+                value={responses.filter((r) => r.status === "approved").length}
+                icon={MessageCircle}
+                color="bg-chart-3/10 text-chart-3"
+              />
+              <StatCard
+                title="Avg. Intent Score"
+                value={leads.length > 0 ? (leads.reduce((s, l) => s + l.intentScore, 0) / leads.length).toFixed(1) : "0"}
+                icon={Zap}
+                color="bg-chart-4/10 text-chart-4"
+              />
+            </div>
+
+            {campaigns && campaigns.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold" data-testid="text-campaigns-title">Active Campaigns</h2>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {campaigns.map((c) => (
+                    <CampaignCard key={c.id} campaign={c} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold" data-testid="text-leads-title">Recent Leads</h2>
+                {leads.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">{leads.length} total</Badge>
+                )}
+              </div>
+              {leadsLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-40 w-full rounded-md" />
+                  ))}
+                </div>
+              ) : leads.length === 0 ? (
+                <Card className="p-8 text-center space-y-3">
+                  <Target className="w-8 h-8 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No leads yet. Your AI agent is monitoring target groups.</p>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {leads.map((lead) => {
+                    const resp = responses.find((r) => r.leadId === lead.id);
+                    return <LeadCard key={lead.id} lead={lead} response={resp} />;
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+
+========== FILE: client/src/pages/onboarding.tsx ==========
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage
+} from "@/components/ui/form";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import {
+  Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
+  CheckCircle, Bot, Zap
+} from "lucide-react";
+import { SiFacebook, SiReddit } from "react-icons/si";
+import { useToast } from "@/hooks/use-toast";
+
+const businessFormSchema = z.object({
+  name: z.string().min(1, "Business name is required"),
+  type: z.string().min(1, "Business type is required"),
+  targetAudience: z.string().min(1, "Target audience is required"),
+  coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
+  preferredTone: z.string().min(1, "Please select a tone"),
+});
+
+type BusinessFormData = z.infer<typeof businessFormSchema>;
+
+interface StrategyResult {
+  platforms: Array<{ name: string; icon: string }>;
+  groups: string[];
+  keywords: string[];
+  sampleResponse: string;
+  rationale: string;
+}
+
+export default function OnboardingPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<"profile" | "strategy" | "complete">("profile");
+  const [strategy, setStrategy] = useState<StrategyResult | null>(null);
+
+  const form = useForm<BusinessFormData>({
+    resolver: zodResolver(businessFormSchema),
+    defaultValues: {
+      name: "",
+      type: "",
+      targetAudience: "",
+      coreOffering: "",
+      preferredTone: "empathetic",
+    },
+  });
+
+  const generateStrategy = useMutation({
+    mutationFn: async (data: BusinessFormData) => {
+      const res = await apiRequest("POST", "/api/strategy/generate", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setStrategy(data);
+      setStep("strategy");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to generate strategy. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createBusiness = useMutation({
+    mutationFn: async (data: BusinessFormData & { strategy: StrategyResult }) => {
+      const res = await apiRequest("POST", "/api/businesses", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      setStep("complete");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save your business. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmitProfile = (data: BusinessFormData) => {
+    generateStrategy.mutate(data);
+  };
+
+  const onApproveStrategy = () => {
+    if (!strategy) return;
+    const formData = form.getValues();
+    createBusiness.mutate({ ...formData, strategy });
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Eye className="w-8 h-8 text-primary animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    window.location.href = "/api/login";
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <nav className="border-b">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation("/")}>
+            <Eye className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${step === "profile" ? "bg-primary" : "bg-chart-2"}`} />
+            <div className={`w-8 h-0.5 ${step !== "profile" ? "bg-chart-2" : "bg-muted"}`} />
+            <div className={`w-2 h-2 rounded-full ${step === "strategy" ? "bg-primary" : step === "complete" ? "bg-chart-2" : "bg-muted"}`} />
+            <div className={`w-8 h-0.5 ${step === "complete" ? "bg-chart-2" : "bg-muted"}`} />
+            <div className={`w-2 h-2 rounded-full ${step === "complete" ? "bg-primary" : "bg-muted"}`} />
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
+        {step === "profile" && (
+          <div className="space-y-8">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-serif font-bold" data-testid="text-onboarding-title">Setup Your Agent</h1>
+              <p className="text-muted-foreground">
+                Provide the intelligence Gemin-Eye needs to represent you.
+              </p>
+            </div>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmitProfile)} className="space-y-6">
+                <Card className="p-6 space-y-5">
+                  <h2 className="font-semibold flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" /> Business Profile
+                  </h2>
+
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Business Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Doro Mind" {...field} data-testid="input-business-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Business Type / Niche</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Psychiatric care for serious mental illness" {...field} data-testid="input-business-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="targetAudience"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Target Audience</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Caregivers of patients with schizophrenia" {...field} data-testid="input-target-audience" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="coreOffering"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Core Offering & Unique Value</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Describe what makes your business unique and what you offer..."
+                            className="resize-none"
+                            rows={4}
+                            {...field}
+                            data-testid="input-core-offering"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="preferredTone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preferred Tone</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-tone">
+                              <SelectValue placeholder="Select tone" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="empathetic">Empathetic & Supportive</SelectItem>
+                            <SelectItem value="professional">Professional & Authoritative</SelectItem>
+                            <SelectItem value="casual">Casual & Friendly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Card>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  disabled={generateStrategy.isPending}
+                  data-testid="button-generate-strategy"
+                >
+                  {generateStrategy.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      AI is Analyzing Your Business...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate AI Strategy
+                    </>
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </div>
+        )}
+
+        {step === "strategy" && strategy && (
+          <div className="space-y-8">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={() => setStep("profile")} data-testid="button-back">
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <h1 className="text-3xl font-serif font-bold" data-testid="text-strategy-title">Your AI Strategy</h1>
+              </div>
+              <p className="text-muted-foreground pl-12">
+                Review the strategy Gemin-Eye created for your business.
+              </p>
+            </div>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Bot className="w-4 h-4 text-primary" /> Strategy Rationale
+              </h2>
+              <p className="text-sm leading-relaxed text-muted-foreground" data-testid="text-strategy-rationale">
+                {strategy.rationale}
+              </p>
+            </Card>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Target className="w-4 h-4 text-primary" /> Recommended Platforms & Groups
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {strategy.platforms.map((p) => (
+                  <Badge key={p.name} variant="secondary" className="text-xs">
+                    {p.name === "Facebook" && <SiFacebook className="w-3 h-3 mr-1" />}
+                    {p.name === "Reddit" && <SiReddit className="w-3 h-3 mr-1" />}
+                    {p.name}
+                  </Badge>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <span className="text-sm font-medium">Target Groups</span>
+                <div className="grid gap-2">
+                  {strategy.groups.map((g, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+                      <CheckCircle className="w-3 h-3 text-chart-2 flex-shrink-0" />
+                      {g}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" /> Keywords to Monitor
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {strategy.keywords.map((kw, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs font-mono">{kw}</Badge>
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" /> Sample AI Response
+              </h2>
+              <div className="bg-muted/50 p-4 rounded-md">
+                <p className="text-sm leading-relaxed italic text-muted-foreground" data-testid="text-sample-response">
+                  "{strategy.sampleResponse}"
+                </p>
+              </div>
+            </Card>
+
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={onApproveStrategy}
+              disabled={createBusiness.isPending}
+              data-testid="button-approve-strategy"
+            >
+              {createBusiness.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Setting Up Your Agent...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Approve & Launch Campaign
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {step === "complete" && (
+          <div className="text-center py-20 space-y-6">
+            <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
+              <CheckCircle className="w-10 h-10 text-chart-2" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">You're All Set!</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Your Gemin-Eye agent is now monitoring target groups. You'll be notified when high-intent leads are found.
+              </p>
+            </div>
+            <Button size="lg" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
+              Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+
+========== FILE: client/src/pages/not-found.tsx ==========
+import { Card, CardContent } from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
+
+export default function NotFound() {
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+      <Card className="w-full max-w-md mx-4">
+        <CardContent className="pt-6">
+          <div className="flex mb-4 gap-2">
+            <AlertCircle className="h-8 w-8 text-red-500" />
+            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
+          </div>
+
+          <p className="mt-4 text-sm text-gray-600">
+            Did you forget to add the page to the router?
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+
+========== FILE: client/src/hooks/use-auth.ts ==========
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { User } from "@shared/models/auth";
+
+async function fetchUser(): Promise<User | null> {
+  const response = await fetch("/api/auth/user", {
+    credentials: "include",
+  });
+
+  if (response.status === 401) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`${response.status}: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+async function logout(): Promise<void> {
+  window.location.href = "/api/logout";
+}
+
+export function useAuth() {
+  const queryClient = useQueryClient();
+  const { data: user, isLoading } = useQuery<User | null>({
+    queryKey: ["/api/auth/user"],
+    queryFn: fetchUser,
+    retry: false,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      queryClient.setQueryData(["/api/auth/user"], null);
+    },
+  });
+
+  return {
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    logout: logoutMutation.mutate,
+    isLoggingOut: logoutMutation.isPending,
+  };
+}
+
+
+========== FILE: client/src/lib/queryClient.ts ==========
+import { QueryClient, QueryFunction } from "@tanstack/react-query";
+
+async function throwIfResNotOk(res: Response) {
+  if (!res.ok) {
+    const text = (await res.text()) || res.statusText;
+    throw new Error(`${res.status}: ${text}`);
+  }
+}
+
+export async function apiRequest(
+  method: string,
+  url: string,
+  data?: unknown | undefined,
+): Promise<Response> {
+  const res = await fetch(url, {
+    method,
+    headers: data ? { "Content-Type": "application/json" } : {},
+    body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
+  });
+
+  await throwIfResNotOk(res);
+  return res;
+}
+
+type UnauthorizedBehavior = "returnNull" | "throw";
+export const getQueryFn: <T>(options: {
+  on401: UnauthorizedBehavior;
+}) => QueryFunction<T> =
+  ({ on401: unauthorizedBehavior }) =>
+  async ({ queryKey }) => {
+    const res = await fetch(queryKey.join("/") as string, {
+      credentials: "include",
+    });
+
+    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+      return null;
+    }
+
+    await throwIfResNotOk(res);
+    return await res.json();
+  };
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      queryFn: getQueryFn({ on401: "throw" }),
+      refetchInterval: false,
+      refetchOnWindowFocus: false,
+      staleTime: Infinity,
+      retry: false,
+    },
+    mutations: {
+      retry: false,
+    },
+  },
+});
+
+
+========== FILE: client/src/lib/auth-utils.ts ==========
+export function isUnauthorizedError(error: Error): boolean {
+  return /^401: .*Unauthorized/.test(error.message);
+}
+
+// Redirect to login with a toast notification
+export function redirectToLogin(toast?: (options: { title: string; description: string; variant: string }) => void) {
+  if (toast) {
+    toast({
+      title: "Unauthorized",
+      description: "You are logged out. Logging in again...",
+      variant: "destructive",
+    });
+  }
+  setTimeout(() => {
+    window.location.href = "/api/login";
+  }, 500);
+}
+
+
+========== FILE: client/src/components/theme-provider.tsx ==========
+import { createContext, useContext, useEffect, useState } from "react";
+
+type Theme = "light" | "dark";
+
+interface ThemeContextType {
+  theme: Theme;
+  toggleTheme: () => void;
+}
+
+const ThemeContext = createContext<ThemeContextType>({
+  theme: "dark",
+  toggleTheme: () => {},
+});
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("gemin-eye-theme") as Theme) || "dark";
+    }
+    return "dark";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add(theme);
+    localStorage.setItem("gemin-eye-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  };
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  return useContext(ThemeContext);
+}
+
+
+========== FILE: client/src/index.css ==========
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* LIGHT MODE */
+:root {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .08);
+  --background: 0 0% 100%;
+  --foreground: 240 10% 10%;
+  --border: 240 6% 90%;
+  --card: 240 6% 97%;
+  --card-foreground: 240 10% 10%;
+  --card-border: 240 6% 92%;
+  --sidebar: 250 20% 96%;
+  --sidebar-foreground: 240 10% 10%;
+  --sidebar-border: 250 10% 90%;
+  --sidebar-primary: 258 70% 55%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 250 15% 91%;
+  --sidebar-accent-foreground: 240 10% 10%;
+  --sidebar-ring: 258 70% 55%;
+  --popover: 240 6% 96%;
+  --popover-foreground: 240 10% 10%;
+  --popover-border: 240 6% 89%;
+  --primary: 258 70% 55%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 5% 92%;
+  --secondary-foreground: 240 10% 10%;
+  --muted: 240 5% 93%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 250 15% 93%;
+  --accent-foreground: 240 10% 10%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 240 6% 75%;
+  --ring: 258 70% 55%;
+  --chart-1: 258 70% 55%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 200 80% 50%;
+  --chart-4: 35 91% 51%;
+  --chart-5: 340 82% 52%;
+  --font-sans: Inter, sans-serif;
+  --font-serif: Playfair Display, serif;
+  --font-mono: JetBrains Mono, monospace;
+  --radius: .5rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+
+/* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+.dark {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+  --background: 250 15% 6%;
+  --foreground: 240 5% 95%;
+  --border: 250 10% 16%;
+  --card: 250 15% 9%;
+  --card-foreground: 240 5% 95%;
+  --card-border: 250 10% 13%;
+  --sidebar: 250 18% 10%;
+  --sidebar-foreground: 240 5% 95%;
+  --sidebar-border: 250 10% 14%;
+  --sidebar-primary: 258 70% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 250 15% 16%;
+  --sidebar-accent-foreground: 240 5% 95%;
+  --sidebar-ring: 258 70% 60%;
+  --popover: 250 15% 12%;
+  --popover-foreground: 240 5% 95%;
+  --popover-border: 250 10% 16%;
+  --primary: 258 70% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 250 10% 17%;
+  --secondary-foreground: 240 5% 95%;
+  --muted: 250 10% 16%;
+  --muted-foreground: 240 5% 60%;
+  --accent: 250 15% 18%;
+  --accent-foreground: 240 5% 95%;
+  --destructive: 0 62% 30%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 250 10% 30%;
+  --ring: 258 70% 60%;
+  --chart-1: 258 65% 65%;
+  --chart-2: 160 55% 55%;
+  --chart-3: 200 70% 60%;
+  --chart-4: 35 85% 62%;
+  --chart-5: 340 75% 65%;
+  --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 1px 2px -1px hsl(0 0% 0% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 2px 4px -1px hsl(0 0% 0% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 4px 6px -1px hsl(0 0% 0% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00), 0px 8px 10px -1px hsl(0 0% 0% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
+
+/* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/**
+ * Using the elevate system.
+ * Automatic contrast adjustment.
+ *
+ * <element className="hover-elevate" />
+ * <element className="active-elevate-2" />
+ *
+ * // Using the tailwind utility when a data attribute is "on"
+ * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
+ * // Or manually controlling the toggle state
+ * <element className="toggle-elevate toggle-elevated" />
+ *
+ * Elevation systems have to handle many states.
+ * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
+ * - toggled or not
+ * - focused or not (this is not handled with these utilities)
+ *
+ * Even without handling focused or not, this is six possible combinations that
+ * need to be distinguished from eachother visually.
+ */
+@layer utilities {
+
+  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  input[type="search"]::-webkit-search-cancel-button {
+    @apply hidden;
+  }
+
+  /* Placeholder styling for contentEditable div */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
+   * buttons/badges can remove the automatic brightness adjustment on interactions
+   * and program their own. */
+  .no-default-hover-elevate {}
+
+  .no-default-active-elevate {}
+
+
+  /**
+   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
+   * This way they can stack/compound. Both will overlap the parent's borders!
+   * So borders will be automatically adjusted both on toggle, and hover/active,
+   * and they will be compounded.
+   */
+  .toggle-elevate::before,
+  .toggle-elevate-2::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: -1;
+    /* sits behind content but above backdrop */
+  }
+
+  .toggle-elevate.toggle-elevated::before {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.toggle-elevate::before {
+    inset: -1px;
+  }
+
+  /* Does not work on elements with overflow:hidden! */
+  .hover-elevate:not(.no-default-hover-elevate),
+  .active-elevate:not(.no-default-active-elevate),
+  .hover-elevate-2:not(.no-default-hover-elevate),
+  .active-elevate-2:not(.no-default-active-elevate) {
+    position: relative;
+    z-index: 0;
+  }
+
+  .hover-elevate:not(.no-default-hover-elevate)::after,
+  .active-elevate:not(.no-default-active-elevate)::after,
+  .hover-elevate-2:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:not(.no-default-active-elevate)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: 999;
+    /* sits in front of content */
+  }
+
+  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-1);
+  }
+
+  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
+    inset: -1px;
+  }
+}
+
+
+========== FILE: package.json ==========
+{
+  "name": "rest-express",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "NODE_ENV=development tsx server/index.ts",
+    "build": "tsx script/build.ts",
+    "start": "NODE_ENV=production node dist/index.cjs",
+    "check": "tsc",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@google/genai": "^1.41.0",
+    "@hookform/resolvers": "^3.10.0",
+    "@jridgewell/trace-mapping": "^0.3.25",
+    "@radix-ui/react-accordion": "^1.2.4",
+    "@radix-ui/react-alert-dialog": "^1.1.7",
+    "@radix-ui/react-aspect-ratio": "^1.1.3",
+    "@radix-ui/react-avatar": "^1.1.4",
+    "@radix-ui/react-checkbox": "^1.1.5",
+    "@radix-ui/react-collapsible": "^1.1.4",
+    "@radix-ui/react-context-menu": "^2.2.7",
+    "@radix-ui/react-dialog": "^1.1.7",
+    "@radix-ui/react-dropdown-menu": "^2.1.7",
+    "@radix-ui/react-hover-card": "^1.1.7",
+    "@radix-ui/react-label": "^2.1.3",
+    "@radix-ui/react-menubar": "^1.1.7",
+    "@radix-ui/react-navigation-menu": "^1.2.6",
+    "@radix-ui/react-popover": "^1.1.7",
+    "@radix-ui/react-progress": "^1.1.3",
+    "@radix-ui/react-radio-group": "^1.2.4",
+    "@radix-ui/react-scroll-area": "^1.2.4",
+    "@radix-ui/react-select": "^2.1.7",
+    "@radix-ui/react-separator": "^1.1.3",
+    "@radix-ui/react-slider": "^1.2.4",
+    "@radix-ui/react-slot": "^1.2.0",
+    "@radix-ui/react-switch": "^1.1.4",
+    "@radix-ui/react-tabs": "^1.1.4",
+    "@radix-ui/react-toast": "^1.2.7",
+    "@radix-ui/react-toggle": "^1.1.3",
+    "@radix-ui/react-toggle-group": "^1.1.3",
+    "@radix-ui/react-tooltip": "^1.2.0",
+    "@tanstack/react-query": "^5.60.5",
+    "@types/memoizee": "^0.4.12",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "connect-pg-simple": "^10.0.0",
+    "date-fns": "^3.6.0",
+    "drizzle-orm": "^0.39.3",
+    "drizzle-zod": "^0.7.1",
+    "embla-carousel-react": "^8.6.0",
+    "express": "^5.0.1",
+    "express-session": "^1.19.0",
+    "framer-motion": "^11.13.1",
+    "input-otp": "^1.4.2",
+    "lucide-react": "^0.453.0",
+    "memoizee": "^0.4.17",
+    "memorystore": "^1.6.7",
+    "next-themes": "^0.4.6",
+    "openid-client": "^6.8.2",
+    "p-limit": "^7.3.0",
+    "p-retry": "^7.1.1",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
+    "pg": "^8.16.3",
+    "react": "^18.3.1",
+    "react-day-picker": "^8.10.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.55.0",
+    "react-icons": "^5.4.0",
+    "react-resizable-panels": "^2.1.7",
+    "recharts": "^2.15.2",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "tw-animate-css": "^1.2.5",
+    "vaul": "^1.1.2",
+    "wouter": "^3.3.5",
+    "ws": "^8.18.0",
+    "zod": "^3.25.76",
+    "zod-validation-error": "^3.5.4"
+  },
+  "devDependencies": {
+    "@replit/vite-plugin-cartographer": "^0.4.4",
+    "@replit/vite-plugin-dev-banner": "^0.1.1",
+    "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
+    "@tailwindcss/typography": "^0.5.15",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/connect-pg-simple": "^7.0.3",
+    "@types/express": "^5.0.0",
+    "@types/express-session": "^1.18.2",
+    "@types/node": "20.19.27",
+    "@types/passport": "^1.0.17",
+    "@types/passport-local": "^1.0.38",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.4.20",
+    "drizzle-kit": "^0.31.8",
+    "esbuild": "^0.25.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.5",
+    "typescript": "5.6.3",
+    "vite": "^7.3.0"
+  },
+  "overrides": {
+    "drizzle-kit": {
+      "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
+    }
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.8"
+  }
+}
+
+
+========== FILE: tsconfig.json ==========
+{
+  "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "module": "ESNext",
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["./client/src/*"],
+      "@shared/*": ["./shared/*"]
+    }
+  }
+}
+
+
+========== FILE: tailwind.config.ts ==========
+import type { Config } from "tailwindcss";
+
+export default {
+  darkMode: ["class"],
+  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      borderRadius: {
+        lg: ".5625rem", /* 9px */
+        md: ".375rem", /* 6px */
+        sm: ".1875rem", /* 3px */
+      },
+      colors: {
+        // Flat / base colors (regular buttons)
+        background: "hsl(var(--background) / <alpha-value>)",
+        foreground: "hsl(var(--foreground) / <alpha-value>)",
+        border: "hsl(var(--border) / <alpha-value>)",
+        input: "hsl(var(--input) / <alpha-value>)",
+        card: {
+          DEFAULT: "hsl(var(--card) / <alpha-value>)",
+          foreground: "hsl(var(--card-foreground) / <alpha-value>)",
+          border: "hsl(var(--card-border) / <alpha-value>)",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover) / <alpha-value>)",
+          foreground: "hsl(var(--popover-foreground) / <alpha-value>)",
+          border: "hsl(var(--popover-border) / <alpha-value>)",
+        },
+        primary: {
+          DEFAULT: "hsl(var(--primary) / <alpha-value>)",
+          foreground: "hsl(var(--primary-foreground) / <alpha-value>)",
+          border: "var(--primary-border)",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary) / <alpha-value>)",
+          foreground: "hsl(var(--secondary-foreground) / <alpha-value>)",
+          border: "var(--secondary-border)",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted) / <alpha-value>)",
+          foreground: "hsl(var(--muted-foreground) / <alpha-value>)",
+          border: "var(--muted-border)",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent) / <alpha-value>)",
+          foreground: "hsl(var(--accent-foreground) / <alpha-value>)",
+          border: "var(--accent-border)",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
+          foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
+          border: "var(--destructive-border)",
+        },
+        ring: "hsl(var(--ring) / <alpha-value>)",
+        chart: {
+          "1": "hsl(var(--chart-1) / <alpha-value>)",
+          "2": "hsl(var(--chart-2) / <alpha-value>)",
+          "3": "hsl(var(--chart-3) / <alpha-value>)",
+          "4": "hsl(var(--chart-4) / <alpha-value>)",
+          "5": "hsl(var(--chart-5) / <alpha-value>)",
+        },
+        sidebar: {
+          ring: "hsl(var(--sidebar-ring) / <alpha-value>)",
+          DEFAULT: "hsl(var(--sidebar) / <alpha-value>)",
+          foreground: "hsl(var(--sidebar-foreground) / <alpha-value>)",
+          border: "hsl(var(--sidebar-border) / <alpha-value>)",
+        },
+        "sidebar-primary": {
+          DEFAULT: "hsl(var(--sidebar-primary) / <alpha-value>)",
+          foreground: "hsl(var(--sidebar-primary-foreground) / <alpha-value>)",
+          border: "var(--sidebar-primary-border)",
+        },
+        "sidebar-accent": {
+          DEFAULT: "hsl(var(--sidebar-accent) / <alpha-value>)",
+          foreground: "hsl(var(--sidebar-accent-foreground) / <alpha-value>)",
+          border: "var(--sidebar-accent-border)"
+        },
+        status: {
+          online: "rgb(34 197 94)",
+          away: "rgb(245 158 11)",
+          busy: "rgb(239 68 68)",
+          offline: "rgb(156 163 175)",
+        },
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)"],
+        serif: ["var(--font-serif)"],
+        mono: ["var(--font-mono)"],
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+} satisfies Config;
+
+
+========== FILE: vite.config.ts ==========
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+export default defineConfig({
+  plugins: [
+    react(),
+    runtimeErrorOverlay(),
+    ...(process.env.NODE_ENV !== "production" &&
+    process.env.REPL_ID !== undefined
+      ? [
+          await import("@replit/vite-plugin-cartographer").then((m) =>
+            m.cartographer(),
+          ),
+          await import("@replit/vite-plugin-dev-banner").then((m) =>
+            m.devBanner(),
+          ),
+        ]
+      : []),
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+    },
+  },
+  root: path.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true,
+  },
+  server: {
+    fs: {
+      strict: true,
+      deny: ["**/.*"],
+    },
+  },
+});
+
+
+========== FILE: drizzle.config.ts ==========
+import { defineConfig } from "drizzle-kit";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL, ensure the database is provisioned");
+}
+
+export default defineConfig({
+  out: "./migrations",
+  schema: "./shared/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
+
+
+========== FILE: replit.md ==========
+# Gemin-Eye - AI-Powered Customer Acquisition Platform
+
+## Overview
+
+Gemin-Eye is an AI-powered customer acquisition platform that monitors niche online communities (Facebook groups, Reddit, etc.) for high-intent questions, then generates helpful, human-sounding responses that subtly promote a client's business. Instead of traditional advertising, it finds people actively seeking recommendations and engages them organically.
+
+The app has three main flows:
+1. **Landing page** - Marketing page with animated demo showing how the product works
+2. **Onboarding** - Multi-step wizard where users describe their business, and AI generates a monitoring strategy (platforms, target groups, keywords, sample responses)
+3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
+
+## Recent Changes (Feb 13, 2026)
+- Built complete frontend: landing page with animated demo, onboarding wizard, and dashboard
+- Built backend API routes with Zod validation, auth protection, and ownership checks
+- Added seed data with 3 demo businesses: Doro Mind, Chicago Bocce, LMAITFY.ai
+- Fixed authorization on response approval endpoint (ownership verification)
+- Added lead scoring endpoint using Gemini 2.5 Flash
+- Strategy generation and response crafting use Gemini 2.5 Pro
+
+## User Preferences
+
+Preferred communication style: Simple, everyday language.
+
+## System Architecture
+
+### Frontend
+- **Framework**: React 18 with TypeScript
+- **Routing**: Wouter (lightweight alternative to React Router)
+- **State/Data fetching**: TanStack React Query for server state management
+- **Styling**: Tailwind CSS with CSS variables for theming (light/dark mode support)
+- **UI Components**: shadcn/ui (new-york style) built on Radix UI primitives
+- **Forms**: React Hook Form with Zod validation via @hookform/resolvers
+- **Build tool**: Vite with HMR support
+- **Path aliases**: `@/` maps to `client/src/`, `@shared/` maps to `shared/`
+- **Brand colors**: Indigo/violet (hsl 258 70% 55%) with Inter sans-serif font
+
+### Backend
+- **Framework**: Express.js running on Node with TypeScript (via tsx)
+- **HTTP server**: Node's built-in `http.createServer` wrapping Express
+- **API pattern**: RESTful JSON APIs under `/api/` prefix
+- **AI Integration**: Google Gemini via `@google/genai` SDK, accessed through Replit's AI Integrations proxy
+- **AI Model Usage**:
+  - `gemini-2.5-pro`: Strategy generation and response crafting (high quality)
+  - `gemini-2.5-flash`: Lead scoring (fast/cheap)
+- **Build for production**: esbuild bundles server to `dist/index.cjs`, Vite builds client to `dist/public/`
+
+### Authentication
+- **Method**: Replit OpenID Connect (OIDC) authentication via Passport.js
+- **Sessions**: Express sessions stored in PostgreSQL via `connect-pg-simple`
+- **Required tables**: `sessions` and `users` tables (defined in `shared/models/auth.ts`) — these are mandatory and should not be dropped
+- **Session duration**: 1 week TTL
+- **Middleware**: `isAuthenticated` middleware protects API routes; user info available at `req.user.claims.sub`
+
+### Database
+- **Database**: PostgreSQL (required, connection via `DATABASE_URL` env var)
+- **ORM**: Drizzle ORM with `drizzle-zod` for schema-to-Zod validation
+- **Schema location**: `shared/schema.ts` (re-exports from `shared/models/auth.ts` and `shared/models/chat.ts`)
+- **Migration tool**: Drizzle Kit with `db:push` command for schema synchronization
+- **Key tables**:
+  - `users` - User accounts (Replit Auth managed)
+  - `sessions` - Session storage (Replit Auth managed)
+  - `businesses` - User's business profiles with target audience, tone preferences
+  - `campaigns` - Monitoring campaigns per business (platform, target groups, keywords)
+  - `leads` - Discovered high-intent posts from communities
+  - `ai_responses` - AI-generated responses to leads with approval status
+  - `conversations` / `messages` - Chat functionality tables
+
+### Storage Layer
+- **Pattern**: Interface-based storage (`IStorage` in `server/storage.ts`) with `DatabaseStorage` implementation
+- **Auth storage**: Separate `IAuthStorage` interface in `server/replit_integrations/auth/storage.ts`
+- **Chat storage**: Separate `IChatStorage` interface in `server/replit_integrations/chat/storage.ts`
+
+### Replit Integrations (server/replit_integrations/)
+Pre-built modules that provide:
+- **auth/**: OIDC authentication setup, session management, user routes
+- **batch/**: Batch processing utilities for Gemini API calls with rate limiting, retries, and concurrency control
+- **chat/**: Conversation/message CRUD routes and storage for AI chat functionality
+- **image/**: Image generation endpoint using Gemini's image model
+
+### Dev vs Production
+- **Development**: Vite dev server with HMR proxied through Express, `tsx` runs TypeScript directly
+- **Production**: Vite builds static assets to `dist/public/`, esbuild bundles server to `dist/index.cjs`, Express serves static files
+
+## External Dependencies
+
+- **PostgreSQL**: Primary database, required via `DATABASE_URL` environment variable
+- **Replit AI Integrations (Gemini)**: AI text and image generation, configured via `AI_INTEGRATIONS_GEMINI_API_KEY` and `AI_INTEGRATIONS_GEMINI_BASE_URL` environment variables
+- **Replit OIDC**: Authentication provider via `ISSUER_URL` (defaults to `https://replit.com/oidc`) and `REPL_ID`
+- **Session Secret**: `SESSION_SECRET` environment variable required for Express session encryption
+- **Google Fonts**: Inter, Playfair Display, JetBrains Mono
+- **react-icons**: Social media icons (Facebook, Reddit) via `react-icons/si`
+
+

@@ -212,7 +212,7 @@ export default function Dashboard() {
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Eye className="w-5 h-5 text-primary" />
+            <img src="/images/logo.png" alt="Gemin-Eye" className="w-6 h-6" />
             <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-3">
@@ -267,7 +267,6 @@ export default function Dashboard() {
                 title="Leads Found"
                 value={leads.length}
                 icon={Users}
-                trend="+12%"
                 color="bg-chart-2/10 text-chart-2"
               />
               <StatCard

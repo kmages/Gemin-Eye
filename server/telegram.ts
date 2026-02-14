@@ -14,10 +14,15 @@ export interface InlineButton {
   callback_data?: string;
 }
 
+export interface TelegramMessageOptions {
+  buttons?: InlineButton[][];
+  disable_web_page_preview?: boolean;
+}
+
 export async function sendTelegramMessageToChat(
   chatId: string,
   text: string,
-  options?: { buttons?: InlineButton[][] }
+  options?: TelegramMessageOptions
 ): Promise<boolean> {
   const token = getBotToken();
 
@@ -31,7 +36,7 @@ export async function sendTelegramMessageToChat(
       chat_id: chatId,
       text,
       parse_mode: "HTML",
-      disable_web_page_preview: true,
+      disable_web_page_preview: options?.disable_web_page_preview !== false,
     };
 
     if (options?.buttons && options.buttons.length > 0) {
@@ -61,7 +66,7 @@ export async function sendTelegramMessageToChat(
 
 export async function sendTelegramMessage(
   text: string,
-  options?: { buttons?: InlineButton[][] }
+  options?: TelegramMessageOptions
 ): Promise<boolean> {
   const chatId = getChatId();
 

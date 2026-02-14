@@ -364,6 +364,16 @@ Return ONLY valid JSON with this structure:
   });
 
   const fbScanRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const liScanRateLimit = new Map<string, { count: number; resetAt: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of fbScanRateLimit) {
+      if (now > val.resetAt) fbScanRateLimit.delete(key);
+    }
+    for (const [key, val] of liScanRateLimit) {
+      if (now > val.resetAt) liScanRateLimit.delete(key);
+    }
+  }, 5 * 60 * 1000);
   app.post("/api/fb-scan", async (req, res) => {
     const rateLimitKey = String(req.body.chatId || req.ip);
     const now = Date.now();
@@ -576,7 +586,6 @@ Return ONLY the response text, no quotes or formatting.`,
     res.sendStatus(204);
   });
 
-  const liScanRateLimit = new Map<string, { count: number; resetAt: number }>();
   app.post("/api/li-scan", async (req, res) => {
     const rateLimitKey = String(req.body.chatId || req.ip);
     const now = Date.now();
@@ -813,7 +822,7 @@ a:hover{background:#4f46e5;}</style></head>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
   });
 
-  app.get("/api/test-telegram", async (_req, res) => {
+  app.get("/api/test-telegram", isAuthenticated, async (_req: any, res) => {
     try {
       const success = await sendTelegramMessage(
         `<b>Gemin-Eye Test</b>\n\nThis is a test message from the Gemin-Eye platform.\nTimestamp: ${new Date().toISOString()}\n\nIf you see this, Telegram delivery is working!`

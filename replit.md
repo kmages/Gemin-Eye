@@ -9,13 +9,21 @@ The app has three main flows:
 2. **Onboarding** - Multi-step wizard where users describe their business, and AI generates a monitoring strategy (platforms, target groups, keywords, sample responses)
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 
-## Recent Changes (Feb 13, 2026)
+## Recent Changes (Feb 14, 2026)
+- Added screenshot/image support to Telegram bot - send a screenshot and Gemini Flash reads text from the image
+- Added admin command center via Telegram: /newclient, /removeclient, /keywords, /groups for managing businesses entirely from chat
+- Updated /start and /help messages with new capabilities documentation
+- Primary domain: Gemin-Eye.com
+
+## Previous Changes (Feb 13, 2026)
 - Built complete frontend: landing page with animated demo, onboarding wizard, and dashboard
 - Built backend API routes with Zod validation, auth protection, and ownership checks
 - Added seed data with 3 demo businesses: Doro Mind, Chicago Bocce, LMAITFY.ai
 - Fixed authorization on response approval endpoint (ownership verification)
 - Added lead scoring endpoint using Gemini 2.5 Flash
 - Strategy generation and response crafting use Gemini 2.5 Pro
+- Implemented Telegram bot with URL detection, business matching, and response generation
+- Added inline keyboard buttons for direct post navigation
 
 ## User Preferences
 

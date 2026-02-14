@@ -441,11 +441,12 @@ const REDDIT_POST_TTL = 30 * 60 * 1000;
 const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
 
 interface ClientWizardState {
-  step: "name" | "keywords" | "offering" | "done";
+  step: "name" | "offering" | "location" | "keywords" | "done";
   chatId: string;
   name?: string;
   keywords?: string[];
   offering?: string;
+  location?: string;
 }
 
 const clientWizards = new Map<string, ClientWizardState>();
@@ -502,9 +503,23 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
         return true;
       }
       wizard.offering = offering;
+      wizard.step = "location";
+      await sendTelegramMessageToChat(chatId,
+        `Got it.\n\nWhere is ${escapeHtml(wizard.name!)} located? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago, IL", "Online / nationwide", "Austin, Texas")</i>`
+      );
+      return true;
+    }
+
+    case "location": {
+      const location = text.trim();
+      if (location.length < 2) {
+        await sendTelegramMessageToChat(chatId, "Please enter a location (city/state, or 'online' if not location-specific).");
+        return true;
+      }
+      wizard.location = location;
       wizard.step = "keywords";
       await sendTelegramMessageToChat(chatId,
-        `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., tacos, hungry, best lunch, where to eat)</i>`
+        `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., estate planning, trust attorney, wills and trusts, probate lawyer)</i>`
       );
       return true;
     }
@@ -518,11 +533,12 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
 
       await sendTelegramMessageToChat(chatId, `Got it! Setting up your monitor now...`);
 
+      const locationInfo = wizard.location || "Online";
       const biz = await storage.createBusiness({
         userId: `tg-${chatId}`,
         name: wizard.name!,
         type: wizard.offering || wizard.name!,
-        targetAudience: "General",
+        targetAudience: locationInfo,
         coreOffering: wizard.offering || wizard.name!,
         preferredTone: "casual",
       });
@@ -535,6 +551,7 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
 
 Business: ${wizard.name}
 Offering: ${wizard.offering}
+Location: ${locationInfo}
 Keywords: ${wizard.keywords.join(", ")}
 
 Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
@@ -542,6 +559,7 @@ Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
 RULES:
 - List 5-8 REAL Reddit subreddits that actually exist.
 - NEVER use placeholders like "r/[yourcity]". Use specific real names.
+- If the business has a specific location, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
 - Focus on communities where people ask for recommendations related to this business.`,
           config: { maxOutputTokens: 256 },
         });
@@ -595,6 +613,7 @@ RULES:
 
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +
+        `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
         `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
         `<b>Reddit Monitoring:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}\n\n` +
         `<b>Facebook Spy Glass</b>\n` +
@@ -630,8 +649,10 @@ RULES:
       await sendTelegramMessage(
         `<b>New Client Onboarded via Wizard</b>\n\n` +
         `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
         `<b>Telegram ID:</b> ${chatId}\n` +
-        `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}`
+        `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}\n` +
+        `<b>Reddit:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}`
       );
 
       return true;
@@ -1413,7 +1434,7 @@ export function registerTelegramWebhook(app: any) {
         clientWizards.set(chatId, { step: "name", chatId });
         await sendTelegramMessageToChat(chatId,
           `<b>Welcome to Gemin-Eye!</b>\n\n` +
-          `I'm going to set up your business monitor in 3 quick steps.\n\n` +
+          `I'm going to set up your business monitor in 4 quick steps.\n\n` +
           `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
         );
         return;

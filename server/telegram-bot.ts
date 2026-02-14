@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup, type TelegramMessageOptions } from "./telegram";
 import { storage } from "./storage";
 
 function safeParseJsonFromAI(text: string): any | null {
@@ -214,6 +214,7 @@ If you cannot read any text from the image, return: {"post_text": "", "platform"
 
 interface PostAnalysis {
   message: string;
+  responseText: string | null;
   postUrl: string | null;
   platform: "reddit" | "facebook" | null;
   responseId: number | null;
@@ -227,6 +228,7 @@ async function handlePost(postText: string, groupName?: string, postUrl?: string
   if (allBiz.length === 0) {
     return {
       message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard or use /newclient.",
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -267,6 +269,7 @@ Return ONLY valid JSON:
   if (!match) {
     return {
       message: "Could not analyze this post. Try again.",
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -278,6 +281,7 @@ Return ONLY valid JSON:
   if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {
     return {
       message: "",
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -288,6 +292,7 @@ Return ONLY valid JSON:
   if (!match.matched_business || match.matched_business === "null") {
     return {
       message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -299,6 +304,7 @@ Return ONLY valid JSON:
   if (!biz) {
     return {
       message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -309,6 +315,7 @@ Return ONLY valid JSON:
   if (match.intent_score < 4) {
     return {
       message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"*".repeat(match.intent_score)}${"_".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
+      responseText: null,
       postUrl: postUrl || null,
       platform,
       responseId: null,
@@ -322,7 +329,7 @@ Return ONLY valid JSON:
     casual: "casual, friendly, and approachable",
   };
 
-  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
+  const platformContext = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
 
   let feedbackGuidance = "";
   try {
@@ -351,7 +358,7 @@ Return ONLY valid JSON:
     // feedback query failed, proceed without it
   }
 
-  const responsePrompt = `You are writing a response to a ${platformLabel} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+  const responsePrompt = `You are writing a response to a ${platformContext} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post: "${postText}"
 ${groupName ? `Group: "${groupName}"` : ""}
@@ -403,23 +410,23 @@ Return ONLY the response text, no quotes or formatting.`;
   }
 
   const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
-  const platformEmoji = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
+  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
 
   let msg = `<b>Lead Matched!</b>\n\n`;
   msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
-  if (platform) msg += `<b>Platform:</b> ${platformEmoji}\n`;
+  if (platform) msg += `<b>Platform:</b> ${platformLabel}\n`;
   if (groupName) msg += `<b>Group:</b> ${escapeHtml(groupName)}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
-  msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>\n\n`;
-  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+  msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>`;
 
   if (postUrl) {
-    msg += `\n\nTap the button below to open the post and paste your reply.`;
+    msg += `\n\nTap "Open Post" below, then paste the reply.`;
   }
 
   return {
     message: msg,
+    responseText,
     postUrl: postUrl || null,
     platform,
     responseId: savedResponseId,
@@ -1143,7 +1150,9 @@ export function registerTelegramWebhook(app: any) {
     return;
   }
 
-  async function sendResultWithButtons(result: PostAnalysis) {
+  async function sendResultWithButtons(result: PostAnalysis, chatId?: string) {
+    const send = chatId ? (text: string, opts?: TelegramMessageOptions) => sendTelegramMessageToChat(chatId, text, opts) : (text: string, opts?: TelegramMessageOptions) => sendTelegramMessage(text, opts);
+
     const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
 
     if (result.postUrl) {
@@ -1160,7 +1169,11 @@ export function registerTelegramWebhook(app: any) {
       ]);
     }
 
-    await sendTelegramMessage(result.message, buttons.length > 0 ? { buttons } : undefined);
+    await send(result.message, buttons.length > 0 ? { buttons } : undefined);
+
+    if (result.responseText) {
+      await send(result.responseText);
+    }
   }
 
   app.post(`/api/telegram/webhook/${token}`, async (req: any, res: any) => {

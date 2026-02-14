@@ -263,8 +263,11 @@ Return ONLY the response text, no quotes or formatting.`,
   msg += `<b>Source:</b> ${escapeHtml(item.source)}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>\n\n`;
-  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>`;
+
+  if (item.link) {
+    msg += `\n\nTap "Open Page" below, then paste the reply.`;
+  }
 
   const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
   if (item.link) {
@@ -280,6 +283,7 @@ Return ONLY the response text, no quotes or formatting.`,
   }
 
   await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
+  await sendTelegramMessage(responseText);
 }
 
 async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Promise<void> {

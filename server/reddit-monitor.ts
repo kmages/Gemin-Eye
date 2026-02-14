@@ -239,8 +239,11 @@ Return ONLY the response text, no quotes or formatting.`,
   msg += `<b>Subreddit:</b> r/${escapeHtml(target.subreddit)}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>\n\n`;
-  msg += `<b>Copy this response:</b>\n<code>${escapeHtml(responseText)}</code>`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>`;
+
+  if (post.link) {
+    msg += `\n\nTap "Open Post" below, then paste the reply.`;
+  }
 
   const buttons = [];
   if (post.link) {
@@ -256,6 +259,7 @@ Return ONLY the response text, no quotes or formatting.`,
   }
 
   await sendTelegramMessage(msg, { buttons });
+  await sendTelegramMessage(responseText);
 }
 
 async function scanSubredditForTargets(subreddit: string, targets: SubredditTarget[]): Promise<void> {

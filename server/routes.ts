@@ -572,8 +572,11 @@ Return ONLY the response text, no quotes or formatting.`,
       msg += `<b>Group:</b> ${escHtml(groupName || "Facebook Group")}\n`;
       msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
       msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
-      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>\n\n`;
-      msg += `<b>Copy this response:</b>\n<code>${escHtml(responseText)}</code>`;
+      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>`;
+
+      if (pageUrl) {
+        msg += `\n\nTap "Open Facebook Post" below, then paste the reply.`;
+      }
 
       const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
       if (pageUrl) {
@@ -589,6 +592,7 @@ Return ONLY the response text, no quotes or formatting.`,
       }
 
       await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
+      await sendTelegramMessageToChat(chatId, responseText);
 
       res.json({ matched: true, score: match.intent_score });
     } catch (error) {
@@ -776,8 +780,11 @@ Return ONLY the response text, no quotes or formatting.`,
       msg += `<b>Author:</b> ${escHtml(authorName || "LinkedIn user")}\n`;
       msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
       msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
-      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>\n\n`;
-      msg += `<b>Copy this response:</b>\n<code>${escHtml(responseText)}</code>`;
+      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>`;
+
+      if (pageUrl) {
+        msg += `\n\nTap "Open LinkedIn Post" below, then paste the reply.`;
+      }
 
       const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
       if (pageUrl) {
@@ -793,6 +800,7 @@ Return ONLY the response text, no quotes or formatting.`,
       }
 
       await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
+      await sendTelegramMessageToChat(chatId, responseText);
 
       res.json({ matched: true, score: match.intent_score });
     } catch (error) {

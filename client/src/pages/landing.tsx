@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell } from "lucide-react";
+import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell, ExternalLink } from "lucide-react";
 import { SiFacebook, SiReddit, SiLinkedin, SiGoogle } from "react-icons/si";
 import { useTheme } from "@/components/theme-provider";
 
@@ -268,20 +268,23 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
-              { name: "Doro Mind", type: "Mental Health", icon: Brain },
-              { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell },
-              { name: "LMAITFY.ai", type: "AI Tool", icon: Globe },
-              { name: "Tony's", type: "Italian Restaurant", icon: Utensils },
-              { name: "Heart of America Whoodles", type: "Dog Breeder", icon: Dog },
-              { name: "Gemin-Eye", type: "AI SaaS", icon: Eye },
+              { name: "Doro Mind", type: "Mental Health", icon: Brain, url: "https://doromind.com" },
+              { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell, url: "https://chicagobocce.com" },
+              { name: "LMAITFY.ai", type: "AI Tool", icon: Globe, url: "https://lmaitfy.ai" },
+              { name: "Tony's", type: "Diner", icon: Utensils, url: "https://tonysbrookfield.com" },
+              { name: "Heart of America Whoodles", type: "Dog Breeder", icon: Dog, url: "https://heartofamericawhoodles.com" },
+              { name: "Gemin-Eye", type: "AI SaaS", icon: Eye, url: "https://gemin-eye.com" },
             ].map((client) => (
-              <Card key={client.name} className="p-4 flex flex-col items-center text-center gap-2 hover-elevate" data-testid={`card-client-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <client.icon className="w-5 h-5 text-primary" />
-                </div>
-                <p className="text-sm font-medium leading-tight" data-testid={`text-client-name-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.name}</p>
-                <p className="text-xs text-muted-foreground" data-testid={`text-client-type-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.type}</p>
-              </Card>
+              <a key={client.name} href={client.url} target="_blank" rel="noopener noreferrer" data-testid={`link-client-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>
+                <Card className="p-4 flex flex-col items-center text-center gap-2 hover-elevate h-full" data-testid={`card-client-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <client.icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <p className="text-sm font-medium leading-tight" data-testid={`text-client-name-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.name}</p>
+                  <p className="text-xs text-muted-foreground" data-testid={`text-client-type-${client.name.toLowerCase().replace(/\s+/g, "-")}`}>{client.type}</p>
+                  <ExternalLink className="w-3 h-3 text-muted-foreground/50" />
+                </Card>
+              </a>
             ))}
           </div>
         </div>

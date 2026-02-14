@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, ArrowLeft, MessageCircle, Globe, Facebook, BookOpen } from "lucide-react";
+import { Download, ArrowLeft, MessageCircle, Globe, Facebook, BookOpen, Zap } from "lucide-react";
 import { SiReddit, SiFacebook, SiTelegram, SiLinkedin } from "react-icons/si";
 import { useLocation } from "wouter";
 
@@ -158,7 +158,7 @@ export default function ClientGuidePage() {
 
       <div class="section">
         <div class="section-header">
-          <div class="section-number">6</div>
+          <div class="section-number">7</div>
           <div class="section-title">Google Alerts &mdash; Web-Wide Monitoring</div>
           <span class="section-badge">OPTIONAL</span>
         </div>
@@ -179,7 +179,7 @@ export default function ClientGuidePage() {
 
       <div class="section">
         <div class="section-header">
-          <div class="section-number">7</div>
+          <div class="section-number">8</div>
           <div class="section-title">Manual Post Scanning via Telegram</div>
           <span class="section-badge">ANYTIME</span>
         </div>
@@ -193,7 +193,7 @@ export default function ClientGuidePage() {
 
       <div class="section">
         <div class="section-header">
-          <div class="section-number">8</div>
+          <div class="section-number">9</div>
           <div class="section-title">Responding to Leads</div>
           <span class="section-badge">IMPORTANT</span>
         </div>
@@ -218,7 +218,7 @@ export default function ClientGuidePage() {
 
       <div class="section">
         <div class="section-header">
-          <div class="section-number">9</div>
+          <div class="section-number">10</div>
           <div class="section-title">Telegram Bot Commands Reference</div>
         </div>
         <ul>
@@ -231,6 +231,10 @@ export default function ClientGuidePage() {
           <li><strong>/businesses</strong> &mdash; See all your business profiles</li>
           <li><strong>/help</strong> &mdash; Full guide with all commands</li>
         </ul>
+      </div>
+
+      <div class="note" style="background:#ede9fe;border-left-color:#4338ca;margin-top:32px;padding:16px 20px;">
+        <strong>Remember: The harder you work, the harder we work for you.</strong> Every Facebook Group you join, every LinkedIn search you scan, every Google Alert you create &mdash; that's another stream of leads flowing into your pipeline. The AI does the heavy lifting (scoring, writing responses, sending alerts), but <em>you</em> control how wide the net is. Clients who actively add groups and scan regularly see 3&ndash;5x more leads than those who set it and forget it. Put in the time, and Gemin-Eye will multiply your effort.
       </div>
 
       <div class="footer">
@@ -390,6 +394,20 @@ export default function ClientGuidePage() {
               <li><code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">/help</code> — Full guide with all commands</li>
             </ul>
           </Section>
+
+          <Card className="p-6 bg-primary/5 border-primary/20" data-testid="card-motivation">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                <Zap className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-base mb-2">The harder you work, the harder we work for you.</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Every Facebook Group you join, every LinkedIn search you scan, every Google Alert you create — that's another stream of leads flowing into your pipeline. The AI does the heavy lifting (scoring posts, writing responses, sending alerts), but <strong>you</strong> control how wide the net is. Clients who actively add groups and scan regularly see 3-5x more leads than those who set it and forget it. Put in the time, and Gemin-Eye will multiply your effort.
+                </p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
     </div>

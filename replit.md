@@ -10,21 +10,31 @@ The app has three main flows:
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 
 ## Recent Changes (Feb 14, 2026)
-- Added automated Reddit RSS monitor (`server/reddit-monitor.ts`) that scans subreddits every 90 seconds
-  - Pulls target subreddits from DB campaigns (targetGroups field)
-  - Filters posts by keywords, then uses Gemini Flash for lead scoring
-  - Generates responses with Gemini Pro for leads with intent >= 5
-  - Saves leads and responses to DB, sends Telegram alerts with feedback buttons
-  - Includes rate-limit handling, seen-post deduplication, and memory pruning
-- Improved Context Upgrade: Bot now matches first, only asks "Which group?" when confidence < 6 AND multiple businesses exist (not every post)
-- Added feedback deduplication: one feedback per responseId prevents spam
-- Added TTL (5 min) on pending context requests to prevent stale state
-- Added Context Upgrade: Bot asks "Which group is this from?" when group name is missing and multiple businesses exist, improving match accuracy
-- Added Feedback Loop: Every AI response includes 4 inline buttons (Used It / Bad Match / Too Salesy / Wrong Client) saved to `response_feedback` table
-- Feedback-aware response generation: Bot queries recent feedback per business and adjusts prompts (e.g., less salesy if flagged)
-- Leads and AI responses now saved to database when generated via Telegram bot
-- Added screenshot/image support to Telegram bot - send a screenshot and Gemini Flash reads text from the image
-- Added admin command center via Telegram: /newclient, /removeclient, /keywords, /groups for managing businesses entirely from chat
+- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/BotName?start=setup`)
+  - 3-step wizard: business name → what they offer → keywords
+  - Works for any Telegram user (not just admin)
+  - Creates business + Facebook campaign in DB automatically
+  - Sends personalized bookmarklet code after setup
+  - Notifies admin when new client onboards
+- **Facebook Spy Glass Bookmarklet** (`client/public/spy-glass.js`)
+  - Clients save a bookmark that loads the scanning script on any Facebook Group page
+  - Script scans posts as user scrolls, filters by keywords, sends to `/api/fb-scan` endpoint
+  - Highlights matched posts with purple outline for visual feedback
+  - Shows scan count banner at top of page
+  - Bookmarklet includes client's chat ID and business ID for routing
+- **`/api/fb-scan` endpoint** (POST, CORS-enabled) receives Facebook posts from spy-glass
+  - Validates business exists, checks keyword match
+  - Scores with Gemini Flash, generates response with Gemini Pro
+  - Saves leads/responses to DB, sends Telegram alert to client's chat with feedback buttons
+- Added `sendTelegramMessageToChat()` function to message any Telegram chat (not just admin)
+- Reddit RSS monitor now correctly scans each subreddit once and evaluates all business targets per post
+  - Dedup key changed from postId to `postId::businessId` allowing multi-business evaluation
+- Improved Context Upgrade: Bot now matches first, only asks "Which group?" when confidence < 6 AND multiple businesses exist
+- Added feedback deduplication, TTL on pending context requests
+- Added Feedback Loop with inline buttons, feedback-aware response generation
+- Leads and AI responses saved to database when generated via Telegram bot
+- Screenshot/image support via Gemini Flash OCR
+- Admin command center: /newclient, /removeclient, /keywords, /groups
 - Primary domain: Gemin-Eye.com
 
 ## Previous Changes (Feb 13, 2026)

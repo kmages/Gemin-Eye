@@ -14,15 +14,15 @@ export interface InlineButton {
   callback_data?: string;
 }
 
-export async function sendTelegramMessage(
+export async function sendTelegramMessageToChat(
+  chatId: string,
   text: string,
   options?: { buttons?: InlineButton[][] }
 ): Promise<boolean> {
   const token = getBotToken();
-  const chatId = getChatId();
 
-  if (!token || !chatId) {
-    console.warn("Telegram not configured: missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
+  if (!token) {
+    console.warn("Telegram not configured: missing TELEGRAM_BOT_TOKEN");
     return false;
   }
 
@@ -57,6 +57,20 @@ export async function sendTelegramMessage(
     console.error("Telegram send error:", error);
     return false;
   }
+}
+
+export async function sendTelegramMessage(
+  text: string,
+  options?: { buttons?: InlineButton[][] }
+): Promise<boolean> {
+  const chatId = getChatId();
+
+  if (!chatId) {
+    console.warn("Telegram not configured: missing TELEGRAM_CHAT_ID");
+    return false;
+  }
+
+  return sendTelegramMessageToChat(chatId, text, options);
 }
 
 export function formatLeadNotification(lead: {

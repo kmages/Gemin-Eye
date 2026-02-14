@@ -1,9 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
+import crypto from "crypto";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "./telegram";
 import { storage } from "./storage";
+
+export function generateScanToken(chatId: string, businessId: number): string {
+  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 16);
+}
 
 const ai = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
@@ -416,6 +422,131 @@ Return ONLY the response text, no quotes or formatting.`;
 
 const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
 
+interface ClientWizardState {
+  step: "name" | "keywords" | "offering" | "done";
+  chatId: string;
+  name?: string;
+  keywords?: string[];
+  offering?: string;
+}
+
+const clientWizards = new Map<string, ClientWizardState>();
+
+function getAppBaseUrl(): string {
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDevDomain) return `https://${replitDevDomain}`;
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  if (replSlug && replOwner) return `https://${replSlug}.${replOwner}.repl.co`;
+  return "https://gemin-eye.com";
+}
+
+async function handleClientWizard(chatId: string, text: string): Promise<boolean> {
+  const wizard = clientWizards.get(chatId);
+  if (!wizard) return false;
+
+  if (text.startsWith("/")) {
+    clientWizards.delete(chatId);
+    return false;
+  }
+
+  switch (wizard.step) {
+    case "name": {
+      const name = text.trim();
+      if (name.length < 2 || name.length > 100) {
+        await sendTelegramMessageToChat(chatId, "Please enter a valid business name (2-100 characters).");
+        return true;
+      }
+      wizard.name = name;
+      wizard.step = "offering";
+      await sendTelegramMessageToChat(chatId,
+        `Got it: <b>${escapeHtml(wizard.name)}</b>\n\nIn one sentence, what does ${escapeHtml(wizard.name)} do or sell?\n<i>(e.g., "Classic American diner with all-day breakfast and comfort food")</i>`
+      );
+      return true;
+    }
+
+    case "offering": {
+      const offering = text.trim();
+      if (offering.length < 5) {
+        await sendTelegramMessageToChat(chatId, "Please describe what the business does in at least a few words.");
+        return true;
+      }
+      wizard.offering = offering;
+      wizard.step = "keywords";
+      await sendTelegramMessageToChat(chatId,
+        `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., tacos, hungry, best lunch, where to eat)</i>`
+      );
+      return true;
+    }
+
+    case "keywords": {
+      wizard.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      if (wizard.keywords.length < 1) {
+        await sendTelegramMessageToChat(chatId, "Please enter at least one keyword, separated by commas.");
+        return true;
+      }
+
+      const biz = await storage.createBusiness({
+        userId: `tg-${chatId}`,
+        name: wizard.name!,
+        type: wizard.offering || wizard.name!,
+        targetAudience: "General",
+        coreOffering: wizard.offering || wizard.name!,
+        preferredTone: "casual",
+      });
+
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - Facebook`,
+        platform: "Facebook",
+        status: "active",
+        strategy: `Monitor Facebook groups for leads matching ${wizard.name}`,
+        targetGroups: [],
+        keywords: wizard.keywords,
+      });
+
+      clientWizards.delete(chatId);
+
+      const baseUrl = getAppBaseUrl();
+      const token = generateScanToken(chatId, biz.id);
+      const bookmarkletCode = `javascript:void((function(){var s=document.createElement('script');s.src='${baseUrl}/spy-glass.js?cid=${chatId}&bid=${biz.id}&tok=${token}&t='+Date.now();document.body.appendChild(s)})())`;
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>Setup Complete!</b>\n\n` +
+        `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
+        `<b>Step 3: The Spy Glass</b>\n` +
+        `To scan a Facebook Group, create a browser bookmark with the code below as the URL:\n\n` +
+        `1. Right-click your bookmarks bar\n` +
+        `2. Click "Add bookmark" (or "Add page")\n` +
+        `3. Name it: <b>Scan Group</b>\n` +
+        `4. Paste this as the URL:`
+      );
+
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(bookmarkletCode)}</code>`);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>How to use it:</b>\n` +
+        `1. Go to any Facebook Group page\n` +
+        `2. Click your "Scan Group" bookmark\n` +
+        `3. Scroll through the feed\n` +
+        `4. I'll message you here instantly when I spot a lead!\n\n` +
+        `That's it - you're all set!`
+      );
+
+      await sendTelegramMessage(
+        `<b>New Client Onboarded via Wizard</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Telegram ID:</b> ${chatId}\n` +
+        `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}`
+      );
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function handleAdminCommand(chatId: string, text: string): Promise<boolean> {
   const pending = pendingClientSetups.get(chatId);
 
@@ -808,6 +939,21 @@ export function registerTelegramWebhook(app: any) {
       if (!message) return;
 
       const chatId = String(message.chat.id);
+      const messageText = (message.text || "").trim();
+
+      if (messageText === "/start setup" || messageText === "/setup") {
+        clientWizards.set(chatId, { step: "name", chatId });
+        await sendTelegramMessageToChat(chatId,
+          `<b>Welcome to Gemin-Eye!</b>\n\n` +
+          `I'm going to set up your business monitor in 3 quick steps.\n\n` +
+          `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
+        );
+        return;
+      }
+
+      const wizardHandled = await handleClientWizard(chatId, messageText);
+      if (wizardHandled) return;
+
       if (!ALLOWED_CHAT_ID) {
         console.warn("TELEGRAM_CHAT_ID not set, ignoring incoming message");
         return;

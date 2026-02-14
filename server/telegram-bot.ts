@@ -639,12 +639,25 @@ RULES:
       await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(liBookmarkletCode)}</code>`);
 
       await sendTelegramMessageToChat(chatId,
-        `<b>How to use them:</b>\n` +
+        `<b>How to use the bookmarklets:</b>\n` +
         `1. Go to any Facebook Group or LinkedIn feed/search\n` +
         `2. Click the matching bookmark\n` +
         `3. It auto-scrolls and scans posts\n` +
-        `4. I'll message you here instantly when I spot a lead!\n\n` +
-        `That's it - you're all set!`
+        `4. I'll message you here instantly when I spot a lead!`
+      );
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>What happens automatically:</b>\n` +
+        `- Reddit is scanned every 5 minutes for posts matching your keywords\n` +
+        `- When a lead is found, I'll send you an AI-written response here\n` +
+        `- Tap the response buttons to give feedback and improve future responses\n\n` +
+        `<b>Manual scanning:</b>\n` +
+        `- Send me any post URL + text and I'll analyze it instantly\n` +
+        `- Or just screenshot a post and send the image - I can read it!\n\n` +
+        `<b>Commands:</b>\n` +
+        `/help - Full usage guide\n` +
+        `/setup - Run this wizard again\n\n` +
+        `You're all set! I'll message you the moment I find a lead.`
       );
 
       await sendTelegramMessage(

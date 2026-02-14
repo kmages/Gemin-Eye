@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-14T19:23:44Z
+# Generated: 2026-02-14T19:29:29Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -368,7 +368,7 @@ app.use((req, res, next) => {
 
 
 ============================================================
-FILE: server/routes.ts (908 lines)
+FILE: server/routes.ts (909 lines)
 ============================================================
 import type { Express } from "express";
 import { createServer, type Server } from "http";
@@ -532,7 +532,8 @@ Generate a customer acquisition strategy. Return ONLY valid JSON with this exact
 CRITICAL RULES FOR GROUPS:
 - Include at least 3-5 REAL Reddit subreddits that actually exist, prefixed with "r/" (e.g., r/chicago, r/woodworking, r/fitness).
 - NEVER use placeholder names like "r/[yourcity]" or "[Your City Name]". Use REAL specific subreddit names.
-- If the business has a specific location, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business has a specific local area, ALWAYS include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business is national or global/web-based, focus on industry and topic subreddits instead of geographic ones.
 - Pick subreddits where the target audience is likely to ask questions or seek recommendations.
 - Also include 2-3 real Facebook group names if applicable.
 - Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
@@ -1569,7 +1570,7 @@ function truncate(text: string, max: number): string {
 
 
 ============================================================
-FILE: server/telegram-bot.ts (1639 lines)
+FILE: server/telegram-bot.ts (1653 lines)
 ============================================================
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
@@ -2078,7 +2079,7 @@ async function handleClientWizard(chatId: string, text: string): Promise<boolean
       wizard.offering = offering;
       wizard.step = "location";
       await sendTelegramMessageToChat(chatId,
-        `Got it.\n\nWhere is ${escapeHtml(wizard.name!)} located? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago, IL", "Online / nationwide", "Austin, Texas")</i>`
+        `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
       );
       return true;
     }
@@ -2132,7 +2133,8 @@ Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
 RULES:
 - List 5-8 REAL Reddit subreddits that actually exist.
 - NEVER use placeholders like "r/[yourcity]". Use specific real names.
-- If the business has a specific location, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business has a specific local area, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business is national or global/web-based, focus on industry and topic subreddits instead of geographic ones.
 - Focus on communities where people ask for recommendations related to this business.`,
           config: { maxOutputTokens: 256 },
         });
@@ -2211,12 +2213,25 @@ RULES:
       await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(liBookmarkletCode)}</code>`);
 
       await sendTelegramMessageToChat(chatId,
-        `<b>How to use them:</b>\n` +
+        `<b>How to use the bookmarklets:</b>\n` +
         `1. Go to any Facebook Group or LinkedIn feed/search\n` +
         `2. Click the matching bookmark\n` +
         `3. It auto-scrolls and scans posts\n` +
-        `4. I'll message you here instantly when I spot a lead!\n\n` +
-        `That's it - you're all set!`
+        `4. I'll message you here instantly when I spot a lead!`
+      );
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>What happens automatically:</b>\n` +
+        `- Reddit is scanned every 5 minutes for posts matching your keywords\n` +
+        `- When a lead is found, I'll send you an AI-written response here\n` +
+        `- Tap the response buttons to give feedback and improve future responses\n\n` +
+        `<b>Manual scanning:</b>\n` +
+        `- Send me any post URL + text and I'll analyze it instantly\n` +
+        `- Or just screenshot a post and send the image - I can read it!\n\n` +
+        `<b>Commands:</b>\n` +
+        `/help - Full usage guide\n` +
+        `/setup - Run this wizard again\n\n` +
+        `You're all set! I'll message you the moment I find a lead.`
       );
 
       await sendTelegramMessage(
@@ -4709,7 +4724,7 @@ export default function Dashboard() {
 
 
 ============================================================
-FILE: client/src/pages/onboarding.tsx (398 lines)
+FILE: client/src/pages/onboarding.tsx (451 lines)
 ============================================================
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -4732,7 +4747,7 @@ import {
 } from "@/components/ui/select";
 import {
   Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
-  CheckCircle, Bot, Zap, MapPin
+  CheckCircle, Bot, Zap, MapPin, MessageCircle, Copy, ExternalLink
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
@@ -4905,9 +4920,9 @@ export default function OnboardingPage() {
                     name="location"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Location <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                        <FormLabel>Location / Reach</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Chicago, IL or Online" {...field} data-testid="input-location" />
+                          <Input placeholder="e.g., Chicago IL, National, or Global / Web-based" {...field} data-testid="input-location" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -5090,19 +5105,72 @@ export default function OnboardingPage() {
         )}
 
         {step === "complete" && (
-          <div className="text-center py-20 space-y-6">
-            <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
-              <CheckCircle className="w-10 h-10 text-chart-2" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">You're All Set!</h2>
+          <div className="py-12 space-y-8">
+            <div className="text-center space-y-2">
+              <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-chart-2" />
+              </div>
+              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">Strategy Created!</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Your Gemin-Eye agent is now monitoring target groups. You'll be notified when high-intent leads are found.
+                Now connect Telegram to receive lead alerts instantly on your phone.
               </p>
             </div>
-            <Button size="lg" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
-              Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-primary" /> Connect Telegram (Required)
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Gemin-Eye sends you lead alerts and AI-written responses through Telegram. Tap the button below to connect:
+              </p>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")}
+                data-testid="button-open-telegram"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Open Telegram Bot
+                <ExternalLink className="w-3 h-3 ml-2" />
+              </Button>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>The bot will walk you through a quick setup and send you your monitoring tools.</p>
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" /> What Happens Next
+              </h2>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">1.</span>
+                  <span><b className="text-foreground">Reddit monitoring is live</b> - AI scans your target subreddits every 5 minutes for leads</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">2.</span>
+                  <span><b className="text-foreground">Telegram alerts</b> - When a lead is found, you get a message with the AI-written response ready to post</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">3.</span>
+                  <span><b className="text-foreground">Spy Glass bookmarklets</b> - The bot will send you bookmark tools to manually scan Facebook and LinkedIn</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">4.</span>
+                  <span><b className="text-foreground">Rate responses</b> - Tap feedback buttons to teach the AI your style over time</span>
+                </div>
+              </div>
+            </Card>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
+                Go to Dashboard
+              </Button>
+              <Button className="flex-1" onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")} data-testid="button-telegram-cta">
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Connect Telegram
+              </Button>
+            </div>
           </div>
         )}
       </main>

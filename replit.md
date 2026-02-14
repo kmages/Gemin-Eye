@@ -18,12 +18,18 @@ The app has three main flows:
   - Telegram commands: /addalert, /alerts, /removealert for feed management
   - Creates `google_alerts` platform campaigns with RSS feed URLs stored in `targetGroups`
   - Inherits business keywords from existing campaigns when creating alert campaign
-- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/BotName?start=setup`)
-  - 3-step wizard: business name → what they offer → keywords
+- **Client Self-Onboarding Wizard** via Telegram deep link (`t.me/kmages_bot?start=setup`)
+  - 4-step wizard: business name → what they offer → location/reach → keywords
+  - Location supports local (city), national, or global/web-based reach
   - Works for any Telegram user (not just admin)
-  - Creates business + Facebook campaign in DB automatically
-  - Sends personalized bookmarklet code after setup
-  - Notifies admin when new client onboards
+  - Creates business + Reddit campaign in DB automatically with AI-generated subreddits
+  - Sends personalized bookmarklet codes (Facebook + LinkedIn) after setup
+  - Sends comprehensive usage guide (auto-scanning, manual scanning, commands)
+  - Notifies admin when new client onboards (includes location + subreddits)
+- **Web Onboarding → Telegram Flow**
+  - Web onboarding completion page directs clients to connect Telegram bot
+  - Deep link button opens `t.me/kmages_bot?start=setup` for quick connection
+  - Shows "What Happens Next" guide explaining auto-scanning, alerts, bookmarklets, feedback
 - **Facebook Spy Glass Bookmarklet** (`client/public/spy-glass.js`)
   - Clients save a bookmark that loads the scanning script on any Facebook Group page
   - Script scans posts as user scrolls, filters by keywords, sends to `/api/fb-scan` endpoint

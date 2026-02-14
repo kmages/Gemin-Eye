@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
   Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
-  CheckCircle, Bot, Zap, MapPin
+  CheckCircle, Bot, Zap, MapPin, MessageCircle, Copy, ExternalLink
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
@@ -377,19 +377,72 @@ export default function OnboardingPage() {
         )}
 
         {step === "complete" && (
-          <div className="text-center py-20 space-y-6">
-            <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
-              <CheckCircle className="w-10 h-10 text-chart-2" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">You're All Set!</h2>
+          <div className="py-12 space-y-8">
+            <div className="text-center space-y-2">
+              <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-chart-2" />
+              </div>
+              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">Strategy Created!</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Your Gemin-Eye agent is now monitoring target groups. You'll be notified when high-intent leads are found.
+                Now connect Telegram to receive lead alerts instantly on your phone.
               </p>
             </div>
-            <Button size="lg" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
-              Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
+
+            <Card className="p-6 space-y-5">
+              <h2 className="font-semibold flex items-center gap-2">
+                <MessageCircle className="w-4 h-4 text-primary" /> Connect Telegram (Required)
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Gemin-Eye sends you lead alerts and AI-written responses through Telegram. Tap the button below to connect:
+              </p>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")}
+                data-testid="button-open-telegram"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Open Telegram Bot
+                <ExternalLink className="w-3 h-3 ml-2" />
+              </Button>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>The bot will walk you through a quick setup and send you your monitoring tools.</p>
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <h2 className="font-semibold flex items-center gap-2">
+                <Zap className="w-4 h-4 text-primary" /> What Happens Next
+              </h2>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">1.</span>
+                  <span><b className="text-foreground">Reddit monitoring is live</b> - AI scans your target subreddits every 5 minutes for leads</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">2.</span>
+                  <span><b className="text-foreground">Telegram alerts</b> - When a lead is found, you get a message with the AI-written response ready to post</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">3.</span>
+                  <span><b className="text-foreground">Spy Glass bookmarklets</b> - The bot will send you bookmark tools to manually scan Facebook and LinkedIn</span>
+                </div>
+                <div className="flex gap-3">
+                  <span className="font-semibold text-foreground shrink-0">4.</span>
+                  <span><b className="text-foreground">Rate responses</b> - Tap feedback buttons to teach the AI your style over time</span>
+                </div>
+              </div>
+            </Card>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
+                Go to Dashboard
+              </Button>
+              <Button className="flex-1" onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")} data-testid="button-telegram-cta">
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Connect Telegram
+              </Button>
+            </div>
           </div>
         )}
       </main>

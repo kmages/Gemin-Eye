@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell } from "lucide-react";
-import { SiFacebook, SiReddit } from "react-icons/si";
+import { SiFacebook, SiReddit, SiLinkedin, SiGoogle } from "react-icons/si";
 import { useTheme } from "@/components/theme-provider";
 
 const demoPost = {
@@ -197,11 +197,13 @@ export default function LandingPage() {
               </Button>
             </div>
             <div className="flex items-center gap-4 pt-2">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2.5">
                 <SiFacebook className="w-4 h-4 text-muted-foreground" />
                 <SiReddit className="w-4 h-4 text-muted-foreground" />
+                <SiLinkedin className="w-4 h-4 text-muted-foreground" />
+                <SiGoogle className="w-4 h-4 text-muted-foreground" />
               </div>
-              <span className="text-xs text-muted-foreground">Monitors Facebook, Reddit & more</span>
+              <span className="text-xs text-muted-foreground">Monitors the internet for your next customer</span>
             </div>
           </div>
 

@@ -351,5 +351,10 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/download/source", (_req, res) => {
+    const filePath = require("path").resolve("client/public/gemin-eye-source.tar.gz");
+    res.download(filePath, "gemin-eye-source.tar.gz");
+  });
+
   return httpServer;
 }

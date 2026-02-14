@@ -4,6 +4,7 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
+import { isRedditConfigured } from "./reddit-poster";
 
 function safeParseJsonFromAI(text: string): any | null {
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
@@ -272,6 +273,10 @@ Return ONLY the response text, no quotes or formatting.`,
   const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
   if (item.link) {
     buttons.push([{ text: "Open Page", url: item.link }]);
+  }
+  const isRedditSource = item.link && /reddit\.com\/r\/\w+\/comments\//i.test(item.link);
+  if (savedResponseId && isRedditSource && isRedditConfigured()) {
+    buttons.push([{ text: "Post to Reddit", callback_data: `reddit_post_${savedResponseId}` }]);
   }
   if (savedResponseId) {
     buttons.push([

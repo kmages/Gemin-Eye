@@ -5,6 +5,7 @@ import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@sh
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup, type TelegramMessageOptions } from "./telegram";
 import { storage } from "./storage";
+import { postRedditComment, postRedditSubmission, isRedditConfigured } from "./reddit-poster";
 
 function safeParseJsonFromAI(text: string): any | null {
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
@@ -434,6 +435,9 @@ Return ONLY the response text, no quotes or formatting.`;
   };
 }
 
+const pendingRedditPosts = new Map<number, { responseText: string; postUrl: string; timestamp: number }>();
+const REDDIT_POST_TTL = 30 * 60 * 1000;
+
 const pendingClientSetups = new Map<string, { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }>();
 
 interface ClientWizardState {
@@ -795,6 +799,57 @@ async function handleAdminCommand(chatId: string, text: string): Promise<boolean
 
     pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
     await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text.startsWith("/post ")) {
+    if (!isRedditConfigured()) {
+      await sendTelegramMessage("Reddit credentials not configured. Add REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, and REDDIT_PASSWORD to your secrets.");
+      return true;
+    }
+
+    const postArgs = text.slice(6).trim();
+    const subredditMatch = postArgs.match(/^(r\/\w+)\s+([\s\S]+)/);
+
+    if (!subredditMatch) {
+      await sendTelegramMessage(
+        `<b>Usage:</b>\n\n` +
+        `<b>New post:</b>\n<code>/post r/subreddit Title here | Body text here</code>\n\n` +
+        `<b>Reply to a post:</b>\nPaste a Reddit URL into the chat and I'll generate a response. Then tap "Post to Reddit" to comment.\n\n` +
+        `<b>Example:</b>\n<code>/post r/startups Check out my AI tool | We built an AI that monitors communities for leads.</code>`
+      );
+      return true;
+    }
+
+    const subreddit = subredditMatch[1];
+    const rest = subredditMatch[2].trim();
+
+    const pipeIndex = rest.indexOf("|");
+    let title: string;
+    let body: string;
+
+    if (pipeIndex > 0) {
+      title = rest.slice(0, pipeIndex).trim();
+      body = rest.slice(pipeIndex + 1).trim();
+    } else {
+      title = rest;
+      body = "";
+    }
+
+    await sendTelegramMessage(`Posting to <b>${escapeHtml(subreddit)}</b>...\n\nTitle: <i>${escapeHtml(title)}</i>`);
+
+    const result = await postRedditSubmission(subreddit, title, body);
+
+    if (result.success) {
+      let msg = "Posted to Reddit!";
+      if (result.postUrl) {
+        msg += `\n\n<a href="${result.postUrl}">View your post</a>`;
+      }
+      await sendTelegramMessage(msg);
+    } else {
+      await sendTelegramMessage(`Failed to post: ${result.error}`);
+    }
+
     return true;
   }
 
@@ -1160,6 +1215,15 @@ export function registerTelegramWebhook(app: any) {
       buttons.push([{ text: label, url: result.postUrl }]);
     }
 
+    if (result.responseId && result.platform === "reddit" && result.postUrl && result.responseText && isRedditConfigured()) {
+      pendingRedditPosts.set(result.responseId, {
+        responseText: result.responseText,
+        postUrl: result.postUrl,
+        timestamp: Date.now(),
+      });
+      buttons.push([{ text: "Post to Reddit", callback_data: `reddit_post_${result.responseId}` }]);
+    }
+
     if (result.responseId) {
       buttons.push([
         { text: "Used It", callback_data: `fb_good_${result.responseId}` },
@@ -1295,6 +1359,42 @@ export function registerTelegramWebhook(app: any) {
           } else {
             await answerCallbackQuery(cbq.id);
           }
+        } else if (data.startsWith("reddit_post_")) {
+          const responseId = parseInt(data.replace("reddit_post_", ""));
+          if (!isNaN(responseId)) {
+            const pending = pendingRedditPosts.get(responseId);
+            if (!pending || (Date.now() - pending.timestamp) > REDDIT_POST_TTL) {
+              pendingRedditPosts.delete(responseId);
+              await answerCallbackQuery(cbq.id, "This post link has expired. Trigger a new analysis.");
+              return;
+            }
+
+            await answerCallbackQuery(cbq.id, "Posting to Reddit...");
+            const result = await postRedditComment(pending.postUrl, pending.responseText);
+            pendingRedditPosts.delete(responseId);
+
+            if (result.success) {
+              await db.insert(responseFeedback).values({ responseId, feedback: "positive" }).catch(() => {});
+              await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId)).catch(() => {});
+
+              let confirmMsg = "Posted to Reddit!";
+              if (result.commentUrl) {
+                confirmMsg += `\n\n<a href="${result.commentUrl}">View your comment</a>`;
+              }
+              await sendTelegramMessage(confirmMsg);
+
+              if (cbq.message?.message_id && cbqChatId) {
+                const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+                const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+                const newKeyboard = [...urlButtons, [{ text: "[Posted to Reddit]", callback_data: "noop" }]];
+                await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+              }
+            } else {
+              await sendTelegramMessage(`Failed to post: ${result.error}`);
+            }
+          } else {
+            await answerCallbackQuery(cbq.id);
+          }
         } else if (data === "noop") {
           await answerCallbackQuery(cbq.id, "Feedback already recorded.");
         } else {
@@ -1379,7 +1479,7 @@ export function registerTelegramWebhook(app: any) {
       if (text === "/start") {
         pendingContextRequests.delete(chatId);
         await sendTelegramMessage(
-          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response (Used It / Bad Match / Too Salesy / Wrong Client)\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button.\n\n<b>Screenshot example:</b> Just take a screenshot of any Facebook/Reddit post and send it here!`
+          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response or post it directly\n\n<b>Reddit Commander:</b>\n/post r/subreddit Title | Body text\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button. For Reddit leads, tap "Post to Reddit" to comment directly!`
         );
         return;
       }

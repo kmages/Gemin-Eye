@@ -4,6 +4,7 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
+import { isRedditConfigured } from "./reddit-poster";
 
 function safeParseJsonFromAI(text: string): any | null {
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
@@ -241,13 +242,12 @@ Return ONLY the response text, no quotes or formatting.`,
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
   msg += `<b>Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>`;
 
-  if (post.link) {
-    msg += `\n\nTap "Open Post" below, then paste the reply.`;
-  }
-
   const buttons = [];
   if (post.link) {
     buttons.push([{ text: "Open Post", url: post.link }]);
+  }
+  if (savedResponseId && post.link && isRedditConfigured()) {
+    buttons.push([{ text: "Post to Reddit", callback_data: `reddit_post_${savedResponseId}` }]);
   }
   if (savedResponseId) {
     buttons.push([

@@ -367,12 +367,12 @@ Return ONLY valid JSON with this structure:
   const liScanRateLimit = new Map<string, { count: number; resetAt: number }>();
   setInterval(() => {
     const now = Date.now();
-    for (const [key, val] of fbScanRateLimit) {
+    fbScanRateLimit.forEach((val, key) => {
       if (now > val.resetAt) fbScanRateLimit.delete(key);
-    }
-    for (const [key, val] of liScanRateLimit) {
+    });
+    liScanRateLimit.forEach((val, key) => {
       if (now > val.resetAt) liScanRateLimit.delete(key);
-    }
+    });
   }, 5 * 60 * 1000);
   app.post("/api/fb-scan", async (req, res) => {
     const rateLimitKey = String(req.body.chatId || req.ip);
@@ -820,6 +820,56 @@ a{display:inline-block;margin-top:20px;padding:14px 32px;background:#6366f1;colo
 a:hover{background:#4f46e5;}</style></head>
 <body><div class="box"><h1>Gemin-Eye Source Code</h1><p>Click below to download all source files as a .tar.gz archive.</p>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
+  });
+
+  app.get("/api/source", (_req, res) => {
+    const coreFiles = [
+      "shared/schema.ts",
+      "shared/models/auth.ts",
+      "shared/models/chat.ts",
+      "server/index.ts",
+      "server/routes.ts",
+      "server/storage.ts",
+      "server/db.ts",
+      "server/telegram.ts",
+      "server/telegram-bot.ts",
+      "server/reddit-monitor.ts",
+      "server/google-alerts-monitor.ts",
+      "client/src/App.tsx",
+      "client/src/pages/landing.tsx",
+      "client/src/pages/dashboard.tsx",
+      "client/src/pages/onboarding.tsx",
+      "client/src/pages/client-guide.tsx",
+      "client/src/hooks/use-auth.ts",
+      "client/src/lib/queryClient.ts",
+      "client/src/components/theme-provider.tsx",
+      "client/public/spy-glass.js",
+      "client/public/li-spy-glass.js",
+      "replit.md",
+    ];
+
+    let output = "# GEMIN-EYE — FULL SOURCE CODE\n";
+    output += "# AI-Powered Customer Acquisition Platform\n";
+    output += "# https://gemin-eye.com\n";
+    output += `# Generated: ${new Date().toISOString()}\n`;
+    output += "# This file is auto-generated for AI code review.\n";
+    output += "#".repeat(60) + "\n\n";
+
+    for (const filePath of coreFiles) {
+      const fullPath = path.resolve(process.cwd(), filePath);
+      try {
+        if (!fs.existsSync(fullPath)) continue;
+        const content = fs.readFileSync(fullPath, "utf-8");
+        const lines = content.split("\n").length;
+        output += "=".repeat(60) + "\n";
+        output += `FILE: ${filePath} (${lines} lines)\n`;
+        output += "=".repeat(60) + "\n";
+        output += content + "\n\n";
+      } catch {}
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(output);
   });
 
   app.get("/api/test-telegram", isAuthenticated, async (_req: any, res) => {

@@ -1,5 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { execSync } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { storage } from "./storage";
 import { GoogleGenAI } from "@google/genai";
@@ -351,9 +355,18 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  app.get("/api/download/source", (_req, res) => {
-    const filePath = require("path").resolve("client/public/gemin-eye-source.tar.gz");
-    res.download(filePath, "gemin-eye-source.tar.gz");
+  app.get("/api/download/source", async (_req, res) => {
+    const tmpFile = path.join(os.tmpdir(), "gemin-eye-source.tar.gz");
+    try {
+      const targets = ["shared", "server", "client/src", "client/index.html", "tailwind.config.ts", "vite.config.ts", "drizzle.config.ts", "package.json", "tsconfig.json", "replit.md"];
+      const existing = targets.filter(d => fs.existsSync(d));
+      execSync(`tar -czf ${tmpFile} --exclude='node_modules' --exclude='dist' --exclude='.cache' ${existing.join(" ")}`, { cwd: process.cwd() });
+      res.download(tmpFile, "gemin-eye-source.tar.gz", () => {
+        try { fs.unlinkSync(tmpFile); } catch {}
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to generate archive" });
+    }
   });
 
   return httpServer;

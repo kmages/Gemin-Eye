@@ -1,0 +1,43 @@
+You are right to be impatient. Waiting for organic traffic is boring.
+Here are two ways to force the system to generate leads right now.
+Method 1: The "Direct Injection" (Fastest)
+You don't need to wait for Reddit. Your bot listens to you too.
+If you send a text message directly to your Telegram bot, it treats that message exactly like a scraped post. This tests the AI Brain, the Scoring, and the Response Writer instantly.
+Do this:
+ * Open your bot in Telegram.
+ * Copy and paste this text (perfectly tailored for your "CoinSniper" client):
+   > "I'm so tired of missing out on memecoins. Does anyone use a tool or bot to find Solana gems early? I keep getting rugpulled and I need something that actually works."
+   > 
+ * Hit Send.
+What should happen:
+The bot will "read" your message, match it to CoinSniper AI, score it (probably 9/10), and reply with a draft pitch.
+ * If this works: Your AI and Database are perfect.
+ * If this fails: Your bot token or webhook is broken.
+Method 2: The "RSS Floodgate" (Force the Monitor)
+Currently, your code has a safety valve: "On startup, ignore existing posts so we don't spam."
+Let's break that valve so it processes everything it sees immediately.
+1. Go to server/google-alerts-monitor.ts
+2. Find this line (around line 140-150):
+if (isFirstRun) continue;
+
+3. Comment it out:
+// if (isFirstRun) continue;
+
+(Do the same in server/reddit-monitor.ts if you want to flood Reddit posts too).
+4. Restart the server.
+ * Result: The bot will instantly grab the last 10 posts from every feed you added and fire them at your phone.
+ * Warning: Your phone will vibrate 10-20 times in 3 seconds.
+Method 3: The "Spy Glass" Simulation
+If you want to test the Facebook/Web endpoint specifically, run this command in your Replit Shell (the terminal tab):
+curl -X POST https://${REPL_SLUG}.${REPL_OWNER}.repl.co/api/fb-scan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chatId": "426842568",
+    "businessId": 1,
+    "token": "YOUR_HMAC_TOKEN_HERE", 
+    "postText": "I need a crypto tool for finding 100x gems!",
+    "groupName": "Crypto Degens"
+  }'
+
+(Note: This is harder because you need the HMAC token. Method 1 is usually enough).
+Start with Method 1. It confirms the brain is alive.

@@ -1,0 +1,94 @@
+Nice — this source.txt is actually super reviewable. It’s an auto-generated “core files” bundle served by your app (/api/source) and it includes the parts that matter: schema, storage, monitors, and UI flow.  ￼
+
+Below is a straight-up evaluation of the idea and the code, with specific fixes.
+
+Idea: what you’re building (and what’s strong)
+
+You’re essentially building “response advertising”: monitor high-intent questions in communities (Reddit, Google Alerts RSS, LinkedIn scanning), score intent with Gemini, draft a subtle helpful reply, then send it to the operator via Telegram for approval.  ￼
+
+That’s a solid wedge because:
+	•	It targets people already asking (much higher conversion than cold ads).
+	•	The human-in-the-loop approval via Telegram is a pragmatic safety & quality layer.  ￼
+	•	You’ve already built the core loop: monitor → score → draft → store → notify → feedback.  ￼
+
+Big product risk (worth addressing in positioning + UX):
+	•	Many communities view “subtle recommendations” as stealth marketing. Your app should ship “community-safe” modes: disclosure templates, tone guardrails, and per-platform rules.
+
+Code review highlights
+
+1) Data model is clean, but you need stronger typing + constraints
+
+Your tables (businesses, campaigns, leads, ai_responses, response_feedback, seen_items) are the right shape for this product.  ￼
+
+But there are issues:
+	•	Type exports look broken in shared/schema.ts: e.g. export type InsertBusiness = z.infer; (missing typeof insertBusinessSchema). If that’s not just a generator formatting bug, the code wouldn’t compile.  ￼
+	•	campaigns.businessId, leads.campaignId, aiResponses.leadId are not declared with DB-level references(...) in the table definitions (you reference them only in relations). Consider enforcing foreign keys at the database schema level too.  ￼
+	•	Add indexes that match your queries:
+	•	businesses.user_id
+	•	campaigns.business_id
+	•	leads.campaign_id, leads.created_at
+	•	ai_responses.lead_id, ai_responses.status
+	•	seen_items.dedup_key (you already have unique 👍)  ￼
+
+2) Storage layer has N+1 query patterns (will bite you)
+
+Your DatabaseStorage.getCampaignsByUser, getLeadsByCampaigns, and getResponsesByLeads loop and query per ID. That’s N+1 and will slow down fast with real volume.  ￼
+
+Fix: use inArray() (or joins) and fetch in one query per table.
+
+3) Security footguns: CORS * + public “lead ingestion” endpoints
+
+You set permissive CORS headers for /api/li-scan (Access-Control-Allow-Origin: "*") and accept POSTs. That’s an easy target for abuse (any site can hammer your endpoint).  ￼
+
+At minimum:
+	•	restrict origin to your domain(s),
+	•	require an HMAC token / signed payload,
+	•	rate limit by IP and/or token.
+
+4) HTML escaping looks wrong (possible injection / broken Telegram formatting)
+
+Your escapeHtml / escHtml functions appear malformed:
+
+return text.replace(/&/g, "&").replace(//g, ">");
+
+That missing pattern means < / > aren’t actually being escaped (and & replacement is also suspiciously incomplete). If this is real in source (not a bundle formatting artifact), it’s a bug + potential injection vector in Telegram messages.  ￼
+
+You want something like: replace &, <, >, ", ' (or use Telegram’s MarkdownV2 escaping correctly).
+
+5) Prompting is on the right track, but you should harden it
+
+What’s good:
+	•	You do explicit JSON output for intent scoring.  ￼
+	•	You use feedback history to adjust “salesy vs subtle” behavior. That’s a great loop.  ￼
+	•	You cap token output for scoring (maxOutputTokens: 512) and keep the “post content” excerpt bounded.  ￼
+
+What to improve:
+	•	Your JSON parse is regex-based (match(/\{[\s\S]*\}/)) which is fragile. Prefer a strict “JSON only” response plus a safe parser, or use a tool/function calling schema if available.
+	•	Add a “no hallucinated facts” rule: the assistant must not invent credentials, addresses, prices, results, etc. (This matters a lot for stealthy recommendations.)
+
+6) “Source download” endpoints are a cool dev feature — but lock them down
+
+You have /api/source dumping core files and /api/download/source serving a base64 tar.gz archive. That’s awesome for AI review, but in production it should be:
+	•	disabled,
+	•	or behind admin auth,
+	•	or gated by an env flag.  ￼
+
+Otherwise you’re inviting automated scraping of your internals.
+
+UX/product flow review (front-end)
+
+The Landing → Onboarding → Dashboard story is coherent:
+	•	Landing clearly states the value proposition and “approve via Telegram” loop.  ￼
+	•	Onboarding collects business info, then calls /api/strategy/generate.  ￼
+	•	Dashboard pulls businesses/campaigns/leads and shows status.  ￼
+
+One suggestion: surface why a lead was matched (the intent reasoning) right next to the draft response, so the user can trust the system’s judgment (you already generate “reasoning” for Reddit matches).  ￼
+
+What I’d prioritize next (highest ROI)
+	1.	Fix escaping + Telegram formatting (this is correctness + safety).  ￼
+	2.	Lock down /api/li-scan, /api/source, /api/download/source (auth + origin + rate limits).  ￼
+	3.	Eliminate N+1 queries in storage; your dashboard will feel instantly faster at scale.  ￼
+	4.	DB constraints + indexes to match your access patterns.  ￼
+	5.	Prompt hardening: strict JSON parsing + anti-hallucination + community-safe templates.  ￼
+
+If you want, paste (or link raw) server/routes.ts and server/telegram.ts next — those two will let me do a deeper review of auth boundaries, request validation, and platform-abuse protection.

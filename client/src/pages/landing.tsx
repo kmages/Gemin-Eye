@@ -154,7 +154,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-background/80 border-b">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Eye className="w-6 h-6 text-primary" />
+            <img src="/images/logo.png" alt="Gemin-Eye" className="w-7 h-7" />
             <span className="font-semibold text-lg tracking-tight" data-testid="text-brand-name">Gemin-Eye</span>
           </div>
           <div className="hidden md:flex items-center gap-6">

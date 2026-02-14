@@ -285,6 +285,8 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
       link: item.link || "",
     }));
 
+    let newPosts = 0;
+    let kwMatches = 0;
     for (const post of posts) {
       const postId = post.link || post.title || "";
       if (!postId) continue;
@@ -293,6 +295,7 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
         const seenKey = `rd::${postId}::${target.businessId}`;
         if (await hasBeenSeen(seenKey)) continue;
         await markSeen(seenKey);
+        newPosts++;
 
         try {
           await processPostForTarget(post, target);
@@ -300,6 +303,9 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
           console.error(`Error processing post for ${target.businessName}: ${err?.message || err}`);
         }
       }
+    }
+    if (newPosts > 0) {
+      console.log(`Reddit monitor: r/${subreddit} - ${posts.length} posts, ${newPosts} new evaluations`);
     }
   } catch (err: any) {
     const errMsg = err?.message || String(err);

@@ -813,5 +813,16 @@ a:hover{background:#4f46e5;}</style></head>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
   });
 
+  app.get("/api/test-telegram", async (_req, res) => {
+    try {
+      const success = await sendTelegramMessage(
+        `<b>Gemin-Eye Test</b>\n\nThis is a test message from the Gemin-Eye platform.\nTimestamp: ${new Date().toISOString()}\n\nIf you see this, Telegram delivery is working!`
+      );
+      res.json({ success, message: success ? "Test message sent to Telegram" : "Failed to send" });
+    } catch (err: any) {
+      res.json({ success: false, error: err?.message || String(err) });
+    }
+  });
+
   return httpServer;
 }

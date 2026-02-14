@@ -106,6 +106,8 @@ async function processPostForTarget(
 
   if (!keywordMatch(fullText, target.keywords)) return;
 
+  console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
+
   const matchResult = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
@@ -133,6 +135,8 @@ Return ONLY valid JSON:
   } catch {
     return;
   }
+
+  console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 
   if (!match.is_lead || match.intent_score < 5) return;
 
@@ -315,10 +319,13 @@ async function runScan(): Promise<void> {
   console.log(`Reddit monitor: scanning ${subMap.size} subreddits for ${targets.length} business targets...`);
 
   const entries = Array.from(subMap.values());
+  let scannedCount = 0;
   for (const subTargets of entries) {
     await scanSubredditForTargets(subTargets[0].subreddit, subTargets);
+    scannedCount++;
     await new Promise((r) => setTimeout(r, 5000));
   }
+  console.log(`Reddit monitor: scan complete (${scannedCount}/${subMap.size} subreddits)`);
 }
 
 export function startRedditMonitor(): void {

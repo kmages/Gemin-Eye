@@ -269,7 +269,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {[
               { name: "Doro Mind", type: "Mental Health", icon: Brain, url: "https://doromind.com" },
-              { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell, url: "https://chicagobocce.com" },
+              { name: "Chicago Bocce", type: "Recreation", icon: Dumbbell, url: "https://www.chicagobocceclub.com/" },
               { name: "LMAITFY.ai", type: "AI Tool", icon: Globe, url: "https://lmaitfy.ai" },
               { name: "Tony's", type: "Diner", icon: Utensils, url: "https://tonysbrookfield.com" },
               { name: "Heart of America Whoodles", type: "Dog Breeder", icon: Dog, url: "https://heartofamericawhoodles.com" },

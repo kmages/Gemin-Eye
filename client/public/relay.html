@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html><head><title>Gemin-Eye Relay</title></head>
+<body>
+<div id="status" style="font-family:system-ui;padding:20px;font-size:13px;color:#666;">Gemin-Eye relay active. Do not close this window.</div>
+<script>
+var statusEl = document.getElementById('status');
+var queue = [];
+var processing = false;
+var stats = { sent: 0, matched: 0, failed: 0 };
+
+function updateStatus() {
+  statusEl.textContent = 'Relay: ' + stats.sent + ' sent, ' + stats.matched + ' matched, ' + stats.failed + ' failed';
+}
+
+function processQueue() {
+  if (processing || queue.length === 0) return;
+  processing = true;
+  var item = queue.shift();
+  var payload = item.payload;
+  var apiUrl = item.apiUrl;
+  var sourceWindow = item.source;
+  var msgId = item.msgId;
+
+  fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    stats.sent++;
+    if (d.matched) stats.matched++;
+    updateStatus();
+    try {
+      sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: d }, '*');
+    } catch(e) {}
+    processing = false;
+    processQueue();
+  })
+  .catch(function(err) {
+    stats.failed++;
+    updateStatus();
+    try {
+      sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: { matched: false, reason: 'relay_error' } }, '*');
+    } catch(e) {}
+    processing = false;
+    processQueue();
+  });
+}
+
+window.addEventListener('message', function(event) {
+  if (!event.data || event.data.type !== 'gemin-eye-scan') return;
+  queue.push({
+    payload: event.data.payload,
+    apiUrl: event.data.apiUrl,
+    source: event.source,
+    msgId: event.data.msgId
+  });
+  processQueue();
+});
+
+updateStatus();
+</script>
+</body>
+</html>

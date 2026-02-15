@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T00:12:24Z
+# Generated: 2026-02-15T00:19:03Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -852,7 +852,7 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
-FILE: server/storage.ts (118 lines)
+FILE: server/storage.ts (109 lines)
 ============================================================
 import {
   businesses, campaigns, leads, aiResponses,
@@ -954,19 +954,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCampaign(id: number): Promise<void> {
-    const campLeads = await db.select().from(leads).where(eq(leads.campaignId, id));
-    for (const lead of campLeads) {
-      await db.delete(aiResponses).where(eq(aiResponses.leadId, lead.id));
-    }
-    await db.delete(leads).where(eq(leads.campaignId, id));
     await db.delete(campaigns).where(eq(campaigns.id, id));
   }
 
   async deleteBusiness(id: number): Promise<void> {
-    const bizCampaigns = await this.getCampaignsByBusiness(id);
-    for (const c of bizCampaigns) {
-      await this.deleteCampaign(c.id);
-    }
     await db.delete(businesses).where(eq(businesses.id, id));
   }
 }

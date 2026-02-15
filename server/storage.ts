@@ -98,19 +98,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCampaign(id: number): Promise<void> {
-    const campLeads = await db.select().from(leads).where(eq(leads.campaignId, id));
-    for (const lead of campLeads) {
-      await db.delete(aiResponses).where(eq(aiResponses.leadId, lead.id));
-    }
-    await db.delete(leads).where(eq(leads.campaignId, id));
     await db.delete(campaigns).where(eq(campaigns.id, id));
   }
 
   async deleteBusiness(id: number): Promise<void> {
-    const bizCampaigns = await this.getCampaignsByBusiness(id);
-    for (const c of bizCampaigns) {
-      await this.deleteCampaign(c.id);
-    }
     await db.delete(businesses).where(eq(businesses.id, id));
   }
 }

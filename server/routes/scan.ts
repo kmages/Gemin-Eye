@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
@@ -15,6 +15,48 @@ const scanRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
   keyFn: (req) => String(req.body?.chatId || req.ip || "unknown"),
 });
+
+function setCorsHeaders(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
+}
+
+function corsOptions(_req: Request, res: Response) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+}
+
+async function validateScanRequest(req: Request): Promise<
+  | { valid: true; chatId: string; businessId: number; postText: string; business: any; bizCampaigns: any[] }
+  | { valid: false; error: { matched: false; reason: string } }
+> {
+  const { chatId, businessId, token, postText } = req.body;
+
+  if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
+    return { valid: false, error: { matched: false, reason: "missing_fields" } };
+  }
+
+  const expectedToken = generateScanToken(String(chatId), Number(businessId));
+  if (token !== expectedToken) {
+    return { valid: false, error: { matched: false, reason: "invalid_token" } };
+  }
+
+  if (postText.length < MIN_POST_LENGTH) {
+    return { valid: false, error: { matched: false, reason: "too_short" } };
+  }
+
+  const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
+  if (biz.length === 0) {
+    return { valid: false, error: { matched: false, reason: "business_not_found" } };
+  }
+
+  const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  return { valid: true, chatId: String(chatId), businessId: Number(businessId), postText, business: biz[0], bizCampaigns };
+}
 
 async function handleScanRequest(
   platform: "facebook" | "linkedin",
@@ -157,45 +199,17 @@ Return ONLY the response text, no quotes or formatting.`,
 }
 
 export function registerScanRoutes(app: Express) {
-  app.options("/api/fb-scan", (_req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.sendStatus(204);
-  });
+  app.options("/api/fb-scan", corsOptions);
+  app.options("/api/li-scan", corsOptions);
 
-  app.post("/api/fb-scan", scanRateLimit, async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  app.post("/api/fb-scan", scanRateLimit, setCorsHeaders, async (req, res) => {
     try {
-      const { chatId, businessId, token, postText, groupName, pageUrl } = req.body;
+      const validation = await validateScanRequest(req);
+      if (!validation.valid) { res.json(validation.error); return; }
 
-      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
-        res.json({ matched: false, reason: "missing_fields" });
-        return;
-      }
-
-      const expectedToken = generateScanToken(String(chatId), Number(businessId));
-      if (token !== expectedToken) {
-        res.json({ matched: false, reason: "invalid_token" });
-        return;
-      }
-
-      if (postText.length < MIN_POST_LENGTH) {
-        res.json({ matched: false, reason: "too_short" });
-        return;
-      }
-
-      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
-      if (biz.length === 0) {
-        res.json({ matched: false, reason: "business_not_found" });
-        return;
-      }
-
-      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
-      const result = await handleScanRequest("facebook", biz[0], bizCampaigns, postText, chatId, { groupName, pageUrl });
+      const { chatId, postText, business, bizCampaigns } = validation;
+      const { groupName, pageUrl } = req.body;
+      const result = await handleScanRequest("facebook", business, bizCampaigns, postText, chatId, { groupName, pageUrl });
       res.json(result);
     } catch (error) {
       console.error("FB scan error:", error);
@@ -203,45 +217,14 @@ export function registerScanRoutes(app: Express) {
     }
   });
 
-  app.options("/api/li-scan", (_req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.sendStatus(204);
-  });
-
-  app.post("/api/li-scan", scanRateLimit, async (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  app.post("/api/li-scan", scanRateLimit, setCorsHeaders, async (req, res) => {
     try {
-      const { chatId, businessId, token, postText, authorName, pageUrl } = req.body;
+      const validation = await validateScanRequest(req);
+      if (!validation.valid) { res.json(validation.error); return; }
 
-      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
-        res.json({ matched: false, reason: "missing_fields" });
-        return;
-      }
-
-      const expectedToken = generateScanToken(String(chatId), Number(businessId));
-      if (token !== expectedToken) {
-        res.json({ matched: false, reason: "invalid_token" });
-        return;
-      }
-
-      if (postText.length < MIN_POST_LENGTH) {
-        res.json({ matched: false, reason: "too_short" });
-        return;
-      }
-
-      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
-      if (biz.length === 0) {
-        res.json({ matched: false, reason: "business_not_found" });
-        return;
-      }
-
-      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
-      const result = await handleScanRequest("linkedin", biz[0], bizCampaigns, postText, chatId, { authorName, pageUrl });
+      const { chatId, postText, business, bizCampaigns } = validation;
+      const { authorName, pageUrl } = req.body;
+      const result = await handleScanRequest("linkedin", business, bizCampaigns, postText, chatId, { authorName, pageUrl });
       res.json(result);
     } catch (error) {
       console.error("LinkedIn scan error:", error);

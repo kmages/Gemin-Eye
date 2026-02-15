@@ -23,9 +23,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Eye, Settings, ChevronLeft, ChevronDown, ChevronRight, Pencil, Trash2,
-  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2
+  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2, Power
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";

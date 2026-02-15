@@ -2,6 +2,14 @@ import type { Express } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
+import { startRedditMonitor, stopRedditMonitor } from "../reddit-monitor";
+import { startGoogleAlertsMonitor, stopGoogleAlertsMonitor } from "../google-alerts-monitor";
+
+let monitoringEnabled = process.env.MONITORING_DISABLED !== "true";
+
+export function isMonitoringEnabled() {
+  return monitoringEnabled;
+}
 
 const ADMIN_USER_ID = "40011074";
 
@@ -125,5 +133,32 @@ export function registerAdminRoutes(app: Express) {
 
   app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
     res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
+  });
+
+  app.get("/api/admin/monitoring", isAuthenticated, isAdmin, async (_req: any, res) => {
+    res.json({ enabled: monitoringEnabled });
+  });
+
+  app.post("/api/admin/monitoring", isAuthenticated, isAdmin, async (req: any, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ error: "enabled must be a boolean" });
+    }
+
+    monitoringEnabled = enabled;
+
+    if (enabled) {
+      process.env.MONITORING_DISABLED = "false";
+      startRedditMonitor();
+      startGoogleAlertsMonitor();
+      console.log("Admin: Monitoring ENABLED via admin panel");
+    } else {
+      process.env.MONITORING_DISABLED = "true";
+      stopRedditMonitor();
+      stopGoogleAlertsMonitor();
+      console.log("Admin: Monitoring DISABLED via admin panel");
+    }
+
+    res.json({ enabled: monitoringEnabled });
   });
 }

@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T17:18:44Z
+# Generated: 2026-02-15T17:20:37Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -851,12 +851,20 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
-FILE: server/routes/admin.ts (129 lines)
+FILE: server/routes/admin.ts (164 lines)
 ============================================================
 import type { Express } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
+import { startRedditMonitor, stopRedditMonitor } from "../reddit-monitor";
+import { startGoogleAlertsMonitor, stopGoogleAlertsMonitor } from "../google-alerts-monitor";
+
+let monitoringEnabled = process.env.MONITORING_DISABLED !== "true";
+
+export function isMonitoringEnabled() {
+  return monitoringEnabled;
+}
 
 const ADMIN_USER_ID = "40011074";
 
@@ -981,11 +989,38 @@ export function registerAdminRoutes(app: Express) {
   app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
     res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
   });
+
+  app.get("/api/admin/monitoring", isAuthenticated, isAdmin, async (_req: any, res) => {
+    res.json({ enabled: monitoringEnabled });
+  });
+
+  app.post("/api/admin/monitoring", isAuthenticated, isAdmin, async (req: any, res) => {
+    const { enabled } = req.body;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ error: "enabled must be a boolean" });
+    }
+
+    monitoringEnabled = enabled;
+
+    if (enabled) {
+      process.env.MONITORING_DISABLED = "false";
+      startRedditMonitor();
+      startGoogleAlertsMonitor();
+      console.log("Admin: Monitoring ENABLED via admin panel");
+    } else {
+      process.env.MONITORING_DISABLED = "true";
+      stopRedditMonitor();
+      stopGoogleAlertsMonitor();
+      console.log("Admin: Monitoring DISABLED via admin panel");
+    }
+
+    res.json({ enabled: monitoringEnabled });
+  });
 }
 
 
 ============================================================
-FILE: server/routes/scan.ts (252 lines)
+FILE: server/routes/scan.ts (253 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -999,6 +1034,7 @@ import { createRateLimiter } from "../utils/rate-limit";
 import { markOwnResponse, isOwnResponse } from "../utils/dedup";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
+import { isMonitoringEnabled } from "./admin";
 
 const scanRateLimit = createRateLimiter({
   name: "scan-endpoints",
@@ -1027,7 +1063,7 @@ async function validateScanRequest(req: Request): Promise<
 > {
   const { chatId, businessId, token, postText } = req.body;
 
-  if (process.env.MONITORING_DISABLED === "true") {
+  if (!isMonitoringEnabled()) {
     return { valid: false, error: { matched: false, reason: "monitoring_disabled" } };
   }
 
@@ -5773,7 +5809,7 @@ export default function OnboardingPage() {
 
 
 ============================================================
-FILE: client/src/pages/admin.tsx (587 lines)
+FILE: client/src/pages/admin.tsx (588 lines)
 ============================================================
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -5800,9 +5836,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Eye, Settings, ChevronLeft, ChevronDown, ChevronRight, Pencil, Trash2,
-  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2
+  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2, Power
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";

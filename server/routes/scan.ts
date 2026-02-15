@@ -10,6 +10,7 @@ import { createRateLimiter } from "../utils/rate-limit";
 import { markOwnResponse, isOwnResponse } from "../utils/dedup";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
+import { isMonitoringEnabled } from "./admin";
 
 const scanRateLimit = createRateLimiter({
   name: "scan-endpoints",
@@ -38,7 +39,7 @@ async function validateScanRequest(req: Request): Promise<
 > {
   const { chatId, businessId, token, postText } = req.body;
 
-  if (process.env.MONITORING_DISABLED === "true") {
+  if (!isMonitoringEnabled()) {
     return { valid: false, error: { matched: false, reason: "monitoring_disabled" } };
   }
 

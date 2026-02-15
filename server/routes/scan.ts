@@ -90,13 +90,14 @@ Analyze this ${platformLabel} ${contextLabel}:
 Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
 Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
 
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-    config: { maxOutputTokens: 512 },
+IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
+{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+    config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
   });
 
   const match = safeParseJsonFromAI(matchResult.text);
   if (!match) {
+    console.log(`${platform} scan: AI parse error for "${business.name}" — raw AI response: "${(matchResult.text || '').slice(0, 300)}"`);
     return { matched: false, reason: "ai_parse_error" };
   }
 

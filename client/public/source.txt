@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T15:41:12Z
+# Generated: 2026-02-15T15:47:00Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -985,7 +985,7 @@ export function registerAdminRoutes(app: Express) {
 
 
 ============================================================
-FILE: server/routes/scan.ts (235 lines)
+FILE: server/routes/scan.ts (236 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -1079,13 +1079,14 @@ Analyze this ${platformLabel} ${contextLabel}:
 Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
 Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
 
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-    config: { maxOutputTokens: 512 },
+IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
+{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+    config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
   });
 
   const match = safeParseJsonFromAI(matchResult.text);
   if (!match) {
+    console.log(`${platform} scan: AI parse error for "${business.name}" — raw AI response: "${(matchResult.text || '').slice(0, 300)}"`);
     return { matched: false, reason: "ai_parse_error" };
   }
 
@@ -3697,13 +3698,13 @@ export function createRateLimiter(options: {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (301 lines)
+FILE: server/reddit-monitor.ts (309 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml } from "./utils/html";
@@ -3730,6 +3731,7 @@ interface SubredditTarget {
   preferredTone: string;
   campaignId: number;
   keywords: string[];
+  ownerUserId: string;
 }
 
 async function getRedditTargets(): Promise<SubredditTarget[]> {
@@ -3765,6 +3767,7 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
           preferredTone: biz.preferredTone,
           campaignId: camp.id,
           keywords,
+          ownerUserId: biz.userId,
         });
       }
     }
@@ -3799,9 +3802,9 @@ Content: "${content.slice(0, 400)}"
 Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
 Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
 
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-        config: { maxOutputTokens: 512 },
+IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
+{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+        config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
       });
       return result.text;
     },
@@ -3892,8 +3895,14 @@ Return ONLY the response text, no quotes or formatting.`,
     ]);
   }
 
-  await sendTelegramMessage(msg, { buttons });
-  await sendTelegramMessage(responseText);
+  if (target.ownerUserId.startsWith("tg-")) {
+    const clientChatId = target.ownerUserId.replace("tg-", "");
+    await sendTelegramMessageToChat(clientChatId, msg, { buttons });
+    await sendTelegramMessageToChat(clientChatId, responseText);
+  } else {
+    await sendTelegramMessage(msg, { buttons });
+    await sendTelegramMessage(responseText);
+  }
 }
 
 async function scanSubredditForTargets(subreddit: string, targets: SubredditTarget[]): Promise<void> {
@@ -4115,13 +4124,13 @@ function extractPostId(url: string): string | null {
 
 
 ============================================================
-FILE: server/google-alerts-monitor.ts (306 lines)
+FILE: server/google-alerts-monitor.ts (314 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
@@ -4149,6 +4158,7 @@ interface AlertTarget {
   preferredTone: string;
   campaignId: number;
   keywords: string[];
+  ownerUserId: string;
 }
 
 async function getAlertTargets(): Promise<AlertTarget[]> {
@@ -4180,6 +4190,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           preferredTone: biz.preferredTone,
           campaignId: camp.id,
           keywords,
+          ownerUserId: biz.userId,
         });
       }
     }
@@ -4226,9 +4237,9 @@ Content: "${item.content.slice(0, 600)}"
 Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
 Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
 
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-        config: { maxOutputTokens: 512 },
+IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
+{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+        config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
       });
       return result.text;
     },
@@ -4327,8 +4338,14 @@ Return ONLY the response text, no quotes or formatting.`,
     ]);
   }
 
-  await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
-  await sendTelegramMessage(responseText);
+  if (target.ownerUserId.startsWith("tg-")) {
+    const clientChatId = target.ownerUserId.replace("tg-", "");
+    await sendTelegramMessageToChat(clientChatId, msg, buttons.length > 0 ? { buttons } : undefined);
+    await sendTelegramMessageToChat(clientChatId, responseText);
+  } else {
+    await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
+    await sendTelegramMessage(responseText);
+  }
 }
 
 async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Promise<void> {

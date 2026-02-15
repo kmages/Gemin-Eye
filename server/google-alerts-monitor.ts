@@ -2,7 +2,7 @@ import Parser from "rss-parser";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
@@ -30,6 +30,7 @@ interface AlertTarget {
   preferredTone: string;
   campaignId: number;
   keywords: string[];
+  ownerUserId: string;
 }
 
 async function getAlertTargets(): Promise<AlertTarget[]> {
@@ -61,6 +62,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           preferredTone: biz.preferredTone,
           campaignId: camp.id,
           keywords,
+          ownerUserId: biz.userId,
         });
       }
     }
@@ -107,9 +109,9 @@ Content: "${item.content.slice(0, 600)}"
 Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
 Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
 
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-        config: { maxOutputTokens: 512 },
+IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
+{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+        config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
       });
       return result.text;
     },
@@ -208,8 +210,14 @@ Return ONLY the response text, no quotes or formatting.`,
     ]);
   }
 
-  await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
-  await sendTelegramMessage(responseText);
+  if (target.ownerUserId.startsWith("tg-")) {
+    const clientChatId = target.ownerUserId.replace("tg-", "");
+    await sendTelegramMessageToChat(clientChatId, msg, buttons.length > 0 ? { buttons } : undefined);
+    await sendTelegramMessageToChat(clientChatId, responseText);
+  } else {
+    await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
+    await sendTelegramMessage(responseText);
+  }
 }
 
 async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Promise<void> {

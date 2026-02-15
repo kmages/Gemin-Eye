@@ -1,3 +1,5 @@
+import { escapeHtml, truncate } from "./utils/html";
+
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
 function getBotToken(): string | undefined {
@@ -170,14 +172,3 @@ export async function editMessageReplyMarkup(
   }
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "...";
-}

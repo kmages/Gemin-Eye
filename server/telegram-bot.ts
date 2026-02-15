@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
 import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
@@ -6,30 +5,22 @@ import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup, type TelegramMessageOptions } from "./telegram";
 import { storage } from "./storage";
 import { postRedditComment, postRedditSubmission, isRedditConfigured } from "./reddit-poster";
+import { ai, safeParseJsonFromAI, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP } from "./utils/ai";
+import { escapeHtml } from "./utils/html";
+import { getFeedbackGuidance } from "./utils/feedback";
+import { createRateLimiter } from "./utils/rate-limit";
 
-function safeParseJsonFromAI(text: string): any | null {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    return null;
-  }
-}
+const webhookRateLimit = createRateLimiter({
+  name: "telegram-webhook",
+  maxRequests: 60,
+  windowMs: 60 * 1000,
+  keyFn: (req) => req.ip || "unknown",
+});
 
 export function generateScanToken(chatId: string, businessId: number): string {
   const secret = process.env.SESSION_SECRET || "gemin-eye-default";
   return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
 }
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
 
 const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -79,10 +70,6 @@ async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampaigns[]>
         targetGroups: (c.targetGroups as string[]) || [],
       })),
   }));
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;
@@ -1304,7 +1291,7 @@ export function registerTelegramWebhook(app: any) {
     }
   }
 
-  app.post(`/api/telegram/webhook/${token}`, async (req: any, res: any) => {
+  app.post(`/api/telegram/webhook/${token}`, webhookRateLimit, async (req: any, res: any) => {
     try {
       res.sendStatus(200);
 

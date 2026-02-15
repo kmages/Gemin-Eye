@@ -28,7 +28,7 @@ export const businessesRelations = relations(businesses, ({ many }) => ({
 
 export const campaigns = pgTable("campaigns", {
   id: serial("id").primaryKey(),
-  businessId: integer("business_id").notNull(),
+  businessId: integer("business_id").notNull().references(() => businesses.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   platform: text("platform").notNull(),
   status: text("status").notNull().default("active"),
@@ -50,7 +50,7 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
 
 export const leads = pgTable("leads", {
   id: serial("id").primaryKey(),
-  campaignId: integer("campaign_id").notNull(),
+  campaignId: integer("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   platform: text("platform").notNull(),
   groupName: text("group_name").notNull(),
   authorName: text("author_name").notNull(),
@@ -74,7 +74,7 @@ export const leadsRelations = relations(leads, ({ one, many }) => ({
 
 export const aiResponses = pgTable("ai_responses", {
   id: serial("id").primaryKey(),
-  leadId: integer("lead_id").notNull(),
+  leadId: integer("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   status: text("status").notNull().default("pending"),
   approvedAt: timestamp("approved_at"),
@@ -108,7 +108,7 @@ export const insertLeadSchema = createInsertSchema(leads).omit({
 
 export const responseFeedback = pgTable("response_feedback", {
   id: serial("id").primaryKey(),
-  responseId: integer("response_id").notNull(),
+  responseId: integer("response_id").notNull().references(() => aiResponses.id, { onDelete: "cascade" }),
   feedback: text("feedback").notNull(),
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

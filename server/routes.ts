@@ -1,45 +1,26 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { execSync } from "child_process";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { storage } from "./storage";
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
-import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
-import { registerTelegramWebhook, generateScanToken, generateLinkedInBookmarkletCode } from "./telegram-bot";
+import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
-import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable, responseFeedback as responseFeedbackTable } from "@shared/schema";
-import { eq } from "drizzle-orm";
-import { db } from "./db";
+import { ai, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
+import { createRateLimiter } from "./utils/rate-limit";
+import { registerAdminRoutes } from "./routes/admin";
+import { registerScanRoutes } from "./routes/scan";
 
-function safeParseJsonFromAI(text: string): any | null {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    return null;
-  }
-}
-
-const MIN_POST_LENGTH = 25;
-const MIN_SCAN_INTENT_SCORE = 4;
-const MIN_MONITOR_INTENT_SCORE = 5;
-const SALESY_FEEDBACK_THRESHOLD = 0.3;
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+const aiRateLimit = createRateLimiter({
+  name: "ai-endpoints",
+  maxRequests: 10,
+  windowMs: 60 * 1000,
+  keyFn: (req: any) => req.user?.claims?.sub || req.ip || "unknown",
 });
 
 export async function registerRoutes(
@@ -121,7 +102,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/strategy/generate", isAuthenticated, async (req: any, res) => {
+  app.post("/api/strategy/generate", isAuthenticated, aiRateLimit, async (req: any, res) => {
     try {
       const strategyInputSchema = z.object({
         name: z.string().min(1),
@@ -172,16 +153,20 @@ CRITICAL RULES FOR GROUPS:
 - Also include 2-3 real Facebook group names if applicable.
 - Make the sample response sound genuinely human and helpful with a subtle recommendation. Match the preferred tone.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: prompt,
-        config: { maxOutputTokens: 8192 },
-      });
+      const strategyData = await parseAIJsonWithRetry(
+        async () => {
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: prompt,
+            config: { maxOutputTokens: 8192 },
+          });
+          return response.text || "";
+        },
+        strategySchema
+      );
 
-      const text = response.text || "";
-      const strategyData = safeParseJsonFromAI(text);
       if (!strategyData) {
-        throw new Error("No JSON found in response");
+        throw new Error("Failed to generate strategy after retries");
       }
       res.json(strategyData);
     } catch (error) {
@@ -216,7 +201,7 @@ CRITICAL RULES FOR GROUPS:
     }
   });
 
-  app.post("/api/leads/:id/generate-response", isAuthenticated, async (req: any, res) => {
+  app.post("/api/leads/:id/generate-response", isAuthenticated, aiRateLimit, async (req: any, res) => {
     try {
       const leadId = parseInt(req.params.id);
       const userId = req.user.claims.sub;
@@ -238,12 +223,6 @@ CRITICAL RULES FOR GROUPS:
         return res.status(404).json({ error: "Business not found" });
       }
 
-      const toneMap: Record<string, string> = {
-        empathetic: "empathetic, warm, and supportive",
-        professional: "professional, authoritative, and informative",
-        casual: "casual, friendly, and approachable",
-      };
-
       const prompt = `You are writing a response to a social media post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post was in the group "${lead.groupName}" on ${lead.platform}.
@@ -252,7 +231,7 @@ Posted by: ${lead.authorName}
 
 Business to recommend: ${business.name}
 What they do: ${business.coreOffering}
-Tone: ${toneMap[business.preferredTone] || "friendly and helpful"}
+Tone: ${TONE_MAP[business.preferredTone] || "friendly and helpful"}
 
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
 
@@ -283,7 +262,7 @@ Return ONLY the response text, no quotes or formatting.`;
     }
   });
 
-  app.post("/api/leads/score", isAuthenticated, async (req: any, res) => {
+  app.post("/api/leads/score", isAuthenticated, aiRateLimit, async (req: any, res) => {
     try {
       const { post, businessType, targetAudience } = req.body;
       if (!post || !businessType) {
@@ -345,128 +324,8 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  const ADMIN_USER_ID = "40011074";
-
-  function isAdmin(req: any, res: any, next: any) {
-    if (!req.user || req.user.claims.sub !== ADMIN_USER_ID) {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-    next();
-  }
-
-  app.get("/api/admin/businesses", isAuthenticated, isAdmin, async (_req: any, res) => {
-    try {
-      const allBiz = await storage.getAllBusinesses();
-      const result = [];
-      for (const biz of allBiz) {
-        const camps = await storage.getCampaignsByBusiness(biz.id);
-        const campaignIds = camps.map(c => c.id);
-        const bizLeads = campaignIds.length > 0 ? await storage.getLeadsByCampaigns(campaignIds) : [];
-        result.push({ ...biz, campaigns: camps, leadCount: bizLeads.length });
-      }
-      res.json(result);
-    } catch (error) {
-      console.error("Admin: Error fetching businesses:", error);
-      res.status(500).json({ error: "Failed to fetch businesses" });
-    }
-  });
-
-  app.patch("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updateSchema = z.object({
-        name: z.string().min(1).optional(),
-        type: z.string().optional(),
-        contactEmail: z.string().nullable().optional(),
-        contactPhone: z.string().nullable().optional(),
-        website: z.string().nullable().optional(),
-        targetAudience: z.string().optional(),
-        coreOffering: z.string().optional(),
-        preferredTone: z.string().optional(),
-      });
-      const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-      }
-      const biz = await storage.updateBusiness(id, parsed.data);
-      res.json(biz);
-    } catch (error) {
-      console.error("Admin: Error updating business:", error);
-      res.status(500).json({ error: "Failed to update business" });
-    }
-  });
-
-  app.delete("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.deleteBusiness(id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Admin: Error deleting business:", error);
-      res.status(500).json({ error: "Failed to delete business" });
-    }
-  });
-
-  app.patch("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const updateSchema = z.object({
-        name: z.string().min(1).optional(),
-        platform: z.string().optional(),
-        status: z.string().optional(),
-        targetGroups: z.array(z.string()).optional(),
-        keywords: z.array(z.string()).optional(),
-        strategy: z.string().nullable().optional(),
-      });
-      const parsed = updateSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-      }
-      const camp = await storage.updateCampaign(id, parsed.data);
-      res.json(camp);
-    } catch (error) {
-      console.error("Admin: Error updating campaign:", error);
-      res.status(500).json({ error: "Failed to update campaign" });
-    }
-  });
-
-  app.post("/api/admin/campaigns", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const createSchema = z.object({
-        businessId: z.number(),
-        name: z.string().min(1),
-        platform: z.string().min(1),
-        status: z.string().default("active"),
-        targetGroups: z.array(z.string()).default([]),
-        keywords: z.array(z.string()).default([]),
-        strategy: z.string().nullable().default(null),
-      });
-      const parsed = createSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
-      }
-      const camp = await storage.createCampaign(parsed.data);
-      res.json(camp);
-    } catch (error) {
-      console.error("Admin: Error creating campaign:", error);
-      res.status(500).json({ error: "Failed to create campaign" });
-    }
-  });
-
-  app.delete("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.deleteCampaign(id);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Admin: Error deleting campaign:", error);
-      res.status(500).json({ error: "Failed to delete campaign" });
-    }
-  });
-
-  app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
-    res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
-  });
+  registerAdminRoutes(app);
+  registerScanRoutes(app);
 
   registerTelegramWebhook(app);
   startRedditMonitor();
@@ -522,433 +381,6 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  const fbScanRateLimit = new Map<string, { count: number; resetAt: number }>();
-  const liScanRateLimit = new Map<string, { count: number; resetAt: number }>();
-  setInterval(() => {
-    const now = Date.now();
-    fbScanRateLimit.forEach((val, key) => {
-      if (now > val.resetAt) fbScanRateLimit.delete(key);
-    });
-    liScanRateLimit.forEach((val, key) => {
-      if (now > val.resetAt) liScanRateLimit.delete(key);
-    });
-  }, 5 * 60 * 1000);
-  app.post("/api/fb-scan", async (req, res) => {
-    const rateLimitKey = String(req.body.chatId || req.ip);
-    const now = Date.now();
-    const bucket = fbScanRateLimit.get(rateLimitKey);
-    if (bucket && now < bucket.resetAt) {
-      if (bucket.count >= 10) {
-        res.json({ matched: false, reason: "rate_limited" });
-        return;
-      }
-      bucket.count++;
-    } else {
-      fbScanRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60000 });
-    }
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    try {
-      const { chatId, businessId, token, postText, groupName, pageUrl } = req.body;
-
-      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
-        res.json({ matched: false, reason: "missing_fields" });
-        return;
-      }
-
-      const expectedToken = generateScanToken(String(chatId), Number(businessId));
-      if (token !== expectedToken) {
-        res.json({ matched: false, reason: "invalid_token" });
-        return;
-      }
-
-      if (postText.length < MIN_POST_LENGTH) {
-        res.json({ matched: false, reason: "too_short" });
-        return;
-      }
-
-      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
-      if (biz.length === 0) {
-        res.json({ matched: false, reason: "business_not_found" });
-        return;
-      }
-
-      const business = biz[0];
-      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
-      const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
-
-      const lower = postText.toLowerCase();
-      const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
-      if (!hasKeyword) {
-        res.json({ matched: false, reason: "no_keyword_match" });
-        return;
-      }
-
-      const matchResult = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `You are a lead scout for "${business.name}" (${business.type}).
-They offer: ${business.coreOffering}
-
-Analyze this Facebook post from "${groupName || "a Facebook group"}":
-"${postText.slice(0, 500)}"
-
-Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
-Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
-
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-        config: { maxOutputTokens: 512 },
-      });
-
-      const matchText = matchResult.text || "";
-      const match = safeParseJsonFromAI(matchText);
-      if (!match) {
-        res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
-        res.json({ matched: false, reason: "low_intent", score: match.intent_score });
-        return;
-      }
-
-      let feedbackGuidance = "";
-      try {
-        const recentFeedback = await db
-          .select({ feedback: responseFeedbackTable.feedback })
-          .from(responseFeedbackTable)
-          .innerJoin(aiResponsesTable, eq(responseFeedbackTable.responseId, aiResponsesTable.id))
-          .innerJoin(leadsTable, eq(aiResponsesTable.leadId, leadsTable.id))
-          .innerJoin(campaignsTable, eq(leadsTable.campaignId, campaignsTable.id))
-          .where(eq(campaignsTable.businessId, businessId))
-          .orderBy(responseFeedbackTable.id)
-          .limit(20);
-
-        const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
-        const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
-        const total = recentFeedback.length;
-
-        if (total > 0) {
-          if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
-            feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
-          } else if (negCount > total * 0.5) {
-            feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";
-          }
-        }
-      } catch {}
-
-      const toneMap: Record<string, string> = {
-        empathetic: "empathetic, warm, and supportive",
-        professional: "professional, authoritative, and informative",
-        casual: "casual, friendly, and approachable",
-      };
-
-      const responseResult = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: `You are writing a Facebook comment in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
-
-The post: "${postText.slice(0, 500)}"
-Group: "${groupName || "Facebook Group"}"
-
-Business to recommend: ${business.name}
-What they do: ${business.coreOffering}
-Tone: ${toneMap[business.preferredTone] || "friendly and helpful"}
-${feedbackGuidance}
-
-Write a natural, human-sounding comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
-
-Return ONLY the response text, no quotes or formatting.`,
-        config: { maxOutputTokens: 8192 },
-      });
-
-      const responseText = (responseResult.text || "").trim();
-      if (!responseText) {
-        res.json({ matched: true, score: match.intent_score, reason: "no_response_generated" });
-        return;
-      }
-
-      let savedResponseId: number | null = null;
-      const activeCampaign = bizCampaigns[0];
-      if (activeCampaign) {
-        try {
-          const [savedLead] = await db.insert(leadsTable).values({
-            campaignId: activeCampaign.id,
-            platform: "facebook",
-            groupName: groupName || "Facebook Group",
-            authorName: "FB user",
-            originalPost: postText.slice(0, 2000),
-            postUrl: pageUrl || null,
-            intentScore: match.intent_score,
-            status: "matched",
-          }).returning();
-
-          if (savedLead) {
-            const [savedResponse] = await db.insert(aiResponsesTable).values({
-              leadId: savedLead.id,
-              content: responseText,
-              status: "pending",
-            }).returning();
-            savedResponseId = savedResponse?.id || null;
-          }
-        } catch (err) {
-          console.error("Error saving FB scan lead:", err);
-        }
-      }
-
-      const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-      const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
-      let msg = `<b>Facebook Lead Found</b>\n\n`;
-      msg += `<b>Business:</b> ${escHtml(business.name)}\n`;
-      msg += `<b>Group:</b> ${escHtml(groupName || "Facebook Group")}\n`;
-      msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
-      msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
-      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>`;
-
-      if (pageUrl) {
-        msg += `\n\nTap "Open Facebook Post" below, then paste the reply.`;
-      }
-
-      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
-      if (pageUrl) {
-        buttons.push([{ text: "Open Facebook Post", url: pageUrl }]);
-      }
-      if (savedResponseId) {
-        buttons.push([
-          { text: "Used It", callback_data: `fb_good_${savedResponseId}` },
-          { text: "Bad Match", callback_data: `fb_bad_${savedResponseId}` },
-          { text: "Too Salesy", callback_data: `fb_salesy_${savedResponseId}` },
-          { text: "Wrong Client", callback_data: `fb_wrong_${savedResponseId}` },
-        ]);
-      }
-
-      await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
-      await sendTelegramMessageToChat(chatId, responseText);
-
-      res.json({ matched: true, score: match.intent_score });
-    } catch (error) {
-      console.error("FB scan error:", error);
-      res.json({ matched: false, reason: "server_error" });
-    }
-  });
-
-  app.options("/api/fb-scan", (_req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.sendStatus(204);
-  });
-
-  app.post("/api/li-scan", async (req, res) => {
-    const rateLimitKey = String(req.body.chatId || req.ip);
-    const now = Date.now();
-    const bucket = liScanRateLimit.get(rateLimitKey);
-    if (bucket && now < bucket.resetAt) {
-      if (bucket.count >= 10) {
-        res.json({ matched: false, reason: "rate_limited" });
-        return;
-      }
-      bucket.count++;
-    } else {
-      liScanRateLimit.set(rateLimitKey, { count: 1, resetAt: now + 60000 });
-    }
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-    try {
-      const { chatId, businessId, token, postText, authorName, pageUrl } = req.body;
-
-      if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
-        res.json({ matched: false, reason: "missing_fields" });
-        return;
-      }
-
-      const expectedToken = generateScanToken(String(chatId), Number(businessId));
-      if (token !== expectedToken) {
-        res.json({ matched: false, reason: "invalid_token" });
-        return;
-      }
-
-      if (postText.length < MIN_POST_LENGTH) {
-        res.json({ matched: false, reason: "too_short" });
-        return;
-      }
-
-      const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
-      if (biz.length === 0) {
-        res.json({ matched: false, reason: "business_not_found" });
-        return;
-      }
-
-      const business = biz[0];
-      const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
-      const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
-
-      const lower = postText.toLowerCase();
-      const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
-      if (!hasKeyword) {
-        res.json({ matched: false, reason: "no_keyword_match" });
-        return;
-      }
-
-      const matchResult = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `You are a lead scout for "${business.name}" (${business.type}).
-They offer: ${business.coreOffering}
-
-Analyze this LinkedIn post by "${authorName || "someone"}":
-"${postText.slice(0, 500)}"
-
-Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
-Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
-
-Return ONLY valid JSON:
-{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-        config: { maxOutputTokens: 512 },
-      });
-
-      const matchText = matchResult.text || "";
-      const match = safeParseJsonFromAI(matchText);
-      if (!match) {
-        res.json({ matched: false, reason: "ai_parse_error" });
-        return;
-      }
-
-      if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
-        res.json({ matched: false, reason: "low_intent", score: match.intent_score });
-        return;
-      }
-
-      let feedbackGuidance = "";
-      try {
-        const recentFeedback = await db
-          .select({ feedback: responseFeedbackTable.feedback })
-          .from(responseFeedbackTable)
-          .innerJoin(aiResponsesTable, eq(responseFeedbackTable.responseId, aiResponsesTable.id))
-          .innerJoin(leadsTable, eq(aiResponsesTable.leadId, leadsTable.id))
-          .innerJoin(campaignsTable, eq(leadsTable.campaignId, campaignsTable.id))
-          .where(eq(campaignsTable.businessId, businessId))
-          .orderBy(responseFeedbackTable.id)
-          .limit(20);
-
-        const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
-        const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
-        const total = recentFeedback.length;
-
-        if (total > 0) {
-          if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
-            feedbackGuidance = "\nIMPORTANT: Previous responses were too salesy. Be EXTRA subtle.";
-          } else if (negCount > total * 0.5) {
-            feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Be more genuine.";
-          }
-        }
-      } catch {}
-
-      const toneMap: Record<string, string> = {
-        empathetic: "empathetic, warm, and supportive",
-        professional: "professional, authoritative, and informative",
-        casual: "casual, friendly, and approachable",
-        helpful: "helpful, knowledgeable, and conversational",
-      };
-
-      const responseResult = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: `You are writing a LinkedIn comment on a professional post. Your goal is to be genuinely helpful while subtly recommending a business.
-
-The post by ${authorName || "someone"}: "${postText.slice(0, 500)}"
-
-Business to recommend: ${business.name}
-What they do: ${business.coreOffering}
-Tone: ${toneMap[business.preferredTone] || "professional and helpful"}
-${feedbackGuidance}
-
-Write a natural, professional LinkedIn comment (2-3 sentences). Sound like a real professional sharing knowledge or a recommendation. Keep it conversational but polished for LinkedIn. Include the business name naturally.
-
-Return ONLY the response text, no quotes or formatting.`,
-        config: { maxOutputTokens: 8192 },
-      });
-
-      const responseText = (responseResult.text || "").trim();
-      if (!responseText) {
-        res.json({ matched: true, score: match.intent_score, reason: "no_response_generated" });
-        return;
-      }
-
-      let savedResponseId: number | null = null;
-      const liCampaign = bizCampaigns.find(c => c.platform === "LinkedIn") || bizCampaigns[0];
-      if (liCampaign) {
-        try {
-          const [savedLead] = await db.insert(leadsTable).values({
-            campaignId: liCampaign.id,
-            platform: "linkedin",
-            groupName: "LinkedIn Feed",
-            authorName: authorName || "LinkedIn user",
-            originalPost: postText.slice(0, 2000),
-            postUrl: pageUrl || null,
-            intentScore: match.intent_score,
-            status: "matched",
-          }).returning();
-
-          if (savedLead) {
-            const [savedResponse] = await db.insert(aiResponsesTable).values({
-              leadId: savedLead.id,
-              content: responseText,
-              status: "pending",
-            }).returning();
-            savedResponseId = savedResponse?.id || null;
-          }
-        } catch (err) {
-          console.error("Error saving LinkedIn scan lead:", err);
-        }
-      }
-
-      const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-      const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
-      let msg = `<b>LinkedIn Lead Found</b>\n\n`;
-      msg += `<b>Business:</b> ${escHtml(business.name)}\n`;
-      msg += `<b>Author:</b> ${escHtml(authorName || "LinkedIn user")}\n`;
-      msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
-      msg += `<b>Why:</b> ${escHtml(match.reasoning || "")}\n\n`;
-      msg += `<b>Post:</b>\n<i>"${escHtml(postText.slice(0, 200))}"</i>`;
-
-      if (pageUrl) {
-        msg += `\n\nTap "Open LinkedIn Post" below, then paste the reply.`;
-      }
-
-      const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
-      if (pageUrl) {
-        buttons.push([{ text: "Open LinkedIn Post", url: pageUrl }]);
-      }
-      if (savedResponseId) {
-        buttons.push([
-          { text: "Used It", callback_data: `li_good_${savedResponseId}` },
-          { text: "Bad Match", callback_data: `li_bad_${savedResponseId}` },
-          { text: "Too Salesy", callback_data: `li_salesy_${savedResponseId}` },
-          { text: "Wrong Client", callback_data: `li_wrong_${savedResponseId}` },
-        ]);
-      }
-
-      await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
-      await sendTelegramMessageToChat(chatId, responseText);
-
-      res.json({ matched: true, score: match.intent_score });
-    } catch (error) {
-      console.error("LinkedIn scan error:", error);
-      res.json({ matched: false, reason: "server_error" });
-    }
-  });
-
-  app.options("/api/li-scan", (_req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.sendStatus(204);
-  });
-
   app.get("/api/download/source", isAuthenticated, (_req: any, res) => {
     try {
       const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
@@ -980,12 +412,18 @@ a:hover{background:#4f46e5;}</style></head>
       "shared/models/chat.ts",
       "server/index.ts",
       "server/routes.ts",
+      "server/routes/admin.ts",
+      "server/routes/scan.ts",
       "server/storage.ts",
       "server/db.ts",
       "server/telegram.ts",
       "server/telegram-bot.ts",
       "server/reddit-monitor.ts",
       "server/google-alerts-monitor.ts",
+      "server/utils/ai.ts",
+      "server/utils/html.ts",
+      "server/utils/feedback.ts",
+      "server/utils/rate-limit.ts",
       "client/src/App.tsx",
       "client/src/pages/landing.tsx",
       "client/src/pages/dashboard.tsx",

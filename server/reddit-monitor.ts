@@ -1,32 +1,13 @@
 import Parser from "rss-parser";
-import { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
-import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
+import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
-
-function safeParseJsonFromAI(text: string): any | null {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    return null;
-  }
-}
-
-const MIN_MONITOR_INTENT_SCORE = 5;
-const SALESY_FEEDBACK_THRESHOLD = 0.3;
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+import { ai, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
+import { escapeHtml } from "./utils/html";
+import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { getFeedbackGuidance } from "./utils/feedback";
 
 const parser = new Parser({
   headers: {
@@ -37,21 +18,6 @@ const parser = new Parser({
 });
 const SCAN_INTERVAL = 5 * 60 * 1000;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
-
-async function hasBeenSeen(dedupKey: string): Promise<boolean> {
-  const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
-  return existing.length > 0;
-}
-
-async function markSeen(dedupKey: string): Promise<void> {
-  try {
-    await db.insert(seenItems).values({ dedupKey, source: "reddit" }).onConflictDoNothing();
-  } catch {}
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 interface SubredditTarget {
   subreddit: string;
@@ -123,9 +89,11 @@ async function processPostForTarget(
 
   console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
 
-  const matchResult = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
+  const match = await parseAIJsonWithRetry(
+    async () => {
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
 They offer: ${target.coreOffering}
 
 Analyze this Reddit post from r/${target.subreddit}:
@@ -137,50 +105,20 @@ Rate the intent from 1-10 (10 = actively looking for exactly what this business 
 
 Return ONLY valid JSON:
 {"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-    config: { maxOutputTokens: 512 },
-  });
+        config: { maxOutputTokens: 512 },
+      });
+      return result.text || "";
+    },
+    leadScoreSchema
+  );
 
-  const matchText = matchResult.text || "";
-  const match = safeParseJsonFromAI(matchText);
   if (!match) return;
 
   console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 
   if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
 
-  let feedbackGuidance = "";
-  try {
-    const recentFeedback = await db
-      .select({ feedback: responseFeedback.feedback })
-      .from(responseFeedback)
-      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
-      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
-      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
-      .where(eq(campaigns.businessId, target.businessId))
-      .orderBy(responseFeedback.id)
-      .limit(20);
-
-    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
-    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
-    const total = recentFeedback.length;
-
-    if (total > 0) {
-      if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
-        feedbackGuidance =
-          "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
-      } else if (negCount > total * 0.5) {
-        feedbackGuidance =
-          "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
-      }
-    }
-  } catch {
-  }
-
-  const toneMap: Record<string, string> = {
-    empathetic: "empathetic, warm, and supportive",
-    professional: "professional, authoritative, and informative",
-    casual: "casual, friendly, and approachable",
-  };
+  const feedbackGuidance = await getFeedbackGuidance(target.businessId);
 
   const responseResult = await ai.models.generateContent({
     model: "gemini-2.5-pro",
@@ -190,7 +128,7 @@ The post: "${title}\n${content.slice(0, 400)}"
 
 Business to recommend: ${target.businessName}
 What they do: ${target.coreOffering}
-Tone: ${toneMap[target.preferredTone] || "friendly and helpful"}
+Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
 
 Write a natural, human-sounding Reddit comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
@@ -294,7 +232,7 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
       for (const target of targets) {
         const seenKey = `rd::${postId}::${target.businessId}`;
         if (await hasBeenSeen(seenKey)) continue;
-        await markSeen(seenKey);
+        await markSeen(seenKey, "reddit");
         newPosts++;
 
         try {
@@ -366,4 +304,3 @@ export function stopRedditMonitor(): void {
     console.log("Reddit monitor: stopped");
   }
 }
-

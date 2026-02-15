@@ -10,7 +10,21 @@ The app has four main flows:
 3. **Dashboard** - Shows businesses, campaigns, leads discovered, and AI-generated responses with status tracking
 4. **Admin Panel** (`/admin`) - Admin-only page to manage all clients, their businesses, campaigns, keywords, and groups
 
-## Recent Changes (Feb 14, 2026)
+## Recent Changes (Feb 15, 2026)
+- **Robustness Refactoring**
+  - Created shared utility modules: `server/utils/ai.ts`, `server/utils/html.ts`, `server/utils/feedback.ts`, `server/utils/dedup.ts`
+  - Consolidated duplicated code from reddit-monitor, google-alerts-monitor, telegram-bot, and routes
+  - Added Zod validation schemas (`leadScoreSchema`, `strategySchema`) with `parseAIJsonWithRetry` for robust AI JSON parsing
+  - Added rate limiting via `server/utils/rate-limit.ts` (AI endpoints: 10/min, scan: 15/min, webhook: 60/min)
+- **Route Splitting**
+  - Split `server/routes.ts` (932→476 lines) into focused modules:
+    - `server/routes/admin.ts` — Admin CRUD routes (businesses, campaigns)
+    - `server/routes/scan.ts` — Facebook/LinkedIn scan endpoints with shared `handleScanRequest` function
+  - FB and LinkedIn scan logic consolidated into single reusable handler, reducing duplication
+- **Database Integrity**
+  - Added foreign key constraints with cascade delete (campaigns→businesses, leads→campaigns, responses→leads, feedback→responses)
+
+## Previous Changes (Feb 14, 2026)
 - **Admin Panel** (`/admin`, `client/src/pages/admin.tsx`)
   - Admin-only web panel at `/admin` accessible via gear icon in dashboard header
   - View all clients/businesses with expandable detail panels

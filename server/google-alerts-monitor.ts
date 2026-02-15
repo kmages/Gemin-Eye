@@ -1,32 +1,13 @@
 import Parser from "rss-parser";
-import { GoogleGenAI } from "@google/genai";
 import { db } from "./db";
-import { businesses, campaigns, leads, aiResponses, responseFeedback, seenItems } from "@shared/schema";
+import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
-
-function safeParseJsonFromAI(text: string): any | null {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    return null;
-  }
-}
-
-const MIN_MONITOR_INTENT_SCORE = 5;
-const SALESY_FEEDBACK_THRESHOLD = 0.3;
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+import { ai, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
+import { escapeHtml, stripHtml } from "./utils/html";
+import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { getFeedbackGuidance } from "./utils/feedback";
 
 const parser = new Parser({
   headers: {
@@ -38,21 +19,6 @@ const parser = new Parser({
 
 const SCAN_INTERVAL = 120 * 1000;
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
-
-async function hasBeenSeen(dedupKey: string): Promise<boolean> {
-  const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
-  return existing.length > 0;
-}
-
-async function markSeen(dedupKey: string): Promise<void> {
-  try {
-    await db.insert(seenItems).values({ dedupKey, source: "google_alerts" }).onConflictDoNothing();
-  } catch {}
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 interface AlertTarget {
   feedUrl: string;
@@ -108,19 +74,6 @@ function keywordMatch(text: string, keywords: string[]): boolean {
   return keywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function extractSourceName(link: string): string {
   try {
     const url = new URL(link);
@@ -144,9 +97,11 @@ async function processAlertItem(
 
   if (!keywordMatch(fullText, target.keywords)) return;
 
-  const matchResult = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
+  const match = await parseAIJsonWithRetry(
+    async () => {
+      const result = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
 They offer: ${target.coreOffering}
 
 Analyze this web content found via Google Alerts:
@@ -159,47 +114,18 @@ Rate the intent from 1-10 (10 = actively looking for exactly what this business 
 
 Return ONLY valid JSON:
 {"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
-    config: { maxOutputTokens: 512 },
-  });
+        config: { maxOutputTokens: 512 },
+      });
+      return result.text || "";
+    },
+    leadScoreSchema
+  );
 
-  const matchText = matchResult.text || "";
-  const match = safeParseJsonFromAI(matchText);
   if (!match) return;
 
   if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
 
-  let feedbackGuidance = "";
-  try {
-    const recentFeedback = await db
-      .select({ feedback: responseFeedback.feedback })
-      .from(responseFeedback)
-      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
-      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
-      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
-      .where(eq(campaigns.businessId, target.businessId))
-      .orderBy(responseFeedback.id)
-      .limit(20);
-
-    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
-    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
-    const total = recentFeedback.length;
-
-    if (total > 0) {
-      if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
-        feedbackGuidance =
-          "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
-      } else if (negCount > total * 0.5) {
-        feedbackGuidance =
-          "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
-      }
-    }
-  } catch {}
-
-  const toneMap: Record<string, string> = {
-    empathetic: "empathetic, warm, and supportive",
-    professional: "professional, authoritative, and informative",
-    casual: "casual, friendly, and approachable",
-  };
+  const feedbackGuidance = await getFeedbackGuidance(target.businessId);
 
   const platformLabel = item.source === "Quora" ? "Quora answer" :
     item.source === "Reddit" ? "Reddit comment" :
@@ -214,7 +140,7 @@ The post/question: "${item.title}\n${item.content.slice(0, 600)}"
 
 Business to recommend: ${target.businessName}
 What they do: ${target.coreOffering}
-Tone: ${toneMap[target.preferredTone] || "friendly and helpful"}
+Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
 
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
@@ -320,7 +246,7 @@ async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Prom
       for (const target of targets) {
         const seenKey = `ga::${itemId}::${target.businessId}`;
         if (await hasBeenSeen(seenKey)) continue;
-        await markSeen(seenKey);
+        await markSeen(seenKey, "google_alerts");
 
         try {
           await processAlertItem(item, target);
@@ -383,4 +309,3 @@ export function stopGoogleAlertsMonitor(): void {
     console.log("Google Alerts monitor: stopped");
   }
 }
-

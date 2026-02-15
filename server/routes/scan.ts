@@ -69,8 +69,10 @@ async function handleScanRequest(
 ) {
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
   if (!keywordMatch(postText, allKeywords)) {
+    console.log(`${platform} scan: no keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
     return { matched: false, reason: "no_keyword_match" };
   }
+  console.log(`${platform} scan: keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
 
   const platformLabel = platform === "facebook" ? "Facebook" : "LinkedIn";
   const contextLabel = platform === "facebook"

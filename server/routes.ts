@@ -13,7 +13,7 @@ import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
-import { registerAdminRoutes } from "./routes/admin";
+import { registerAdminRoutes, isAdmin } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 
 const aiRateLimit = createRateLimiter({
@@ -377,7 +377,7 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  app.get("/api/download/source", isAuthenticated, (_req: any, res) => {
+  app.get("/api/download/source", isAuthenticated, isAdmin, (_req: any, res) => {
     try {
       const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
       res.setHeader("Content-Type", "application/gzip");
@@ -389,7 +389,7 @@ Return ONLY valid JSON with this structure:
     }
   });
 
-  app.get("/download", isAuthenticated, (_req: any, res) => {
+  app.get("/download", isAuthenticated, isAdmin, (_req: any, res) => {
     res.setHeader("Content-Type", "text/html");
     res.send(`<!DOCTYPE html>
 <html><head><title>Download Gemin-Eye Source</title>
@@ -401,7 +401,7 @@ a:hover{background:#4f46e5;}</style></head>
 <a href="/api/download/source">Download Source Code</a></div></body></html>`);
   });
 
-  app.get("/api/source", isAuthenticated, (_req: any, res) => {
+  app.get("/api/source", isAuthenticated, isAdmin, (_req: any, res) => {
     const coreFiles = [
       "shared/schema.ts",
       "shared/models/auth.ts",

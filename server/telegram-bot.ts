@@ -151,27 +151,37 @@ export function registerTelegramWebhook(app: any) {
         return;
       }
 
-      if (!ALLOWED_CHAT_ID) {
-        console.warn("TELEGRAM_CHAT_ID not set, ignoring incoming message");
+      const isClient = !isAdmin && (await storage.getBusinessesByUser(`tg-${chatId}`)).length > 0;
+      const isAuthorized = isAdmin || isClient;
+
+      if (!isAuthorized) {
+        if (messageText && !messageText.startsWith("/")) {
+          await sendTelegramMessageToChat(chatId,
+            `You don't have a business set up yet. Send /start to get started!`
+          );
+        }
         return;
       }
-      if (!isAdmin) return;
+
+      const send = isAdmin
+        ? (text: string, opts?: TelegramMessageOptions) => sendTelegramMessage(text, opts)
+        : (text: string, opts?: TelegramMessageOptions) => sendTelegramMessageToChat(chatId, text, opts);
 
       if (message.photo && message.photo.length > 0) {
         pendingContextRequests.delete(chatId);
-        await sendTelegramMessage("Reading screenshot...");
+        await send("Reading screenshot...");
 
         const largestPhoto = message.photo[message.photo.length - 1];
         const photoData = await downloadTelegramPhotoWithMime(largestPhoto.file_id);
 
         if (!photoData) {
-          await sendTelegramMessage("Couldn't download that image. Please try again.");
+          await send("Couldn't download that image. Please try again.");
           return;
         }
 
         const extracted = await extractTextFromImage(photoData.buffer, photoData.mimeType);
         if (!extracted || extracted.text.length < 5) {
-          await sendTelegramMessage("Couldn't read any text from that screenshot. Make sure the post text is clearly visible and try again.");
+          await send("Couldn't read any text from that screenshot. Make sure the post text is clearly visible and try again.");
           return;
         }
 
@@ -180,7 +190,7 @@ export function registerTelegramWebhook(app: any) {
         const postUrl = captionUrl || extracted.postUrl;
         const groupName = extracted.groupName || undefined;
 
-        await sendTelegramMessage(`Read from screenshot. Analyzing...\n\n<i>"${escapeHtml(extracted.text.length > 150 ? extracted.text.slice(0, 150) + "..." : extracted.text)}"</i>`);
+        await send(`Read from screenshot. Analyzing...\n\n<i>"${escapeHtml(extracted.text.length > 150 ? extracted.text.slice(0, 150) + "..." : extracted.text)}"</i>`);
 
         const result = await handlePost(extracted.text, groupName, postUrl, extracted.platform);
 
@@ -191,13 +201,13 @@ export function registerTelegramWebhook(app: any) {
             platform: extracted.platform,
             timestamp: Date.now(),
           });
-          await sendTelegramMessage(
+          await send(
             `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
           );
           return;
         }
 
-        await sendResultWithButtons(result);
+        await sendResultWithButtons(result, isClient ? chatId : undefined);
         return;
       }
 
@@ -205,7 +215,7 @@ export function registerTelegramWebhook(app: any) {
 
       const text = message.text.trim();
 
-      if (text === "/businesses") {
+      if (text === "/businesses" && isAdmin) {
         pendingContextRequests.delete(chatId);
         const allBiz = await getAllBusinessesWithCampaigns();
         if (allBiz.length === 0) {
@@ -235,10 +245,10 @@ export function registerTelegramWebhook(app: any) {
 
         const groupName = text.toLowerCase() === "skip" ? undefined : text.trim();
 
-        await sendTelegramMessage(groupName ? `Got it - analyzing for <b>${escapeHtml(groupName)}</b>...` : "Analyzing without group context...");
+        await send(groupName ? `Got it - analyzing for <b>${escapeHtml(groupName)}</b>...` : "Analyzing without group context...");
 
         const result = await handlePost(pendingContext.postText, groupName, pendingContext.postUrl, pendingContext.platform);
-        await sendResultWithButtons(result);
+        await sendResultWithButtons(result, isClient ? chatId : undefined);
         return;
       }
 
@@ -246,13 +256,22 @@ export function registerTelegramWebhook(app: any) {
         pendingContextRequests.delete(chatId);
       }
 
-      const handled = await handleAdminCommand(chatId, text);
-      if (handled) return;
+      if (isAdmin) {
+        const handled = await handleAdminCommand(chatId, text);
+        if (handled) return;
+      }
 
-      if (text.startsWith("/")) return;
+      if (text.startsWith("/")) {
+        if (isClient) {
+          await sendTelegramMessageToChat(chatId,
+            `That command isn't available. You can:\n- Send me a post URL + text to analyze\n- Screenshot a post and send the image\n- /setup to add another business\n- /help for more info`
+          );
+        }
+        return;
+      }
 
       pendingContextRequests.delete(chatId);
-      await sendTelegramMessage("Analyzing post...");
+      await send("Analyzing post...");
 
       const postUrl = extractPostUrl(text);
       let postText = postUrl ? stripUrls(text) : text;
@@ -265,7 +284,7 @@ export function registerTelegramWebhook(app: any) {
       }
 
       if (!postText || postText.length < 5) {
-        await sendTelegramMessage(
+        await send(
           "I need more text to analyze. Please paste the post content along with the URL.\n\n<b>Or just screenshot the post!</b>\n\n<b>Example:</b>\n<code>https://reddit.com/r/pizza/comments/abc123\nDoes anyone know a good pizza place near Brookfield?</code>"
         );
         return;
@@ -280,13 +299,13 @@ export function registerTelegramWebhook(app: any) {
           platform: result.platform,
           timestamp: Date.now(),
         });
-        await sendTelegramMessage(
+        await send(
           `I can see the post, but I'm not sure which group it's from. This helps me pick the right business.\n\n<b>Which group/subreddit is this from?</b>\n<i>(e.g., "Chicago Foodies" or "r/mentalhealth")</i>\n\nOr type <b>skip</b> to analyze without group context.`
         );
         return;
       }
 
-      await sendResultWithButtons(result);
+      await sendResultWithButtons(result, isClient ? chatId : undefined);
     } catch (error) {
       console.error("Telegram webhook error:", error);
       await sendTelegramMessage("Something went wrong analyzing that post. Please try again.").catch(() => {});

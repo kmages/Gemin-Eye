@@ -176,7 +176,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      window.location.href = "/api/login";
+      window.location.href = "/";
     }
   }, [authLoading, user]);
 

@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell, ExternalLink } from "lucide-react";
+import { Eye, Target, MessageCircle, Shield, ArrowRight, Zap, Users, Bot, Send, Quote, Globe, Utensils, Brain, Dog, Dumbbell, ExternalLink, LayoutDashboard } from "lucide-react";
 import { SiFacebook, SiReddit, SiLinkedin, SiGoogle } from "react-icons/si";
 import { useTheme } from "@/components/theme-provider";
+import { useAuth } from "@/hooks/use-auth";
 
 const demoPost = {
   author: "Sarah M.",
@@ -103,6 +104,7 @@ function DemoPreview() {
 
 export default function LandingPage() {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
 
   const features = [
     {
@@ -163,12 +165,20 @@ export default function LandingPage() {
             <a href="#clients" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-nav-clients">Clients</a>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild data-testid="button-login">
-              <a href="/api/login">Log In</a>
-            </Button>
-            <Button size="sm" asChild data-testid="button-get-started">
-              <a href="/api/login">Get Started <ArrowRight className="w-4 h-4 ml-1" /></a>
-            </Button>
+            {user ? (
+              <Button size="sm" asChild data-testid="button-go-dashboard">
+                <a href="/dashboard"><LayoutDashboard className="w-4 h-4 mr-1" /> Dashboard</a>
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" asChild data-testid="button-login">
+                  <a href="/api/login">Log In</a>
+                </Button>
+                <Button size="sm" asChild data-testid="button-get-started">
+                  <a href="/api/login">Get Started <ArrowRight className="w-4 h-4 ml-1" /></a>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </nav>

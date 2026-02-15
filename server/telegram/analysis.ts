@@ -5,6 +5,7 @@ import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { markOwnResponse } from "../utils/dedup";
+import { isMonitoringEnabled } from "../routes/admin";
 
 export interface BusinessWithCampaigns {
   id: number;
@@ -183,6 +184,17 @@ export interface PostAnalysis {
 }
 
 export async function handlePost(postText: string, groupName?: string, postUrl?: string | null, overridePlatform?: "reddit" | "facebook" | null): Promise<PostAnalysis> {
+  if (!isMonitoringEnabled()) {
+    return {
+      message: "Monitoring is currently paused. Turn it back on from the admin panel.",
+      responseText: null,
+      postUrl: postUrl || null,
+      platform: null,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
   const allBiz = await getAllBusinessesWithCampaigns();
   const platform = overridePlatform || (postUrl ? detectPlatformFromUrl(postUrl) : null) || detectPlatformFromText(postText) || null;
 

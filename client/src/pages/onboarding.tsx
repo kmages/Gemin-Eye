@@ -134,7 +134,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-background">
       <nav className="border-b">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation("/")}>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation("/dashboard")}>
             <Eye className="w-5 h-5 text-primary" />
             <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
@@ -483,7 +483,7 @@ export default function OnboardingPage() {
             </Card>
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setLocation("/")} data-testid="button-go-dashboard">
+              <Button variant="outline" className="flex-1" onClick={() => setLocation("/dashboard")} data-testid="button-go-dashboard">
                 Go to Dashboard
               </Button>
               <Button className="flex-1" onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")} data-testid="button-telegram-cta">

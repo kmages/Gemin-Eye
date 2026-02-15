@@ -4,7 +4,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { useAuth } from "@/hooks/use-auth";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import OnboardingPage from "@/pages/onboarding";
@@ -13,15 +12,10 @@ import ClientGuidePage from "@/pages/client-guide";
 import AdminPage from "@/pages/admin";
 
 function AuthRouter() {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return null;
-  }
-
   return (
     <Switch>
-      <Route path="/" component={user ? Dashboard : LandingPage} />
+      <Route path="/" component={LandingPage} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/guide" component={ClientGuidePage} />
       <Route path="/admin" component={AdminPage} />

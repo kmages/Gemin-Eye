@@ -496,6 +496,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
 export default function AdminPage() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
   const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
@@ -505,6 +506,23 @@ export default function AdminPage() {
   const { data: businesses, isLoading } = useQuery<AdminBusiness[]>({
     queryKey: ["/api/admin/businesses"],
     enabled: !!user && adminCheck?.isAdmin === true,
+  });
+
+  const { data: monitoringStatus } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/admin/monitoring"],
+    enabled: !!user && adminCheck?.isAdmin === true,
+  });
+
+  const toggleMonitoring = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("POST", "/api/admin/monitoring", { enabled });
+      return res.json();
+    },
+    onSuccess: (data: { enabled: boolean }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/monitoring"] });
+      toast({ title: data.enabled ? "Monitoring enabled" : "Monitoring disabled" });
+    },
+    onError: () => toast({ title: "Failed to toggle monitoring", variant: "destructive" }),
   });
 
   if (authLoading) {
@@ -538,7 +556,7 @@ export default function AdminPage() {
           <Settings className="w-8 h-8 mx-auto text-muted-foreground" />
           <h2 className="text-lg font-semibold">Admin Access Required</h2>
           <p className="text-sm text-muted-foreground">You don't have permission to view this page.</p>
-          <Button variant="outline" onClick={() => setLocation("/")} data-testid="button-back-home">
+          <Button variant="outline" onClick={() => setLocation("/dashboard")} data-testid="button-back-home">
             <ChevronLeft className="w-3 h-3 mr-1" /> Back to Dashboard
           </Button>
         </Card>
@@ -551,7 +569,7 @@ export default function AdminPage() {
       <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/")} data-testid="button-admin-back">
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} data-testid="button-admin-back">
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div className="flex items-center gap-2">
@@ -566,6 +584,26 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Power className="w-5 h-5 text-primary" />
+              <div>
+                <h3 className="font-medium text-sm">Monitoring</h3>
+                <p className="text-xs text-muted-foreground">
+                  {monitoringStatus?.enabled ? "All monitors are running (Reddit, Google Alerts, bookmarklet scans)" : "All monitoring is paused — no new leads will be generated"}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={monitoringStatus?.enabled ?? false}
+              onCheckedChange={(checked) => toggleMonitoring.mutate(checked)}
+              disabled={toggleMonitoring.isPending}
+              data-testid="switch-monitoring-toggle"
+            />
+          </div>
+        </Card>
+
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (

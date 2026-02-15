@@ -113,6 +113,8 @@ The app has four main flows:
 
 Preferred communication style: Simple, everyday language.
 Always push code to GitHub after every commit (requires GitHub remote to be connected).
+Always derive keywords from a new client's website — scrape their actual site to understand what they offer before setting up campaigns.
+Business data (type, core_offering, target_audience) must accurately reflect what the business actually is, based on their website.
 
 ## System Architecture
 

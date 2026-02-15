@@ -1,0 +1,213 @@
+Here’s what I see in Gemin‑Eye, and where I think the code + business model are strongest vs. most fragile/risky.
+
+What the repo is trying to be
+
+At a high level, this is an AI-powered “find high-intent questions → draft a human reply” pipeline:
+	•	Monitor: Reddit via RSS (“new.rss”), Google Alerts RSS, plus manual scanning via Facebook/LinkedIn bookmarklets that scrape the DOM as you scroll.  ￼
+	•	Score: Gemini “Flash” for intent scoring/matching.  ￼
+	•	Respond: Gemini “Pro” to draft a reply (Reddit mode tries hard to avoid promotion; FB/LI mode includes business name “naturally”).  ￼
+	•	Alert + workflow: Telegram messages, inline buttons for feedback, optional “Post to Reddit” callback.  ￼
+
+That’s a coherent MVP shape.
+
+⸻
+
+Code critique
+
+What’s good (MVP strengths)
+
+Clear end-to-end loop
+The pipeline is very legible: keyword prefilter → AI score → AI response → store lead/response → notify Telegram. That’s exactly what you want for “does this concept work?” testing.  ￼
+
+Decent schema for “lead + response + feedback”
+The DB tables match the product: businesses → campaigns → leads → ai_responses + response_feedback. This is enough to build a real feedback-driven workflow.  ￼
+
+You already have multiple “control knobs”
+	•	MIN intent threshold for monitoring (and prompt guidance about scoring distribution).  ￼
+	•	Rate limiting middleware exists for AI endpoints + Telegram webhook.  ￼
+	•	“Monitoring disabled” switch via env + admin route.  ￼
+
+Those are the right instincts.
+
+⸻
+
+Biggest engineering issues (in priority order)
+
+1) Security / access control: /api/source is a landmine
+You have an authenticated endpoint that reads server-side files and returns a stitched “full source code” dump (and also exposes a tar.gz download). In a hosted SaaS scenario, any authenticated user can pull your internal implementation details. Even if you intend this to be open-source, this is an unusual (and risky) runtime feature to ship.  ￼
+
+Fix: remove in production builds, or hard-gate behind admin + a separate env flag (and ideally don’t read arbitrary files at runtime).
+
+⸻
+
+2) “Multi-client” story is inconsistent in Telegram
+You do support per-client delivery of leads by encoding business.userId as tg-<chatId> and then sending notifications to that chat.  ￼
+
+But the Telegram webhook also has a hard allowlist:
+	•	After onboarding, if the message isn’t from TELEGRAM_CHAT_ID, you drop it (if (chatId !== ALLOWED_CHAT_ID) return;).  ￼
+
+So clients can:
+	•	receive leads (good),
+	•	click feedback buttons (callback queries are handled before the allowlist check),  ￼
+	•	run bookmarklet scans (since that uses the HTTP scan endpoints),  ￼
+
+…but clients can’t actually “chat” with the bot after setup to do things your onboarding message claims (send screenshots for analysis, manage keywords/groups, etc.), because their messages won’t be processed.  ￼
+
+Fix options:
+	•	Make a real permission model: store “allowed chat IDs” in DB (per business) instead of a single env var.
+	•	Or explicitly position this as “agency-operated”: clients only receive alerts + buttons; only the operator can query/modify.
+
+Right now it reads like self-serve, but behaves like operator-only.
+
+⸻
+
+3) Bookmarklet + DOM scraping is inherently brittle (and you’re depending on it heavily)
+The FB “spy-glass” bookmarklet scrapes div[dir="auto"], tries to infer which are posts, auto-scrolls, and posts the extracted text back to your API.  ￼
+
+This will break often because:
+	•	Facebook/LinkedIn DOM changes frequently,
+	•	localization/AB tests change node structures,
+	•	“post vs comment vs description” detection is fuzzy,
+	•	and users may inadvertently scan private content.
+
+Engineering implications:
+	•	Expect high maintenance cost.
+	•	You need strong rate limiting + dedup + spam prevention on scan endpoints (you have some, but it’s still easy to flood yourself with junk).  ￼
+
+⸻
+
+4) Rate limiting + dedup won’t hold up in production scaling
+Your createRateLimiter uses an in-memory Map, so:
+	•	it resets on restart,
+	•	it won’t work across multiple instances,
+	•	it can leak memory under high churn until cleanup runs.  ￼
+
+You do have a DB-backed seen_items table for deduplication across scans, which is good.  ￼
+But you also use in-memory “own response” markers (so restarts can cause the bot to re-score things it previously generated).  ￼
+
+Fix: If you want to host this seriously:
+	•	move rate limiting to Redis (or a managed edge rate-limit),
+	•	move “own-response fingerprints” to DB too (or at least persist them with TTL),
+	•	and consider a queue (BullMQ / Cloud Tasks) so monitoring isn’t tied to a single Node process.
+
+⸻
+
+5) AI prompting is vulnerable to prompt injection + policy drift
+You’re feeding untrusted user-generated text (posts) directly into prompts that decide:
+	•	intent score,
+	•	which business to match,
+	•	and response text.
+
+You do add “strict rules” in prompts—especially for Reddit.  ￼
+But there’s no hard guardrail layer preventing the model from:
+	•	revealing internal logic,
+	•	inserting prohibited claims,
+	•	or producing noncompliant/self-promotional content if the post includes adversarial instructions.
+
+Fix: Add a deterministic post-processing policy gate:
+	•	disallow links / phone numbers / “DM me” / discount language / “I work for” phrasing depending on platform,
+	•	optionally run a second “compliance classifier” pass (cheap model) before sending.
+
+⸻
+
+6) Reddit auto-posting is a risk magnet
+There’s optional code to post comments/submissions using Snoowrap with username/password credentials.  ￼
+
+Even if technically functional, this creates:
+	•	operational risk (accounts get rate-limited/banned),
+	•	reputational risk (automation ≈ spam in many subs),
+	•	and support burden (users blame you when their account gets restricted).
+
+Recommendation: Keep “Post to Reddit” off by default, market it as copy/paste drafts, and if you ever reintroduce posting, require explicit per-account setup + strong throttling + “subreddit allowlists”.
+
+⸻
+
+Business model critique
+
+The pitch (as written) is compelling… but also the root of your biggest risk
+
+Your README sells “helpful, human-sounding responses that subtly promote your business” as an alternative to ads.  ￼
+
+That is basically lead-gen via community engagement / social listening + drafting. It’s valuable, but it sits directly on top of:
+	•	platform anti-spam rules,
+	•	community norms against stealth marketing,
+	•	and reputational blowback (“astroturfing”).
+
+This is less a “growth hack” and more a compliance + trust product—whether you want it to be or not.
+
+⸻
+
+Unit economics: your costs scale with monitoring volume, not customers
+
+Because each monitored post can trigger:
+	•	a scoring call (Flash),
+	•	then a response call (Pro),
+costs scale with how many communities/feeds you scan, not just how many paying customers you have.  ￼
+
+If you price “per business per month” but a single customer monitors lots of subreddits or runs bookmarklets heavily, you can get margin crushed unless you:
+	•	set hard quotas,
+	•	charge usage-based overages,
+	•	or aggressively pre-filter before calling LLMs.
+
+Also, Gemini API pricing is token-based and can change; if you build a SaaS, you’ll want pricing + quotas designed around that reality.  ￼
+
+⸻
+
+Differentiation / moat
+
+In terms of defensibility, the code is replicable; the moat would have to be:
+	•	distribution (agency relationships, niche focus),
+	•	proprietary “what works here” datasets,
+	•	compliance tooling,
+	•	and workflow integrations (CRM, ticketing, approvals, team collaboration).
+
+Right now it’s strongest as:
+	•	an operator tool (agency owner / solo founder) living in Telegram,
+not yet a robust self-serve SaaS.
+
+⸻
+
+How I would reframe the business to be more viable (and safer)
+
+1) Market it as “Community Response Assistant” not “subtle promotion”
+
+Position it as:
+	•	“find questions you can genuinely help with”
+	•	“draft replies that follow the group rules”
+	•	“human chooses whether to reply”
+	•	“track outcomes”
+
+That reduces the “stealth marketing” stink and makes it easier to sell to serious businesses.
+
+2) Make compliance a feature, not just a prompt
+
+Add explicit product features:
+	•	per-platform rulesets,
+	•	“do-not-post” / “do-not-mention” controls,
+	•	group-specific notes (“no promos allowed”, “only answer with resources”),
+	•	audit trail (“this was AI drafted”).
+
+3) Pricing model that matches reality
+
+A model that usually works better than flat SaaS here:
+	•	Base subscription per business (or per seat)
+	•		•	quotas: “X scored posts/day, Y drafted responses/day”
+	•		•	overages or “bring your own key”
+
+4) Focus on niches where being helpful is actually a sales engine
+
+Some niches are naturally “recommendation-driven” (local services, home improvement, events, B2B specialists).
+Other niches (medical/mental health/legal) are high risk: bad advice liability + community sensitivity. Your seed/demo examples include psychiatric care; that’s exactly where you’d want extra guardrails and disclaimers.  ￼
+
+⸻
+
+“If you fix only 5 things” list
+	1.	Remove/lock down /api/source and /download in production.  ￼
+	2.	Replace the single TELEGRAM_CHAT_ID allowlist with per-client permissions (or admit it’s operator-only and remove self-serve messaging claims).  ￼
+	3.	Add a compliance/policy post-processor on AI outputs (don’t rely purely on prompts).  ￼
+	4.	Make rate limiting + queues production-grade (Redis + jobs), because monitoring is a background workload.  ￼
+	5.	Treat bookmarklets as “best effort”, and design UX assuming they break often.  ￼
+
+⸻
+
+If you want, paste your intended go-to-market (agency tool vs true self-serve SaaS) and I’ll map that to a concrete “architecture + permission model + pricing” plan that fits the direction—because right now the codebase is halfway between those worlds.

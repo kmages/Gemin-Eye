@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T22:24:45Z
+# Generated: 2026-02-15T22:33:17Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -1663,12 +1663,14 @@ export async function editMessageReplyMarkup(
 
 
 ============================================================
-FILE: server/telegram-bot.ts (291 lines)
+FILE: server/telegram-bot.ts (330 lines)
 ============================================================
 import { sendTelegramMessage, sendTelegramMessageToChat, type TelegramMessageOptions } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { escapeHtml } from "./utils/html";
 import { createRateLimiter } from "./utils/rate-limit";
+import { storage } from "./storage";
+import type { Business } from "@shared/schema";
 import {
   handlePost, extractPostUrl, stripUrls, downloadTelegramPhotoWithMime, extractTextFromImage,
   getAllBusinessesWithCampaigns, type PostAnalysis,
@@ -1763,11 +1765,64 @@ export function registerTelegramWebhook(app: any) {
       const wizardHandled = await handleClientWizard(chatId, messageText);
       if (wizardHandled) return;
 
+      const isAdmin = ALLOWED_CHAT_ID && chatId === ALLOWED_CHAT_ID;
+
+      if (messageText === "/start") {
+        if (isAdmin) {
+          pendingContextRequests.delete(chatId);
+          await sendTelegramMessage(
+            `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response or post it directly\n\n<b>Reddit Commander:</b>\n/post r/subreddit Title | Body text\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button. For Reddit leads, tap "Post to Reddit" to comment directly!`
+          );
+        } else {
+          const existingBiz: Business[] = await storage.getBusinessesByUser(`tg-${chatId}`);
+          if (existingBiz.length > 0) {
+            const bizNames = existingBiz.map(b => `- <b>${escapeHtml(b.name)}</b>`).join("\n");
+            await sendTelegramMessageToChat(chatId,
+              `<b>Welcome back!</b>\n\n` +
+              `Your businesses:\n${bizNames}\n\n` +
+              `<b>What you can do:</b>\n` +
+              `- Send me a post URL + text to analyze\n` +
+              `- Screenshot a post and send the image\n` +
+              `- Use your bookmarklets to scan Facebook/LinkedIn groups\n\n` +
+              `<b>Commands:</b>\n` +
+              `/setup - Add another business\n` +
+              `/help - Full usage guide`
+            );
+          } else {
+            clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });
+            await sendTelegramMessageToChat(chatId,
+              `<b>Welcome to Gemin-Eye!</b>\n\n` +
+              `I help businesses find customers by monitoring social media for people asking about what you offer.\n\n` +
+              `Let's get you set up! I just need a few details about your business.\n\n` +
+              `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
+            );
+          }
+        }
+        return;
+      }
+
+      if (messageText === "/help" && !isAdmin) {
+        await sendTelegramMessageToChat(chatId,
+          `<b>Gemin-Eye - Your Lead Finder</b>\n\n` +
+          `<b>How it works:</b>\n` +
+          `- I automatically scan Reddit for posts matching your keywords\n` +
+          `- When I find a lead, I'll message you with an AI-written response\n` +
+          `- Use your bookmarklets to manually scan Facebook/LinkedIn groups\n\n` +
+          `<b>Manual scanning:</b>\n` +
+          `- Send me any post text + URL and I'll analyze it\n` +
+          `- Or screenshot a post and send the image\n\n` +
+          `<b>Commands:</b>\n` +
+          `/setup - Add a new business\n` +
+          `/help - This guide`
+        );
+        return;
+      }
+
       if (!ALLOWED_CHAT_ID) {
         console.warn("TELEGRAM_CHAT_ID not set, ignoring incoming message");
         return;
       }
-      if (chatId !== ALLOWED_CHAT_ID) return;
+      if (!isAdmin) return;
 
       if (message.photo && message.photo.length > 0) {
         pendingContextRequests.delete(chatId);
@@ -1816,22 +1871,6 @@ export function registerTelegramWebhook(app: any) {
       if (!message.text) return;
 
       const text = message.text.trim();
-
-      if (text === "/start") {
-        pendingContextRequests.delete(chatId);
-        await sendTelegramMessage(
-          `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response or post it directly\n\n<b>Reddit Commander:</b>\n/post r/subreddit Title | Body text\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button. For Reddit leads, tap "Post to Reddit" to comment directly!`
-        );
-        return;
-      }
-
-      if (text === "/help") {
-        pendingContextRequests.delete(chatId);
-        await sendTelegramMessage(
-          `<b>Gemin-Eye Bot - Full Guide</b>\n\n<b>Analyzing Posts:</b>\n\n<b>Option 1 - Text:</b>\nPaste the URL + post text:\n<code>https://reddit.com/r/chicago/comments/abc123\nLooking for a good pizza place near Brookfield</code>\n\n<b>Option 2 - Screenshot:</b>\nJust screenshot the post on your phone and send the image here. I'll read it automatically!\n\nYou can add the URL as a caption on the photo for the "Open Post" button.\n\n<b>Feedback:</b>\nEvery AI response comes with buttons:\n- <b>Used It</b> - You posted the response (helps me learn what works)\n- <b>Bad Match</b> - The post wasn't relevant to that business\n- <b>Too Salesy</b> - The response sounded too much like an ad\n- <b>Wrong Client</b> - Matched to the wrong business\n\n<b>Context:</b>\nIf I can't tell which group a post is from, I'll ask you. This helps me pick the right business and write a better response.\n\n<b>Managing Clients:</b>\n/newclient - Step-by-step new business setup\n/removeclient - Remove a business and all its data\n/keywords - Update search keywords\n/groups - Update target groups/subreddits\n/businesses - See all your businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed`
-        );
-        return;
-      }
 
       if (text === "/businesses") {
         pendingContextRequests.delete(chatId);

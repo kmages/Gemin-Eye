@@ -9,6 +9,23 @@ export const ai = new GoogleGenAI({
   },
 });
 
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
+
+export async function generateContent(
+  opts: { model: string; contents: any; config?: any },
+  timeoutMs: number = AI_TIMEOUT_MS,
+): Promise<{ text: string }> {
+  const aiCall = ai.models.generateContent(opts);
+  const timeout = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`AI call timed out after ${timeoutMs}ms (model: ${opts.model})`));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  const result = await Promise.race([aiCall, timeout]);
+  return { text: result.text || "" };
+}
+
 export function safeParseJsonFromAI(text: string): any | null {
   const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);

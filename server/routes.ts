@@ -11,7 +11,7 @@ import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { SOURCE_ARCHIVE_B64 } from "./source-archive";
-import { ai, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
+import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
@@ -155,12 +155,12 @@ CRITICAL RULES FOR GROUPS:
 
       const strategyData = await parseAIJsonWithRetry(
         async () => {
-          const response = await ai.models.generateContent({
+          const response = await generateContent({
             model: "gemini-2.5-pro",
             contents: prompt,
             config: { maxOutputTokens: 8192 },
           });
-          return response.text || "";
+          return response.text;
         },
         strategySchema
       );
@@ -189,12 +189,8 @@ CRITICAL RULES FOR GROUPS:
   app.get("/api/leads", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const camps = await storage.getCampaignsByUser(userId);
-      const campaignIds = camps.map((c) => c.id);
-      const allLeads = await storage.getLeadsByCampaigns(campaignIds);
-      const leadIds = allLeads.map((l) => l.id);
-      const responses = await storage.getResponsesByLeads(leadIds);
-      res.json({ leads: allLeads, responses });
+      const data = await storage.getDashboardData(userId);
+      res.json({ leads: data.leads, responses: data.responses });
     } catch (error) {
       console.error("Error fetching leads:", error);
       res.status(500).json({ error: "Failed to fetch leads" });
@@ -237,13 +233,13 @@ Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound l
 
 Return ONLY the response text, no quotes or formatting.`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContent({
         model: "gemini-2.5-pro",
         contents: prompt,
         config: { maxOutputTokens: 8192 },
       });
 
-      const responseText = response.text || "";
+      const responseText = response.text;
 
       const aiResp = await storage.createResponse({
         leadId,
@@ -282,13 +278,13 @@ Return ONLY valid JSON with this structure:
   "keywords_matched": ["keyword1", "keyword2"]
 }`;
 
-      const response = await ai.models.generateContent({
+      const response = await generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: { maxOutputTokens: 1024 },
       });
 
-      const text = response.text || "";
+      const text = response.text;
       const scored = safeParseJsonFromAI(text);
       if (!scored) {
         throw new Error("No JSON found in response");

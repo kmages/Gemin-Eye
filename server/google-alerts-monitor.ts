@@ -4,7 +4,7 @@ import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
-import { ai, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
+import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
@@ -99,7 +99,7 @@ async function processAlertItem(
 
   const match = await parseAIJsonWithRetry(
     async () => {
-      const result = await ai.models.generateContent({
+      const result = await generateContent({
         model: "gemini-2.5-flash",
         contents: `You are a lead scout for "${target.businessName}" (${target.businessType}).
 They offer: ${target.coreOffering}
@@ -116,7 +116,7 @@ Return ONLY valid JSON:
 {"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
         config: { maxOutputTokens: 512 },
       });
-      return result.text || "";
+      return result.text;
     },
     leadScoreSchema
   );
@@ -132,7 +132,7 @@ Return ONLY valid JSON:
     item.source === "YouTube" ? "YouTube comment" :
     `${item.source} comment/reply`;
 
-  const responseResult = await ai.models.generateContent({
+  const responseResult = await generateContent({
     model: "gemini-2.5-pro",
     contents: `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly recommending a business.
 
@@ -149,7 +149,7 @@ Return ONLY the response text, no quotes or formatting.`,
     config: { maxOutputTokens: 8192 },
   });
 
-  const responseText = (responseResult.text || "").trim();
+  const responseText = responseResult.text.trim();
   if (!responseText) return;
 
   let savedResponseId: number | null = null;

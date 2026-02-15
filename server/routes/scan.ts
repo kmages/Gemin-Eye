@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
-import { ai, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
+import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { createRateLimiter } from "../utils/rate-limit";
@@ -78,7 +78,7 @@ async function handleScanRequest(
     ? `post from "${meta.groupName || "a Facebook group"}"`
     : `post by "${meta.authorName || "someone"}"`;
 
-  const matchResult = await ai.models.generateContent({
+  const matchResult = await generateContent({
     model: "gemini-2.5-flash",
     contents: `You are a lead scout for "${business.name}" (${business.type}).
 They offer: ${business.coreOffering}
@@ -94,7 +94,7 @@ Return ONLY valid JSON:
     config: { maxOutputTokens: 512 },
   });
 
-  const match = safeParseJsonFromAI(matchResult.text || "");
+  const match = safeParseJsonFromAI(matchResult.text);
   if (!match) {
     return { matched: false, reason: "ai_parse_error" };
   }
@@ -109,7 +109,7 @@ Return ONLY valid JSON:
     ? "a natural, professional LinkedIn comment (2-3 sentences). Sound like a real professional sharing knowledge or a recommendation. Keep it conversational but polished for LinkedIn."
     : "a natural, human-sounding comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation.";
 
-  const responseResult = await ai.models.generateContent({
+  const responseResult = await generateContent({
     model: "gemini-2.5-pro",
     contents: `You are writing a ${platformLabel} comment${platform === "facebook" ? " in a community group" : " on a professional post"}. Your goal is to be genuinely helpful while subtly recommending a business.
 
@@ -126,7 +126,7 @@ Return ONLY the response text, no quotes or formatting.`,
     config: { maxOutputTokens: 8192 },
   });
 
-  const responseText = (responseResult.text || "").trim();
+  const responseText = responseResult.text.trim();
   if (!responseText) {
     return { matched: true, score: match.intent_score, reason: "no_response_generated" };
   }

@@ -11,6 +11,23 @@ The app has four main flows:
 4. **Admin Panel** (`/admin`) - Admin-only page to manage all clients, their businesses, campaigns, keywords, and groups
 
 ## Recent Changes (Feb 15, 2026)
+- **AI Call Timeout Protection**
+  - Added 30-second timeout wrapper (`withTimeout` in `server/utils/ai.ts`) using `Promise.race` pattern
+  - Configurable via `AI_TIMEOUT_MS` environment variable, default 30s
+  - All direct `ai.models.generateContent` calls replaced across 5 files with timeout-protected `generateContent`
+- **Dashboard Performance Optimization**
+  - Added `getDashboardData()` method to storage layer: fetches full business→campaign→lead→response hierarchy in 4 batched queries instead of N+1 sequential queries
+  - Updated `/api/leads` route to use optimized method
+- **Telegram Bot Modularization**
+  - Split `server/telegram-bot.ts` (1670→~280 lines) into focused modules under `server/telegram/`:
+    - `state.ts` — Shared Maps, constants, and type definitions
+    - `analysis.ts` — Post analysis, AI matching, image extraction, business loading
+    - `bookmarklets.ts` — Scan token generation, Facebook/LinkedIn bookmarklet code
+    - `client-wizard.ts` — Self-service client onboarding wizard flow
+    - `admin-commands.ts` — Admin command handlers (/newclient, /removeclient, /keywords, etc.)
+    - `callbacks.ts` — Telegram callback query handlers (feedback buttons, Reddit posting)
+    - `index.ts` — Barrel export for clean imports
+  - Main telegram-bot.ts now serves as slim orchestrator delegating to modules
 - **Robustness Refactoring**
   - Created shared utility modules: `server/utils/ai.ts`, `server/utils/html.ts`, `server/utils/feedback.ts`, `server/utils/dedup.ts`
   - Consolidated duplicated code from reddit-monitor, google-alerts-monitor, telegram-bot, and routes

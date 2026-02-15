@@ -8,6 +8,13 @@ import {
 import { db } from "./db";
 import { eq, desc, inArray } from "drizzle-orm";
 
+export interface DashboardData {
+  businesses: Business[];
+  campaigns: Campaign[];
+  leads: Lead[];
+  responses: AiResponse[];
+}
+
 export interface IStorage {
   getBusinessesByUser(userId: string): Promise<Business[]>;
   createBusiness(data: InsertBusiness): Promise<Business>;
@@ -25,6 +32,7 @@ export interface IStorage {
   updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign>;
   deleteCampaign(id: number): Promise<void>;
   deleteBusiness(id: number): Promise<void>;
+  getDashboardData(userId: string): Promise<DashboardData>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -103,6 +111,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBusiness(id: number): Promise<void> {
     await db.delete(businesses).where(eq(businesses.id, id));
+  }
+
+  async getDashboardData(userId: string): Promise<DashboardData> {
+    const userBiz = await db.select().from(businesses).where(eq(businesses.userId, userId)).orderBy(desc(businesses.createdAt));
+    if (userBiz.length === 0) return { businesses: userBiz, campaigns: [], leads: [], responses: [] };
+
+    const bizIds = userBiz.map((b) => b.id);
+    const userCamps = await db.select().from(campaigns).where(inArray(campaigns.businessId, bizIds)).orderBy(desc(campaigns.createdAt));
+    if (userCamps.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: [], responses: [] };
+
+    const campIds = userCamps.map((c) => c.id);
+    const userLeads = await db.select().from(leads).where(inArray(leads.campaignId, campIds)).orderBy(desc(leads.createdAt));
+    if (userLeads.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: [] };
+
+    const leadIds = userLeads.map((l) => l.id);
+    const userResponses = await db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
+
+    return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: userResponses };
   }
 }
 

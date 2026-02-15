@@ -26,11 +26,12 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   Eye, Settings, ChevronLeft, ChevronDown, ChevronRight, Pencil, Trash2,
-  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2, Power
+  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2, Power,
+  MessageCircle, ExternalLink, Copy, Zap, AlertCircle, CheckCircle, Clock
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Business, Campaign } from "@shared/schema";
+import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
 
 type AdminBusiness = Business & { campaigns: Campaign[]; leadCount: number };
 
@@ -198,11 +199,82 @@ function CampaignEditor({ campaign, onSave, onDelete }: {
   );
 }
 
+function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
+  const { toast } = useToast();
+  const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
+    new: { label: "New", variant: "default", icon: AlertCircle },
+    matched: { label: "Matched", variant: "default", icon: Zap },
+    responded: { label: "Responded", variant: "secondary", icon: CheckCircle },
+    pending: { label: "Pending", variant: "secondary", icon: Clock },
+  };
+  const config = statusConfig[lead.status] || statusConfig.new;
+
+  const handleCopy = () => {
+    if (response) {
+      navigator.clipboard.writeText(response.content);
+      toast({ title: "Copied!", description: "Response copied to clipboard." });
+    }
+  };
+
+  return (
+    <Card className="p-4 space-y-3" data-testid={`card-admin-lead-${lead.id}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Badge variant="secondary" className="text-xs flex-shrink-0">{lead.platform}</Badge>
+          <span className="text-xs text-muted-foreground truncate">{lead.groupName}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant={config.variant} className="text-xs">
+            <config.icon className="w-3 h-3 mr-1" />
+            {config.label}
+          </Badge>
+          <Badge variant="secondary" className="text-xs">{lead.intentScore}/10</Badge>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">{lead.authorName} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
+        <p className="text-sm bg-muted/50 p-2.5 rounded-md leading-relaxed" data-testid={`text-admin-lead-post-${lead.id}`}>
+          {lead.originalPost.length > 200 ? lead.originalPost.slice(0, 200) + "..." : lead.originalPost}
+        </p>
+      </div>
+      {response && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3 h-3 text-chart-2" />
+            <span className="text-xs font-medium text-chart-2">AI Response</span>
+            {response.status && (
+              <Badge variant="secondary" className="text-xs ml-1">{response.status}</Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground leading-relaxed" data-testid={`text-admin-response-${lead.id}`}>
+            {response.content.length > 250 ? response.content.slice(0, 250) + "..." : response.content}
+          </p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {response && (
+          <Button variant="outline" size="sm" onClick={handleCopy} data-testid={`button-admin-copy-${lead.id}`}>
+            <Copy className="w-3 h-3 mr-1" /> Copy
+          </Button>
+        )}
+        {lead.postUrl && (
+          <Button variant="outline" size="sm" asChild data-testid={`button-admin-open-${lead.id}`}>
+            <a href={lead.postUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="w-3 h-3 mr-1" /> Open Post
+            </a>
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
   const [showNewCampaign, setShowNewCampaign] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showLeads, setShowLeads] = useState(false);
   const { toast } = useToast();
 
   const [bizName, setBizName] = useState(business.name);
@@ -216,6 +288,11 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
 
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
+
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
+    queryKey: ["/api/admin/leads", business.id],
+    enabled: expanded && showLeads,
+  });
 
   const updateBiz = useMutation({
     mutationFn: async (data: any) => {
@@ -464,6 +541,42 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
                 <p className="text-sm text-muted-foreground text-center py-4">No campaigns yet</p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-medium">Leads ({business.leadCount})</h4>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLeads(!showLeads)}
+                data-testid={`button-toggle-leads-${business.id}`}
+              >
+                <MessageCircle className="w-3 h-3 mr-1" /> {showLeads ? "Hide Leads" : "Show Leads"}
+              </Button>
+            </div>
+
+            {showLeads && (
+              <div className="space-y-3">
+                {leadsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-32 w-full rounded-md" />
+                    ))}
+                  </div>
+                ) : leadsData && leadsData.leads.length > 0 ? (
+                  leadsData.leads.map((lead) => {
+                    const resp = leadsData.responses.find((r) => r.leadId === lead.id);
+                    return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                  })
+                ) : (
+                  <Card className="p-6 text-center">
+                    <Target className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No leads found for this business yet.</p>
+                  </Card>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

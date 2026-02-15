@@ -131,6 +131,22 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.get("/api/admin/leads/:businessId", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const businessId = parseInt(req.params.id || req.params.businessId);
+      const camps = await storage.getCampaignsByBusiness(businessId);
+      const campaignIds = camps.map(c => c.id);
+      if (campaignIds.length === 0) return res.json({ leads: [], responses: [] });
+      const bizLeads = await storage.getLeadsByCampaigns(campaignIds);
+      const leadIds = bizLeads.map(l => l.id);
+      const responses = leadIds.length > 0 ? await storage.getResponsesByLeads(leadIds) : [];
+      res.json({ leads: bizLeads, responses });
+    } catch (error) {
+      console.error("Admin: Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
   app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
     res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
   });

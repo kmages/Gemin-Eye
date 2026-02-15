@@ -4,22 +4,20 @@
 <div id="status" style="font-family:system-ui;padding:20px;font-size:13px;color:#666;">Gemin-Eye relay active. Do not close this window.</div>
 <script>
 var statusEl = document.getElementById('status');
-var queue = [];
-var processing = false;
-var stats = { sent: 0, matched: 0, failed: 0 };
+var stats = { sent: 0, matched: 0, failed: 0, pending: 0 };
+var MAX_CONCURRENT = 5;
 
 function updateStatus() {
-  statusEl.textContent = 'Relay: ' + stats.sent + ' sent, ' + stats.matched + ' matched, ' + stats.failed + ' failed';
+  statusEl.textContent = 'Relay: ' + stats.sent + ' sent, ' + stats.matched + ' matched, ' + stats.failed + ' failed' + (stats.pending > 0 ? ', ' + stats.pending + ' pending' : '');
 }
 
-function processQueue() {
-  if (processing || queue.length === 0) return;
-  processing = true;
-  var item = queue.shift();
+function sendRequest(item) {
   var payload = item.payload;
   var apiUrl = item.apiUrl;
   var sourceWindow = item.source;
   var msgId = item.msgId;
+  stats.pending++;
+  updateStatus();
 
   fetch(apiUrl, {
     method: 'POST',
@@ -29,34 +27,27 @@ function processQueue() {
   .then(function(r) { return r.json(); })
   .then(function(d) {
     stats.sent++;
+    stats.pending--;
     if (d.matched) stats.matched++;
     updateStatus();
-    try {
-      sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: d }, '*');
-    } catch(e) {}
-    processing = false;
-    processQueue();
+    try { sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: d }, '*'); } catch(e) {}
   })
   .catch(function(err) {
     stats.failed++;
+    stats.pending--;
     updateStatus();
-    try {
-      sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: { matched: false, reason: 'relay_error' } }, '*');
-    } catch(e) {}
-    processing = false;
-    processQueue();
+    try { sourceWindow.postMessage({ type: 'gemin-eye-result', msgId: msgId, data: { matched: false, reason: 'relay_error' } }, '*'); } catch(e) {}
   });
 }
 
 window.addEventListener('message', function(event) {
   if (!event.data || event.data.type !== 'gemin-eye-scan') return;
-  queue.push({
+  sendRequest({
     payload: event.data.payload,
     apiUrl: event.data.apiUrl,
     source: event.source,
     msgId: event.data.msgId
   });
-  processQueue();
 });
 
 updateStatus();

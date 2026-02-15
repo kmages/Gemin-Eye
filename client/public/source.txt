@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T15:29:54Z
+# Generated: 2026-02-15T15:39:04Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -998,7 +998,7 @@ import { sendTelegramMessageToChat } from "../telegram";
 
 const scanRateLimit = createRateLimiter({
   name: "scan-endpoints",
-  maxRequests: 15,
+  maxRequests: 120,
   windowMs: 60 * 1000,
   keyFn: (req) => String(req.body?.chatId || req.ip || "unknown"),
 });

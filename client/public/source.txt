@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T01:51:06Z
+# Generated: 2026-02-15T14:07:47Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -982,7 +982,7 @@ export function registerAdminRoutes(app: Express) {
 
 
 ============================================================
-FILE: server/routes/scan.ts (234 lines)
+FILE: server/routes/scan.ts (233 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -991,6 +991,7 @@ import { businesses as businessesTable, campaigns as campaignsTable, leads as le
 import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
+import { keywordMatch } from "../utils/keywords";
 import { createRateLimiter } from "../utils/rate-limit";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
@@ -1053,9 +1054,7 @@ async function handleScanRequest(
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
-  const lower = postText.toLowerCase();
-  const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
-  if (!hasKeyword) {
+  if (!keywordMatch(postText, allKeywords)) {
     return { matched: false, reason: "no_keyword_match" };
   }
 
@@ -3623,7 +3622,7 @@ export function createRateLimiter(options: {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (306 lines)
+FILE: server/reddit-monitor.ts (301 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -3635,6 +3634,7 @@ import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_M
 import { escapeHtml } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
+import { keywordMatch } from "./utils/keywords";
 
 const parser = new Parser({
   headers: {
@@ -3698,12 +3698,6 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
   return targets;
 }
 
-function keywordMatch(text: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return true;
-  const lower = text.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
-}
-
 async function processPostForTarget(
   post: { title: string; content: string; link: string },
   target: SubredditTarget
@@ -3712,7 +3706,7 @@ async function processPostForTarget(
   const content = post.content;
   const fullText = `${title}\n${content}`;
 
-  if (!keywordMatch(fullText, target.keywords)) return;
+  if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
   console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
 
@@ -4046,7 +4040,7 @@ function extractPostId(url: string): string | null {
 
 
 ============================================================
-FILE: server/google-alerts-monitor.ts (311 lines)
+FILE: server/google-alerts-monitor.ts (306 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -4058,6 +4052,7 @@ import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_M
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
+import { keywordMatch } from "./utils/keywords";
 
 const parser = new Parser({
   headers: {
@@ -4116,12 +4111,6 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
   }
 
   return targets;
-}
-
-function keywordMatch(text: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return false;
-  const lower = text.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
 function extractSourceName(link: string): string {

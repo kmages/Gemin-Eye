@@ -11,6 +11,12 @@ The app has four main flows:
 4. **Admin Panel** (`/admin`) - Admin-only page to manage all clients, their businesses, campaigns, keywords, and groups
 
 ## Recent Changes (Feb 15, 2026)
+- **Smart Keyword Matching** (`server/utils/keywords.ts`)
+  - Replaced strict exact-phrase substring matching with smarter word-level matching
+  - Multi-word keywords like "treatment options" now match when both words appear anywhere in the text, not just adjacently
+  - Stop-word filtering ensures only significant words are checked (e.g., "looking for help" matches on "looking" + "help")
+  - Shared utility used by all monitors: Facebook/LinkedIn scan, Reddit RSS, Google Alerts RSS
+  - Exact phrase match still tried first for best precision
 - **AI Call Timeout Protection**
   - Added 30-second timeout wrapper (`withTimeout` in `server/utils/ai.ts`) using `Promise.race` pattern
   - Configurable via `AI_TIMEOUT_MS` environment variable, default 30s

@@ -8,6 +8,7 @@ import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_M
 import { escapeHtml } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
+import { keywordMatch } from "./utils/keywords";
 
 const parser = new Parser({
   headers: {
@@ -71,12 +72,6 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
   return targets;
 }
 
-function keywordMatch(text: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return true;
-  const lower = text.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
-}
-
 async function processPostForTarget(
   post: { title: string; content: string; link: string },
   target: SubredditTarget
@@ -85,7 +80,7 @@ async function processPostForTarget(
   const content = post.content;
   const fullText = `${title}\n${content}`;
 
-  if (!keywordMatch(fullText, target.keywords)) return;
+  if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
   console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
 

@@ -8,6 +8,7 @@ import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_M
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
+import { keywordMatch } from "./utils/keywords";
 
 const parser = new Parser({
   headers: {
@@ -66,12 +67,6 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
   }
 
   return targets;
-}
-
-function keywordMatch(text: string, keywords: string[]): boolean {
-  if (keywords.length === 0) return false;
-  const lower = text.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
 function extractSourceName(link: string): string {

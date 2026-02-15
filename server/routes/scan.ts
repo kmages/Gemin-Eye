@@ -5,6 +5,7 @@ import { businesses as businessesTable, campaigns as campaignsTable, leads as le
 import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
+import { keywordMatch } from "../utils/keywords";
 import { createRateLimiter } from "../utils/rate-limit";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
@@ -67,9 +68,7 @@ async function handleScanRequest(
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
-  const lower = postText.toLowerCase();
-  const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
-  if (!hasKeyword) {
+  if (!keywordMatch(postText, allKeywords)) {
     return { matched: false, reason: "no_keyword_match" };
   }
 

@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T01:18:06Z
+# Generated: 2026-02-15T01:19:36Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -848,6 +848,379 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
+FILE: server/routes/admin.ts (129 lines)
+============================================================
+import type { Express } from "express";
+import { z } from "zod";
+import { isAuthenticated } from "../replit_integrations/auth";
+import { storage } from "../storage";
+
+const ADMIN_USER_ID = "40011074";
+
+export function isAdmin(req: any, res: any, next: any) {
+  if (!req.user || req.user.claims.sub !== ADMIN_USER_ID) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+export function registerAdminRoutes(app: Express) {
+  app.get("/api/admin/businesses", isAuthenticated, isAdmin, async (_req: any, res) => {
+    try {
+      const allBiz = await storage.getAllBusinesses();
+      const result = [];
+      for (const biz of allBiz) {
+        const camps = await storage.getCampaignsByBusiness(biz.id);
+        const campaignIds = camps.map(c => c.id);
+        const bizLeads = campaignIds.length > 0 ? await storage.getLeadsByCampaigns(campaignIds) : [];
+        result.push({ ...biz, campaigns: camps, leadCount: bizLeads.length });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Admin: Error fetching businesses:", error);
+      res.status(500).json({ error: "Failed to fetch businesses" });
+    }
+  });
+
+  app.patch("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        type: z.string().optional(),
+        contactEmail: z.string().nullable().optional(),
+        contactPhone: z.string().nullable().optional(),
+        website: z.string().nullable().optional(),
+        targetAudience: z.string().optional(),
+        coreOffering: z.string().optional(),
+        preferredTone: z.string().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const biz = await storage.updateBusiness(id, parsed.data);
+      res.json(biz);
+    } catch (error) {
+      console.error("Admin: Error updating business:", error);
+      res.status(500).json({ error: "Failed to update business" });
+    }
+  });
+
+  app.delete("/api/admin/businesses/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteBusiness(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Admin: Error deleting business:", error);
+      res.status(500).json({ error: "Failed to delete business" });
+    }
+  });
+
+  app.patch("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updateSchema = z.object({
+        name: z.string().min(1).optional(),
+        platform: z.string().optional(),
+        status: z.string().optional(),
+        targetGroups: z.array(z.string()).optional(),
+        keywords: z.array(z.string()).optional(),
+        strategy: z.string().nullable().optional(),
+      });
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const camp = await storage.updateCampaign(id, parsed.data);
+      res.json(camp);
+    } catch (error) {
+      console.error("Admin: Error updating campaign:", error);
+      res.status(500).json({ error: "Failed to update campaign" });
+    }
+  });
+
+  app.post("/api/admin/campaigns", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const createSchema = z.object({
+        businessId: z.number(),
+        name: z.string().min(1),
+        platform: z.string().min(1),
+        status: z.string().default("active"),
+        targetGroups: z.array(z.string()).default([]),
+        keywords: z.array(z.string()).default([]),
+        strategy: z.string().nullable().default(null),
+      });
+      const parsed = createSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.issues });
+      }
+      const camp = await storage.createCampaign(parsed.data);
+      res.json(camp);
+    } catch (error) {
+      console.error("Admin: Error creating campaign:", error);
+      res.status(500).json({ error: "Failed to create campaign" });
+    }
+  });
+
+  app.delete("/api/admin/campaigns/:id", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCampaign(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Admin: Error deleting campaign:", error);
+      res.status(500).json({ error: "Failed to delete campaign" });
+    }
+  });
+
+  app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
+    res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
+  });
+}
+
+
+============================================================
+FILE: server/routes/scan.ts (234 lines)
+============================================================
+import type { Express, Request, Response, NextFunction } from "express";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
+import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
+import { escapeHtml } from "../utils/html";
+import { getFeedbackGuidance } from "../utils/feedback";
+import { createRateLimiter } from "../utils/rate-limit";
+import { generateScanToken } from "../telegram-bot";
+import { sendTelegramMessageToChat } from "../telegram";
+
+const scanRateLimit = createRateLimiter({
+  name: "scan-endpoints",
+  maxRequests: 15,
+  windowMs: 60 * 1000,
+  keyFn: (req) => String(req.body?.chatId || req.ip || "unknown"),
+});
+
+function setCorsHeaders(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
+}
+
+function corsOptions(_req: Request, res: Response) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.sendStatus(204);
+}
+
+async function validateScanRequest(req: Request): Promise<
+  | { valid: true; chatId: string; businessId: number; postText: string; business: any; bizCampaigns: any[] }
+  | { valid: false; error: { matched: false; reason: string } }
+> {
+  const { chatId, businessId, token, postText } = req.body;
+
+  if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
+    return { valid: false, error: { matched: false, reason: "missing_fields" } };
+  }
+
+  const expectedToken = generateScanToken(String(chatId), Number(businessId));
+  if (token !== expectedToken) {
+    return { valid: false, error: { matched: false, reason: "invalid_token" } };
+  }
+
+  if (postText.length < MIN_POST_LENGTH) {
+    return { valid: false, error: { matched: false, reason: "too_short" } };
+  }
+
+  const biz = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId)).limit(1);
+  if (biz.length === 0) {
+    return { valid: false, error: { matched: false, reason: "business_not_found" } };
+  }
+
+  const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  return { valid: true, chatId: String(chatId), businessId: Number(businessId), postText, business: biz[0], bizCampaigns };
+}
+
+async function handleScanRequest(
+  platform: "facebook" | "linkedin",
+  business: any,
+  bizCampaigns: any[],
+  postText: string,
+  chatId: string,
+  meta: { groupName?: string; authorName?: string; pageUrl?: string }
+) {
+  const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
+  const lower = postText.toLowerCase();
+  const hasKeyword = allKeywords.some(kw => lower.includes(kw.toLowerCase()));
+  if (!hasKeyword) {
+    return { matched: false, reason: "no_keyword_match" };
+  }
+
+  const platformLabel = platform === "facebook" ? "Facebook" : "LinkedIn";
+  const contextLabel = platform === "facebook"
+    ? `post from "${meta.groupName || "a Facebook group"}"`
+    : `post by "${meta.authorName || "someone"}"`;
+
+  const matchResult = await generateContent({
+    model: "gemini-2.5-flash",
+    contents: `You are a lead scout for "${business.name}" (${business.type}).
+They offer: ${business.coreOffering}
+
+Analyze this ${platformLabel} ${contextLabel}:
+"${postText.slice(0, 500)}"
+
+Is this person asking a question or seeking help/recommendations that "${business.name}" could address?
+Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+Return ONLY valid JSON:
+{"is_lead": true/false, "intent_score": <1-10>, "reasoning": "<one sentence>"}`,
+    config: { maxOutputTokens: 512 },
+  });
+
+  const match = safeParseJsonFromAI(matchResult.text);
+  if (!match) {
+    return { matched: false, reason: "ai_parse_error" };
+  }
+
+  if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
+    return { matched: false, reason: "low_intent", score: match.intent_score };
+  }
+
+  const feedbackGuidance = await getFeedbackGuidance(business.id);
+  const toneDesc = platform === "linkedin" ? "professional and helpful" : "friendly and helpful";
+  const responseStyle = platform === "linkedin"
+    ? "a natural, professional LinkedIn comment (2-3 sentences). Sound like a real professional sharing knowledge or a recommendation. Keep it conversational but polished for LinkedIn."
+    : "a natural, human-sounding comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation.";
+
+  const responseResult = await generateContent({
+    model: "gemini-2.5-pro",
+    contents: `You are writing a ${platformLabel} comment${platform === "facebook" ? " in a community group" : " on a professional post"}. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The ${contextLabel}: "${postText.slice(0, 500)}"
+
+Business to recommend: ${business.name}
+What they do: ${business.coreOffering}
+Tone: ${TONE_MAP[business.preferredTone] || toneDesc}
+${feedbackGuidance}
+
+Write ${responseStyle} Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = responseResult.text.trim();
+  if (!responseText) {
+    return { matched: true, score: match.intent_score, reason: "no_response_generated" };
+  }
+
+  let savedResponseId: number | null = null;
+  const targetCampaign = platform === "linkedin"
+    ? (bizCampaigns.find(c => c.platform === "LinkedIn") || bizCampaigns[0])
+    : bizCampaigns[0];
+
+  if (targetCampaign) {
+    try {
+      const [savedLead] = await db.insert(leadsTable).values({
+        campaignId: targetCampaign.id,
+        platform,
+        groupName: meta.groupName || `${platformLabel} ${platform === "linkedin" ? "Feed" : "Group"}`,
+        authorName: meta.authorName || `${platformLabel} user`,
+        originalPost: postText.slice(0, 2000),
+        postUrl: meta.pageUrl || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      }).returning();
+
+      if (savedLead) {
+        const [savedResponse] = await db.insert(aiResponsesTable).values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        }).returning();
+        savedResponseId = savedResponse?.id || null;
+      }
+    } catch (err) {
+      console.error(`Error saving ${platformLabel} scan lead:`, err);
+    }
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+  let msg = `<b>${platformLabel} Lead Found</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(business.name)}\n`;
+  if (platform === "facebook") {
+    msg += `<b>Group:</b> ${escapeHtml(meta.groupName || "Facebook Group")}\n`;
+  } else {
+    msg += `<b>Author:</b> ${escapeHtml(meta.authorName || "LinkedIn user")}\n`;
+  }
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(postText.slice(0, 200))}"</i>`;
+
+  if (meta.pageUrl) {
+    msg += `\n\nTap "Open ${platformLabel} Post" below, then paste the reply.`;
+  }
+
+  const prefix = platform === "facebook" ? "fb" : "li";
+  const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
+  if (meta.pageUrl) {
+    buttons.push([{ text: `Open ${platformLabel} Post`, url: meta.pageUrl }]);
+  }
+  if (savedResponseId) {
+    buttons.push([
+      { text: "Used It", callback_data: `${prefix}_good_${savedResponseId}` },
+      { text: "Bad Match", callback_data: `${prefix}_bad_${savedResponseId}` },
+      { text: "Too Salesy", callback_data: `${prefix}_salesy_${savedResponseId}` },
+      { text: "Wrong Client", callback_data: `${prefix}_wrong_${savedResponseId}` },
+    ]);
+  }
+
+  await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
+  await sendTelegramMessageToChat(chatId, responseText);
+
+  return { matched: true, score: match.intent_score };
+}
+
+export function registerScanRoutes(app: Express) {
+  app.options("/api/fb-scan", corsOptions);
+  app.options("/api/li-scan", corsOptions);
+
+  app.post("/api/fb-scan", scanRateLimit, setCorsHeaders, async (req, res) => {
+    try {
+      const validation = await validateScanRequest(req);
+      if (!validation.valid) { res.json(validation.error); return; }
+
+      const { chatId, postText, business, bizCampaigns } = validation;
+      const { groupName, pageUrl } = req.body;
+      const result = await handleScanRequest("facebook", business, bizCampaigns, postText, chatId, { groupName, pageUrl });
+      res.json(result);
+    } catch (error) {
+      console.error("FB scan error:", error);
+      res.json({ matched: false, reason: "server_error" });
+    }
+  });
+
+  app.post("/api/li-scan", scanRateLimit, setCorsHeaders, async (req, res) => {
+    try {
+      const validation = await validateScanRequest(req);
+      if (!validation.valid) { res.json(validation.error); return; }
+
+      const { chatId, postText, business, bizCampaigns } = validation;
+      const { authorName, pageUrl } = req.body;
+      const result = await handleScanRequest("linkedin", business, bizCampaigns, postText, chatId, { authorName, pageUrl });
+      res.json(result);
+    } catch (error) {
+      console.error("LinkedIn scan error:", error);
+      res.json({ matched: false, reason: "server_error" });
+    }
+  });
+}
+
+
+============================================================
 FILE: server/storage.ts (135 lines)
 ============================================================
 import {
@@ -1482,6 +1855,1687 @@ async function registerWebhook(token: string) {
 
 
 ============================================================
+FILE: server/telegram/state.ts (37 lines)
+============================================================
+export interface PendingContextRequest {
+  postText: string;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+  timestamp: number;
+}
+
+export interface ClientWizardState {
+  step: "name" | "offering" | "contact" | "location" | "keywords" | "done";
+  chatId: string;
+  name?: string;
+  keywords?: string[];
+  offering?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  website?: string;
+  location?: string;
+}
+
+export interface AdminSetupState {
+  step: string;
+  name?: string;
+  type?: string;
+  audience?: string;
+  offering?: string;
+  tone?: string;
+  keywords?: string[];
+  groups?: string[];
+}
+
+export const pendingContextRequests = new Map<string, PendingContextRequest>();
+export const pendingRedditPosts = new Map<number, { responseText: string; postUrl: string; timestamp: number }>();
+export const pendingClientSetups = new Map<string, AdminSetupState>();
+export const clientWizards = new Map<string, ClientWizardState>();
+
+export const REDDIT_POST_TTL = 30 * 60 * 1000;
+export const CONTEXT_TTL = 5 * 60 * 1000;
+
+
+============================================================
+FILE: server/telegram/analysis.ts (394 lines)
+============================================================
+import { db } from "../db";
+import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { generateContent, safeParseJsonFromAI } from "../utils/ai";
+import { escapeHtml } from "../utils/html";
+import { getFeedbackGuidance } from "../utils/feedback";
+
+export interface BusinessWithCampaigns {
+  id: number;
+  name: string;
+  type: string;
+  targetAudience: string;
+  coreOffering: string;
+  preferredTone: string;
+  campaigns: Array<{
+    id: number;
+    name: string;
+    platform: string;
+    keywords: string[];
+    targetGroups: string[];
+  }>;
+}
+
+export async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampaigns[]> {
+  const allBiz = await db.select().from(businesses);
+  const allCamps = await db.select().from(campaigns);
+
+  return allBiz.map((b) => ({
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    targetAudience: b.targetAudience,
+    coreOffering: b.coreOffering,
+    preferredTone: b.preferredTone,
+    campaigns: allCamps
+      .filter((c) => c.businessId === b.id && c.status === "active")
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        platform: c.platform,
+        keywords: (c.keywords as string[]) || [],
+        targetGroups: (c.targetGroups as string[]) || [],
+      })),
+  }));
+}
+
+const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;
+
+export function extractPostUrl(text: string): string | null {
+  const matches = text.match(URL_REGEX);
+  return matches ? matches[0] : null;
+}
+
+export function stripUrls(text: string): string {
+  return text.replace(URL_REGEX, "").trim();
+}
+
+export function detectPlatformFromUrl(url: string): "reddit" | "facebook" | null {
+  if (/reddit\.com|redd\.it/i.test(url)) return "reddit";
+  if (/facebook\.com|fb\.com/i.test(url)) return "facebook";
+  return null;
+}
+
+export function detectPlatformFromText(text: string): "reddit" | "facebook" | null {
+  const lower = text.toLowerCase();
+  if (lower.includes("reddit") || lower.includes("r/") || lower.includes("/r/")) return "reddit";
+  if (lower.includes("facebook") || lower.includes("fb group")) return "facebook";
+  return null;
+}
+
+export interface ImageExtraction {
+  text: string;
+  platform: "reddit" | "facebook" | null;
+  groupName: string | null;
+  authorName: string | null;
+  postUrl: string | null;
+}
+
+function detectMimeType(filePath: string): string {
+  if (filePath.endsWith(".png")) return "image/png";
+  if (filePath.endsWith(".webp")) return "image/webp";
+  return "image/jpeg";
+}
+
+export async function downloadTelegramPhotoWithMime(fileId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+
+  try {
+    const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_id: fileId }),
+    });
+    const fileData = await fileRes.json() as any;
+    if (!fileData.ok || !fileData.result?.file_path) return null;
+
+    const filePath = fileData.result.file_path as string;
+    const mimeType = detectMimeType(filePath);
+    const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+    const imgRes = await fetch(downloadUrl);
+    if (!imgRes.ok) return null;
+
+    const arrayBuf = await imgRes.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuf), mimeType };
+  } catch (error) {
+    console.error("Error downloading Telegram photo:", error);
+    return null;
+  }
+}
+
+export async function extractTextFromImage(imageBuffer: Buffer, mimeType: string): Promise<ImageExtraction | null> {
+  try {
+    const base64Image = imageBuffer.toString("base64");
+
+    const result = await generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Image,
+              },
+            },
+            {
+              text: `You are analyzing a screenshot of a social media post. Extract the following information:
+
+1. The full text content of the post (the main body/question being asked)
+2. The platform (Reddit or Facebook) - look for visual cues like Reddit's upvote arrows, subreddit names (r/...), Facebook's blue header, group names, like/comment buttons
+3. The group or subreddit name if visible
+4. The author's name/username if visible
+
+Return ONLY valid JSON:
+{
+  "post_text": "<the full text of the post>",
+  "platform": "<reddit or facebook or unknown>",
+  "group_name": "<group or subreddit name, or null>",
+  "author_name": "<author name or null>",
+  "post_url": "<any visible URL in the screenshot, or null>"
+}
+
+If you cannot read any text from the image, return: {"post_text": "", "platform": "unknown", "group_name": null, "author_name": null, "post_url": null}`,
+            },
+          ],
+        },
+      ],
+      config: { maxOutputTokens: 2048 },
+    });
+
+    const responseText = result.text;
+    const parsed = safeParseJsonFromAI(responseText);
+    if (!parsed) return null;
+    if (!parsed.post_text || parsed.post_text.length < 3) return null;
+
+    let platform: "reddit" | "facebook" | null = null;
+    if (parsed.platform === "reddit") platform = "reddit";
+    else if (parsed.platform === "facebook") platform = "facebook";
+
+    return {
+      text: parsed.post_text,
+      platform,
+      groupName: parsed.group_name || null,
+      authorName: parsed.author_name || null,
+      postUrl: parsed.post_url || null,
+    };
+  } catch (error) {
+    console.error("Error extracting text from image:", error);
+    return null;
+  }
+}
+
+export interface PostAnalysis {
+  message: string;
+  responseText: string | null;
+  postUrl: string | null;
+  platform: "reddit" | "facebook" | null;
+  responseId: number | null;
+  needsGroupContext: boolean;
+}
+
+export async function handlePost(postText: string, groupName?: string, postUrl?: string | null, overridePlatform?: "reddit" | "facebook" | null): Promise<PostAnalysis> {
+  const allBiz = await getAllBusinessesWithCampaigns();
+  const platform = overridePlatform || (postUrl ? detectPlatformFromUrl(postUrl) : null) || detectPlatformFromText(postText) || null;
+
+  if (allBiz.length === 0) {
+    return {
+      message: "No businesses set up yet. Add a business through the Gemin-Eye dashboard or use /newclient.",
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const bizSummaries = allBiz.map((b) => {
+    const kws = b.campaigns.flatMap((c) => c.keywords);
+    return `- ${b.name} (${b.type}): keywords=[${kws.join(", ")}], audience="${b.targetAudience}"`;
+  }).join("\n");
+
+  const matchPrompt = `You are a lead matching AI. Given a social media post, determine which business (if any) is the best match and score the lead intent.
+Also rate your confidence in the match from 1-10 (10 = certain, 1 = guessing).
+
+Available businesses:
+${bizSummaries}
+
+Post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Return ONLY valid JSON:
+{
+  "matched_business": "<exact business name or null if no match>",
+  "intent_score": <1-10>,
+  "confidence": <1-10>,
+  "reasoning": "<one sentence>"
+}`;
+
+  const matchResult = await generateContent({
+    model: "gemini-2.5-flash",
+    contents: matchPrompt,
+    config: { maxOutputTokens: 1024 },
+  });
+
+  const matchText = matchResult.text;
+  const match = safeParseJsonFromAI(matchText);
+  if (!match) {
+    return {
+      message: "Could not analyze this post. Try again.",
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+  const confidence = match.confidence || 10;
+
+  if (!groupName && allBiz.length > 1 && (!match.matched_business || match.matched_business === "null" || confidence < 6)) {
+    return {
+      message: "",
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: true,
+    };
+  }
+
+  if (!match.matched_business || match.matched_business === "null") {
+    return {
+      message: `<b>No match found</b>\n\nThis post doesn't seem relevant to any of your businesses.\n\n<b>Intent score:</b> ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business.toLowerCase());
+  if (!biz) {
+    return {
+      message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  if (match.intent_score < 4) {
+    return {
+      message: `<b>Low intent detected</b>\n\n<b>Business:</b> ${escapeHtml(biz.name)}\n<b>Intent:</b> ${"*".repeat(match.intent_score)}${"_".repeat(10 - match.intent_score)} ${match.intent_score}/10\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}\n\nIntent too low to generate a response. Keep monitoring!`,
+      responseText: null,
+      postUrl: postUrl || null,
+      platform,
+      responseId: null,
+      needsGroupContext: false,
+    };
+  }
+
+  const toneMap: Record<string, string> = {
+    empathetic: "empathetic, warm, and supportive",
+    professional: "professional, authoritative, and informative",
+    casual: "casual, friendly, and approachable",
+  };
+
+  const platformContext = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook group" : "social media";
+
+  let feedbackGuidance = "";
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, biz.id))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const negCount = recentFeedback.filter(f => f.feedback !== "positive").length;
+    const salesyCount = recentFeedback.filter(f => f.feedback === "too_salesy").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * 0.3) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses for this business were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful and only naturally mention the business if it truly fits.";
+      } else if (negCount > total * 0.5) {
+        feedbackGuidance = "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine, helpful, and less promotional. The recommendation should feel organic, not forced.";
+      }
+    }
+  } catch (err) {
+  }
+
+  const responsePrompt = `You are writing a response to a ${platformContext} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+
+The post: "${postText}"
+${groupName ? `Group: "${groupName}"` : ""}
+
+Business to recommend: ${biz.name}
+What they do: ${biz.coreOffering}
+Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
+
+Return ONLY the response text, no quotes or formatting.`;
+
+  const responseResult = await generateContent({
+    model: "gemini-2.5-pro",
+    contents: responsePrompt,
+    config: { maxOutputTokens: 8192 },
+  });
+
+  const responseText = responseResult.text.trim();
+
+  const activeCampaign = biz.campaigns[0];
+  let savedResponseId: number | null = null;
+
+  if (activeCampaign) {
+    try {
+      const [savedLead] = await db.insert(leads).values({
+        campaignId: activeCampaign.id,
+        platform: platform || "unknown",
+        groupName: groupName || "Unknown Group",
+        authorName: "via Telegram",
+        originalPost: postText,
+        postUrl: postUrl || null,
+        intentScore: match.intent_score,
+        status: "matched",
+      }).returning();
+
+      if (savedLead) {
+        const [savedResponse] = await db.insert(aiResponses).values({
+          leadId: savedLead.id,
+          content: responseText,
+          status: "pending",
+        }).returning();
+        savedResponseId = savedResponse?.id || null;
+      }
+    } catch (err) {
+      console.error("Error saving lead/response to DB:", err);
+    }
+  }
+
+  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+  const platformLabel = platform === "reddit" ? "Reddit" : platform === "facebook" ? "Facebook" : "Post";
+
+  let msg = `<b>Lead Matched!</b>\n\n`;
+  msg += `<b>Business:</b> ${escapeHtml(biz.name)}\n`;
+  if (platform) msg += `<b>Platform:</b> ${platformLabel}\n`;
+  if (groupName) msg += `<b>Group:</b> ${escapeHtml(groupName)}\n`;
+  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  msg += `<b>Why:</b> ${escapeHtml(match.reasoning)}\n\n`;
+  msg += `<b>Original post:</b>\n<i>"${escapeHtml(postText.length > 300 ? postText.slice(0, 300) + "..." : postText)}"</i>`;
+
+  if (postUrl) {
+    msg += `\n\nTap "Open Post" below, then paste the reply.`;
+  }
+
+  return {
+    message: msg,
+    responseText,
+    postUrl: postUrl || null,
+    platform,
+    responseId: savedResponseId,
+    needsGroupContext: false,
+  };
+}
+
+
+============================================================
+FILE: server/telegram/bookmarklets.ts (27 lines)
+============================================================
+import crypto from "crypto";
+
+export function generateScanToken(chatId: string, businessId: number): string {
+  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
+}
+
+export function generateLinkedInBookmarkletCode(baseUrl: string, chatId: string, businessId: number, token: string): string {
+  const apiUrl = `${baseUrl}/api/li-scan`;
+  const code = `javascript:void((function(){if(window.__geminEyeLiActive){alert('Gemin-Eye is already scanning this page. Click X on the banner to stop first.');return}window.__geminEyeLiActive=true;var CID='${chatId}',BID=${businessId},TOK='${token}',API='${apiUrl}';var seenPosts={},scannedCount=0,sentCount=0,autoScrolling=true,scrollsDone=0,maxScrolls=150;var banner=document.createElement('div');banner.id='gemin-eye-li-banner';banner.style.cssText='position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#0077B5,#00A0DC);color:white;text-align:center;padding:10px 20px;z-index:2147483647;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';var counter=document.createElement('span');counter.style.cssText='font-weight:normal;opacity:0.85;font-size:13px;';counter.textContent='0 posts scanned';var pauseBtn=document.createElement('span');pauseBtn.textContent='Pause';pauseBtn.style.cssText='cursor:pointer;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:4px;font-size:12px;margin-left:8px;';pauseBtn.onclick=function(){autoScrolling=!autoScrolling;pauseBtn.textContent=autoScrolling?'Pause':'Resume'};var closeBtn=document.createElement('span');closeBtn.textContent='X';closeBtn.style.cssText='position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';closeBtn.onclick=function(){banner.remove();window.__geminEyeLiActive=false;autoScrolling=false;clearInterval(si);clearInterval(scrollInterval)};banner.appendChild(document.createTextNode('Gemin-Eye LinkedIn: Scanning... '));banner.appendChild(counter);banner.appendChild(pauseBtn);banner.appendChild(closeBtn);document.body.appendChild(banner);function extractPosts(){var found=[];var els=document.querySelectorAll('.feed-shared-update-v2__description,.feed-shared-inline-show-more-text,.feed-shared-text,.update-components-text,.break-words');els.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<25||t.length>5000||seenPosts[t])return;found.push({text:t,element:el})});var articles=document.querySelectorAll('[data-urn]');articles.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<50||t.length>5000||seenPosts[t])return;var hasDesc=el.querySelector('.feed-shared-update-v2__description,.feed-shared-text,.update-components-text,.break-words');if(!hasDesc){found.push({text:t.slice(0,2000),element:el})}});return found}function getAuthor(el){var c=el.closest('[data-urn]')||el.closest('.feed-shared-update-v2');if(!c)return'LinkedIn user';var a=c.querySelector('.update-components-actor__name span[aria-hidden],.feed-shared-actor__name span');return a?(a.innerText||'').trim():'LinkedIn user'}function sendPost(postText,element){seenPosts[postText]=true;scannedCount++;fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:CID,businessId:BID,token:TOK,postText:postText,authorName:getAuthor(element),pageUrl:window.location.href})}).then(function(r){return r.json()}).then(function(d){if(d.matched){sentCount++;element.style.outline='3px solid #0077B5';element.style.outlineOffset='4px';element.style.borderRadius='4px'}}).catch(function(){});counter.textContent=scannedCount+' scanned, '+sentCount+' leads'}function scan(){var posts=extractPosts();posts.forEach(function(p){sendPost(p.text,p.element)})}scan();var si=setInterval(scan,3000);var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;pauseBtn.textContent='Done';clearInterval(scrollInterval);return}window.scrollBy(0,600)},2000)})())`;
+  return code;
+}
+
+export function generateBookmarkletCode(baseUrl: string, chatId: string, businessId: number, token: string): string {
+  const apiUrl = `${baseUrl}/api/fb-scan`;
+  const code = `javascript:void((function(){if(window.__geminEyeActive){alert('Gemin-Eye is already scanning this page. Click X on the banner to stop first.');return}window.__geminEyeActive=true;var CID='${chatId}',BID=${businessId},TOK='${token}',API='${apiUrl}';var seenPosts={},scannedCount=0,sentCount=0,autoScrolling=true,scrollsDone=0,maxScrolls=150;var banner=document.createElement('div');banner.id='gemin-eye-banner';banner.style.cssText='position:fixed;top:0;left:0;width:100%;background:linear-gradient(135deg,#4338ca,#6d28d9);color:white;text-align:center;padding:10px 20px;z-index:2147483647;font-family:system-ui,sans-serif;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;gap:8px;';var counter=document.createElement('span');counter.style.cssText='font-weight:normal;opacity:0.85;font-size:13px;';counter.textContent='0 posts scanned';var pauseBtn=document.createElement('span');pauseBtn.textContent='Pause';pauseBtn.style.cssText='cursor:pointer;background:rgba(255,255,255,0.2);padding:2px 10px;border-radius:4px;font-size:12px;margin-left:8px;';pauseBtn.onclick=function(){autoScrolling=!autoScrolling;pauseBtn.textContent=autoScrolling?'Pause':'Resume'};var closeBtn=document.createElement('span');closeBtn.textContent='X';closeBtn.style.cssText='position:absolute;right:16px;cursor:pointer;font-size:16px;opacity:0.7;';closeBtn.onclick=function(){banner.remove();window.__geminEyeActive=false;autoScrolling=false;clearInterval(si);clearInterval(scrollInterval)};banner.appendChild(document.createTextNode('Gemin-Eye: Auto-scanning... '));banner.appendChild(counter);banner.appendChild(pauseBtn);banner.appendChild(closeBtn);document.body.appendChild(banner);function extractPosts(){var found=[];var els=document.querySelectorAll('div[dir=\"auto\"]');els.forEach(function(el){var t=(el.innerText||'').trim();if(t.length<25||t.length>5000||seenPosts[t])return;var a=el.closest('a');if(a&&a.href&&a.href.indexOf('/comment')===-1)return;found.push({text:t,element:el})});return found}function sendPost(postText,element){seenPosts[postText]=true;scannedCount++;var gn='';var h1=document.querySelector('h1');if(h1)gn=h1.innerText||'';if(!gn){var te=document.querySelector('[role=\"banner\"] a[href*=\"/groups/\"]');if(te)gn=te.innerText||''}fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chatId:CID,businessId:BID,token:TOK,postText:postText,groupName:gn||document.title||'Facebook Group',pageUrl:window.location.href})}).then(function(r){return r.json()}).then(function(d){if(d.matched){sentCount++;element.style.outline='3px solid #6d28d9';element.style.outlineOffset='4px';element.style.borderRadius='4px'}}).catch(function(){});counter.textContent=scannedCount+' scanned, '+sentCount+' leads'}function scan(){var posts=extractPosts();posts.forEach(function(p){sendPost(p.text,p.element)})}scan();var si=setInterval(scan,3000);var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;pauseBtn.textContent='Done';clearInterval(scrollInterval);return}window.scrollBy(0,600)},2000)})())`;
+  return code;
+}
+
+export function getAppBaseUrl(): string {
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDevDomain) return `https://${replitDevDomain}`;
+  const replSlug = process.env.REPL_SLUG;
+  const replOwner = process.env.REPL_OWNER;
+  if (replSlug && replOwner) return `https://${replSlug}.${replOwner}.repl.co`;
+  return "https://gemin-eye.com";
+}
+
+
+============================================================
+FILE: server/telegram/client-wizard.ts (236 lines)
+============================================================
+import { sendTelegramMessage, sendTelegramMessageToChat } from "../telegram";
+import { storage } from "../storage";
+import { generateContent, safeParseJsonFromAI } from "../utils/ai";
+import { escapeHtml } from "../utils/html";
+import { clientWizards, type ClientWizardState } from "./state";
+import { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } from "./bookmarklets";
+
+export async function handleClientWizard(chatId: string, text: string): Promise<boolean> {
+  const wizard = clientWizards.get(chatId);
+  if (!wizard) return false;
+
+  if (text.startsWith("/")) {
+    clientWizards.delete(chatId);
+    return false;
+  }
+
+  switch (wizard.step) {
+    case "name": {
+      const name = text.trim();
+      if (name.length < 2 || name.length > 100) {
+        await sendTelegramMessageToChat(chatId, "Please enter a valid business name (2-100 characters).");
+        return true;
+      }
+      wizard.name = name;
+      wizard.step = "offering";
+      await sendTelegramMessageToChat(chatId,
+        `Got it: <b>${escapeHtml(wizard.name)}</b>\n\nIn one sentence, what does ${escapeHtml(wizard.name)} do or sell?\n<i>(e.g., "Classic American diner with all-day breakfast and comfort food")</i>`
+      );
+      return true;
+    }
+
+    case "offering": {
+      const offering = text.trim();
+      if (offering.length < 5) {
+        await sendTelegramMessageToChat(chatId, "Please describe what the business does in at least a few words.");
+        return true;
+      }
+      wizard.offering = offering;
+      wizard.step = "contact";
+      await sendTelegramMessageToChat(chatId,
+        `Got it.\n\nNow I need your contact info. Please send your <b>email</b>, <b>phone</b>, and <b>website</b> (one per line):\n\n<i>Example:\njoe@mybusiness.com\n(312) 555-1234\nhttps://mybusiness.com</i>\n\n(If no website, just send email and phone on two lines)`
+      );
+      return true;
+    }
+
+    case "contact": {
+      const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length < 2) {
+        await sendTelegramMessageToChat(chatId, "Please send at least your email and phone number, one per line.");
+        return true;
+      }
+      const emailLine = lines.find(l => l.includes("@")) || lines[0];
+      const phoneLine = lines.find(l => /[\d\(\)\-\+]/.test(l) && !l.includes("@") && !l.includes(".com") && !l.includes("http")) || lines[1];
+      const websiteLine = lines.find(l => l.includes(".") && !l.includes("@") && l !== phoneLine) || "";
+
+      wizard.contactEmail = emailLine;
+      wizard.contactPhone = phoneLine;
+      wizard.website = websiteLine;
+      wizard.step = "location";
+      await sendTelegramMessageToChat(chatId,
+        `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
+      );
+      return true;
+    }
+
+    case "location": {
+      const location = text.trim();
+      if (location.length < 2) {
+        await sendTelegramMessageToChat(chatId, "Please enter a location (city/state, or 'online' if not location-specific).");
+        return true;
+      }
+      wizard.location = location;
+      wizard.step = "keywords";
+      await sendTelegramMessageToChat(chatId,
+        `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., estate planning, trust attorney, wills and trusts, probate lawyer)</i>`
+      );
+      return true;
+    }
+
+    case "keywords": {
+      wizard.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      if (wizard.keywords.length < 1) {
+        await sendTelegramMessageToChat(chatId, "Please enter at least one keyword, separated by commas.");
+        return true;
+      }
+
+      await sendTelegramMessageToChat(chatId, `Got it! Setting up your monitor now...`);
+
+      const locationInfo = wizard.location || "Online";
+      const biz = await storage.createBusiness({
+        userId: `tg-${chatId}`,
+        name: wizard.name!,
+        type: wizard.offering || wizard.name!,
+        contactEmail: wizard.contactEmail || null,
+        contactPhone: wizard.contactPhone || null,
+        website: wizard.website || null,
+        targetAudience: locationInfo,
+        coreOffering: wizard.offering || wizard.name!,
+        preferredTone: "casual",
+      });
+
+      let redditSubs: string[] = [];
+      try {
+        const groupResult = await generateContent({
+          model: "gemini-2.5-flash",
+          contents: `A business needs REAL Reddit subreddits to monitor for customer leads.
+
+Business: ${wizard.name}
+Offering: ${wizard.offering}
+Location: ${locationInfo}
+Keywords: ${wizard.keywords.join(", ")}
+
+Return ONLY valid JSON: {"subreddits": ["r/example1", "r/example2"]}
+
+RULES:
+- List 5-8 REAL Reddit subreddits that actually exist.
+- NEVER use placeholders like "r/[yourcity]". Use specific real names.
+- If the business has a specific local area, include the local city/region subreddit (e.g., r/chicago, r/austin, r/nyc).
+- If the business is national or global/web-based, focus on industry and topic subreddits instead of geographic ones.
+- Focus on communities where people ask for recommendations related to this business.`,
+          config: { maxOutputTokens: 256 },
+        });
+        const groupJson = safeParseJsonFromAI(groupResult.text);
+        if (groupJson?.subreddits?.length > 0) {
+          redditSubs = groupJson.subreddits;
+        }
+      } catch (e) {
+        console.error("Client wizard AI group gen failed:", e);
+      }
+      if (redditSubs.length === 0) {
+        redditSubs = ["r/smallbusiness", "r/Entrepreneur"];
+      }
+
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - Facebook`,
+        platform: "Facebook",
+        status: "active",
+        strategy: `Monitor Facebook groups for leads matching ${wizard.name}`,
+        targetGroups: [],
+        keywords: wizard.keywords,
+      });
+
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - LinkedIn`,
+        platform: "LinkedIn",
+        status: "active",
+        strategy: `Monitor LinkedIn feed for leads matching ${wizard.name}`,
+        targetGroups: [],
+        keywords: wizard.keywords,
+      });
+
+      await storage.createCampaign({
+        businessId: biz.id,
+        name: `${wizard.name} - Reddit`,
+        platform: "Reddit",
+        status: "active",
+        strategy: `Monitor Reddit communities for leads matching ${wizard.name}`,
+        targetGroups: redditSubs,
+        keywords: wizard.keywords,
+      });
+
+      clientWizards.delete(chatId);
+
+      const baseUrl = getAppBaseUrl();
+      const token = generateScanToken(chatId, biz.id);
+      const fbBookmarkletCode = generateBookmarkletCode(baseUrl, chatId, biz.id, token);
+      const liBookmarkletCode = generateLinkedInBookmarkletCode(baseUrl, chatId, biz.id, token);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>Setup Complete!</b>\n\n` +
+        `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
+        `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
+        `<b>Reddit Monitoring:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}\n\n` +
+        `<b>Facebook Spy Glass</b>\n` +
+        `To scan Facebook Groups, create a browser bookmark with this code as the URL:\n\n` +
+        `1. Right-click your bookmarks bar\n` +
+        `2. Click "Add bookmark"\n` +
+        `3. Name it: <b>Scan FB Group</b>\n` +
+        `4. Paste this as the URL:`
+      );
+
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(fbBookmarkletCode)}</code>`);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>LinkedIn Spy Glass</b>\n` +
+        `Same idea for LinkedIn! Create a second bookmark:\n\n` +
+        `1. Right-click your bookmarks bar\n` +
+        `2. Click "Add bookmark"\n` +
+        `3. Name it: <b>Scan LinkedIn</b>\n` +
+        `4. Paste this as the URL:`
+      );
+
+      await sendTelegramMessageToChat(chatId, `<code>${escapeHtml(liBookmarkletCode)}</code>`);
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>How to use the bookmarklets:</b>\n` +
+        `1. Go to any Facebook Group or LinkedIn feed/search\n` +
+        `2. Click the matching bookmark\n` +
+        `3. It auto-scrolls and scans posts\n` +
+        `4. I'll message you here instantly when I spot a lead!`
+      );
+
+      await sendTelegramMessageToChat(chatId,
+        `<b>What happens automatically:</b>\n` +
+        `- Reddit is scanned every 5 minutes for posts matching your keywords\n` +
+        `- When a lead is found, I'll send you an AI-written response here\n` +
+        `- Tap the response buttons to give feedback and improve future responses\n\n` +
+        `<b>Manual scanning:</b>\n` +
+        `- Send me any post URL + text and I'll analyze it instantly\n` +
+        `- Or just screenshot a post and send the image - I can read it!\n\n` +
+        `<b>Commands:</b>\n` +
+        `/help - Full usage guide\n` +
+        `/setup - Run this wizard again\n\n` +
+        `You're all set! I'll message you the moment I find a lead.`
+      );
+
+      await sendTelegramMessage(
+        `<b>New Client Onboarded via Wizard</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Email:</b> ${escapeHtml(wizard.contactEmail || "N/A")}\n` +
+        `<b>Phone:</b> ${escapeHtml(wizard.contactPhone || "N/A")}\n` +
+        `<b>Website:</b> ${escapeHtml(wizard.website || "N/A")}\n` +
+        `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
+        `<b>Telegram ID:</b> ${chatId}\n` +
+        `<b>Keywords:</b> ${wizard.keywords.map(k => escapeHtml(k)).join(", ")}\n` +
+        `<b>Reddit:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}`
+      );
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+============================================================
+FILE: server/telegram/admin-commands.ts (567 lines)
+============================================================
+import { db } from "../db";
+import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage } from "../telegram";
+import { storage } from "../storage";
+import { generateContent, safeParseJsonFromAI } from "../utils/ai";
+import { escapeHtml } from "../utils/html";
+import { postRedditSubmission, isRedditConfigured } from "../reddit-poster";
+import { pendingClientSetups, type AdminSetupState } from "./state";
+import { getAllBusinessesWithCampaigns } from "./analysis";
+
+export async function handleAdminCommand(chatId: string, text: string): Promise<boolean> {
+  const pending = pendingClientSetups.get(chatId);
+
+  if (pending && !text.startsWith("/")) {
+    return await handleClientSetupFlow(chatId, text, pending);
+  }
+
+  if (pending && text.startsWith("/")) {
+    pendingClientSetups.delete(chatId);
+  }
+
+  if (text === "/newclient") {
+    pendingClientSetups.set(chatId, { step: "name" });
+    await sendTelegramMessage("<b>New Client Setup</b>\n\nWhat's the business name?");
+    return true;
+  }
+
+  if (text === "/removeclient") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses to remove.");
+      return true;
+    }
+
+    let msg = `<b>Remove a Client</b>\n\nReply with the number of the business to remove:\n\n`;
+    allBiz.forEach((b, i) => {
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)} (${escapeHtml(b.type)})\n`;
+    });
+    msg += `\nOr type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "remove_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/keywords") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Update Keywords</b>\n\nWhich business? Reply with the number:\n\n`;
+    allBiz.forEach((b, i) => {
+      const kws = b.campaigns.flatMap((c) => c.keywords).slice(0, 8);
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n    Current: ${kws.map(k => escapeHtml(k)).join(", ")}\n\n`;
+    });
+    msg += `Or type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "keywords_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/groups") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Update Target Groups</b>\n\nWhich business? Reply with the number:\n\n`;
+    allBiz.forEach((b, i) => {
+      const grps = b.campaigns.flatMap((c) => c.targetGroups).slice(0, 5);
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n    Current: ${grps.map(g => escapeHtml(g)).join(", ")}\n\n`;
+    });
+    msg += `Or type /cancel to go back.`;
+
+    pendingClientSetups.set(chatId, { step: "groups_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/cancel") {
+    pendingClientSetups.delete(chatId);
+    await sendTelegramMessage("Cancelled.");
+    return true;
+  }
+
+  if (text === "/addalert") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    if (allBiz.length === 0) {
+      await sendTelegramMessage("No businesses set up. Use /newclient first.");
+      return true;
+    }
+
+    let msg = `<b>Add Google Alert Feed</b>\n\nWhich business should this alert feed be attached to?\n\n`;
+    allBiz.forEach((b, i) => {
+      msg += `<b>${i + 1}.</b> ${escapeHtml(b.name)}\n`;
+    });
+    msg += `\nReply with the number, or /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_select" });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/alerts") {
+    const allBiz = await getAllBusinessesWithCampaigns();
+    const allCamps = await db.select().from(campaigns);
+
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage(
+        `<b>No Google Alert feeds configured.</b>\n\n` +
+        `To add one:\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search query (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS feed URL\n` +
+        `5. Use /addalert to add it here`
+      );
+      return true;
+    }
+
+    let msg = `<b>Your Google Alert Feeds:</b>\n\n`;
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      msg += `<b>${escapeHtml(biz?.name || "Unknown")}</b>\n`;
+      feeds.forEach((f, i) => {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `  ${i + 1}. ${escapeHtml(shortUrl)}\n`;
+      });
+      msg += `\n`;
+    }
+    msg += `Use /addalert to add more feeds.\nUse /removealert to remove a feed.`;
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text === "/removealert") {
+    const allCamps = await db.select().from(campaigns);
+    const allBiz = await db.select().from(businesses);
+    const alertCamps = allCamps.filter(c => c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+    if (alertCamps.length === 0) {
+      await sendTelegramMessage("No Google Alert feeds to remove.");
+      return true;
+    }
+
+    let msg = `<b>Remove a Google Alert Feed</b>\n\nReply with the number:\n\n`;
+    let idx = 1;
+    const feedIndex: Array<{ campaignId: number; feedUrl: string }> = [];
+    for (const camp of alertCamps) {
+      const biz = allBiz.find(b => b.id === camp.businessId);
+      const feeds = (camp.targetGroups as string[]) || [];
+      for (const f of feeds) {
+        const shortUrl = f.length > 60 ? f.slice(0, 57) + "..." : f;
+        msg += `<b>${idx}.</b> ${escapeHtml(biz?.name || "?")} - ${escapeHtml(shortUrl)}\n`;
+        feedIndex.push({ campaignId: camp.id, feedUrl: f });
+        idx++;
+      }
+    }
+    msg += `\nOr /cancel.`;
+
+    pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    await sendTelegramMessage(msg);
+    return true;
+  }
+
+  if (text.startsWith("/post ")) {
+    if (!isRedditConfigured()) {
+      await sendTelegramMessage("Reddit credentials not configured. Add REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, and REDDIT_PASSWORD to your secrets.");
+      return true;
+    }
+
+    const postArgs = text.slice(6).trim();
+    const subredditMatch = postArgs.match(/^(r\/\w+)\s+([\s\S]+)/);
+
+    if (!subredditMatch) {
+      await sendTelegramMessage(
+        `<b>Usage:</b>\n\n` +
+        `<b>New post:</b>\n<code>/post r/subreddit Title here | Body text here</code>\n\n` +
+        `<b>Reply to a post:</b>\nPaste a Reddit URL into the chat and I'll generate a response. Then tap "Post to Reddit" to comment.\n\n` +
+        `<b>Example:</b>\n<code>/post r/startups Check out my AI tool | We built an AI that monitors communities for leads.</code>`
+      );
+      return true;
+    }
+
+    const subreddit = subredditMatch[1];
+    const rest = subredditMatch[2].trim();
+
+    const pipeIndex = rest.indexOf("|");
+    let title: string;
+    let body: string;
+
+    if (pipeIndex > 0) {
+      title = rest.slice(0, pipeIndex).trim();
+      body = rest.slice(pipeIndex + 1).trim();
+    } else {
+      title = rest;
+      body = "";
+    }
+
+    await sendTelegramMessage(`Posting to <b>${escapeHtml(subreddit)}</b>...\n\nTitle: <i>${escapeHtml(title)}</i>`);
+
+    const result = await postRedditSubmission(subreddit, title, body);
+
+    if (result.success) {
+      let msg = "Posted to Reddit!";
+      if (result.postUrl) {
+        msg += `\n\n<a href="${result.postUrl}">View your post</a>`;
+      }
+      await sendTelegramMessage(msg);
+    } else {
+      await sendTelegramMessage(`Failed to post: ${result.error}`);
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+export async function handleClientSetupFlow(chatId: string, text: string, pending: { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }): Promise<boolean> {
+  if (text === "/cancel") {
+    pendingClientSetups.delete(chatId);
+    await sendTelegramMessage("Client setup cancelled.");
+    return true;
+  }
+
+  switch (pending.step) {
+    case "name":
+      pending.name = text;
+      pending.step = "type";
+      await sendTelegramMessage(`Got it: <b>${escapeHtml(text)}</b>\n\nWhat type of business is this?\n<i>(e.g., "Diner in Brookfield, IL", "AI productivity tool", "Bocce ball club")</i>`);
+      break;
+
+    case "type":
+      pending.type = text;
+      pending.step = "audience";
+      await sendTelegramMessage(`Business type: <b>${escapeHtml(text)}</b>\n\nWho is the target audience?\n<i>(e.g., "Families in the Western Suburbs looking for casual dining")</i>`);
+      break;
+
+    case "audience":
+      pending.audience = text;
+      pending.step = "offering";
+      await sendTelegramMessage(`Target audience set.\n\nDescribe what this business offers in 1-2 sentences:\n<i>(e.g., "Classic American diner serving hearty breakfasts and comfort food. Family-owned with generous portions.")</i>`);
+      break;
+
+    case "offering":
+      pending.offering = text;
+      pending.step = "tone";
+      await sendTelegramMessage(`Got the offering.\n\nWhat tone should AI responses use?\n\n<b>1.</b> Casual (friendly, approachable)\n<b>2.</b> Empathetic (warm, supportive)\n<b>3.</b> Professional (authoritative, informative)\n\nReply with 1, 2, or 3.`);
+      break;
+
+    case "tone": {
+      const toneChoice = text.trim();
+      if (toneChoice === "1") pending.tone = "casual";
+      else if (toneChoice === "2") pending.tone = "empathetic";
+      else if (toneChoice === "3") pending.tone = "professional";
+      else pending.tone = "casual";
+
+      pending.step = "keywords";
+      await sendTelegramMessage(`Tone: <b>${pending.tone}</b>\n\nNow list the keywords to watch for, separated by commas:\n<i>(e.g., "restaurant recommendation, best pizza, where to eat, Brookfield food")</i>`);
+      break;
+    }
+
+    case "keywords": {
+      pending.keywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+
+      await sendTelegramMessage(`Keywords: ${pending.keywords.map(k => `<b>${escapeHtml(k)}</b>`).join(", ")}\n\nGenerating target communities with AI...`);
+
+      let aiGroups: string[] = [];
+      try {
+        const groupResult = await generateContent({
+          model: "gemini-2.5-flash",
+          contents: `You are a social media expert. A business needs REAL Reddit subreddits and Facebook groups to monitor for customer acquisition leads.
+
+Business: ${pending.name} (${pending.type})
+Target audience: ${pending.audience}
+Offering: ${pending.offering}
+Keywords: ${(pending.keywords || []).join(", ")}
+
+Return ONLY valid JSON with this structure:
+{"subreddits": ["r/example1", "r/example2"], "facebook_groups": ["Example Group Name"]}
+
+RULES:
+- List 5-8 REAL Reddit subreddits that actually exist where the target audience asks questions or seeks recommendations.
+- NEVER use placeholders like "r/[yourcity]". Use REAL specific names like "r/chicago", "r/fitness", "r/smallbusiness".
+- List 2-3 relevant Facebook group names.
+- Focus on communities where people actively ask for recommendations related to this business.`,
+          config: { maxOutputTokens: 512 },
+        });
+        const groupJson = safeParseJsonFromAI(groupResult.text);
+        if (groupJson) {
+          aiGroups = [
+            ...(groupJson.subreddits || []),
+            ...(groupJson.facebook_groups || []),
+          ];
+        }
+      } catch (e) {
+        console.error("AI group generation failed:", e);
+      }
+
+      if (aiGroups.length === 0) {
+        aiGroups = ["r/smallbusiness", "r/Entrepreneur"];
+      }
+
+      pending.groups = aiGroups;
+
+      const biz = await storage.createBusiness({
+        userId: "telegram-admin",
+        name: pending.name!,
+        type: pending.type!,
+        targetAudience: pending.audience!,
+        coreOffering: pending.offering!,
+        preferredTone: pending.tone!,
+      });
+
+      const redditGroups = pending.groups.filter(g => g.toLowerCase().startsWith("r/"));
+      const facebookGroups = pending.groups.filter(g => !g.toLowerCase().startsWith("r/"));
+
+      if (facebookGroups.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - Facebook`,
+          platform: "Facebook",
+          status: "active",
+          strategy: `Monitor Facebook groups for ${pending.type} leads`,
+          targetGroups: facebookGroups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      if (redditGroups.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - Reddit`,
+          platform: "Reddit",
+          status: "active",
+          strategy: `Monitor Reddit communities for ${pending.type} leads`,
+          targetGroups: redditGroups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      if (facebookGroups.length === 0 && redditGroups.length === 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - General`,
+          platform: "Reddit",
+          status: "active",
+          strategy: `Monitor communities for ${pending.type} leads`,
+          targetGroups: pending.groups,
+          keywords: pending.keywords || [],
+        });
+      }
+
+      pendingClientSetups.delete(chatId);
+
+      let msg = `<b>Client Created!</b>\n\n`;
+      msg += `<b>Name:</b> ${escapeHtml(biz.name)}\n`;
+      msg += `<b>Type:</b> ${escapeHtml(biz.type)}\n`;
+      msg += `<b>Tone:</b> ${escapeHtml(pending.tone!)}\n`;
+      msg += `<b>Keywords:</b> ${(pending.keywords || []).map(k => escapeHtml(k)).join(", ")}\n`;
+      msg += `<b>Auto-Generated Groups:</b> ${(pending.groups || []).map(g => escapeHtml(g)).join(", ")}\n\n`;
+      msg += `I'm now watching for leads for <b>${escapeHtml(biz.name)}</b>. Send me posts to analyze!\n`;
+      msg += `\n<i>Use /groups to view or change target communities.</i>`;
+
+      await sendTelegramMessage(msg);
+      break;
+    }
+
+    case "remove_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      const bizToRemove = allBiz[idx];
+      const allCampsToRemove = bizToRemove.campaigns;
+
+      for (const camp of allCampsToRemove) {
+        const campLeads = await db.select().from(leads).where(eq(leads.campaignId, camp.id));
+        for (const lead of campLeads) {
+          await db.delete(aiResponses).where(eq(aiResponses.leadId, lead.id));
+        }
+        await db.delete(leads).where(eq(leads.campaignId, camp.id));
+        await db.delete(campaigns).where(eq(campaigns.id, camp.id));
+      }
+      await db.delete(businesses).where(eq(businesses.id, bizToRemove.id));
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>${escapeHtml(bizToRemove.name)}</b> has been removed along with all its campaigns, leads, and responses.`);
+      break;
+    }
+
+    case "keywords_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "keywords_update";
+      const currentKws = allBiz[idx].campaigns.flatMap(c => c.keywords);
+      await sendTelegramMessage(`<b>Updating keywords for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent keywords: ${currentKws.map(k => escapeHtml(k)).join(", ")}\n\nSend the new complete list of keywords, separated by commas:\n<i>(This will replace all current keywords)</i>`);
+      break;
+    }
+
+    case "keywords_update": {
+      const newKeywords = text.split(",").map(k => k.trim()).filter(k => k.length > 0);
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (biz) {
+        for (const camp of biz.campaigns) {
+          await db.update(campaigns).set({ keywords: newKeywords }).where(eq(campaigns.id, camp.id));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Keywords updated for ${escapeHtml(pending.name!)}</b>\n\nNew keywords: ${newKeywords.map(k => escapeHtml(k)).join(", ")}`);
+      break;
+    }
+
+    case "groups_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "groups_update";
+      const currentGroups = allBiz[idx].campaigns.flatMap(c => c.targetGroups);
+      await sendTelegramMessage(`<b>Updating groups for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent groups: ${currentGroups.map(g => escapeHtml(g)).join(", ")}\n\nSend the new complete list of groups/subreddits, separated by commas:\n<i>(This will replace all current groups)</i>`);
+      break;
+    }
+
+    case "groups_update": {
+      const newGroups = text.split(",").map(g => g.trim()).filter(g => g.length > 0);
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (biz) {
+        for (const camp of biz.campaigns) {
+          await db.update(campaigns).set({ targetGroups: newGroups }).where(eq(campaigns.id, camp.id));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Groups updated for ${escapeHtml(pending.name!)}</b>\n\nNew groups: ${newGroups.map(g => escapeHtml(g)).join(", ")}`);
+      break;
+    }
+
+    case "alert_select": {
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const idx = parseInt(text) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= allBiz.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      pending.name = allBiz[idx].name;
+      pending.step = "alert_url";
+      await sendTelegramMessage(
+        `<b>Adding alert feed for ${escapeHtml(allBiz[idx].name)}</b>\n\n` +
+        `Paste the Google Alert RSS feed URL:\n\n` +
+        `<i>How to get it:</i>\n` +
+        `1. Go to <a href="https://google.com/alerts">google.com/alerts</a>\n` +
+        `2. Enter your search (e.g., <code>site:quora.com "best pizza"</code>)\n` +
+        `3. Click "Show Options" and set Deliver to: <b>RSS Feed</b>\n` +
+        `4. Copy the RSS URL and paste it here`,
+        { disable_web_page_preview: true }
+      );
+      break;
+    }
+
+    case "alert_url": {
+      const feedUrl = text.trim();
+      if (!feedUrl.startsWith("http")) {
+        await sendTelegramMessage("That doesn't look like a URL. Please paste the RSS feed URL starting with http:// or https://");
+        return true;
+      }
+
+      const allBiz = await getAllBusinessesWithCampaigns();
+      const biz = allBiz.find(b => b.name === pending.name);
+      if (!biz) {
+        pendingClientSetups.delete(chatId);
+        await sendTelegramMessage("Business not found. Try again with /addalert.");
+        return true;
+      }
+
+      const allCamps = await db.select().from(campaigns);
+      let alertCamp = allCamps.find(c => c.businessId === biz.id && c.platform.toLowerCase() === "google_alerts" && c.status === "active");
+
+      if (alertCamp) {
+        const existingFeeds = (alertCamp.targetGroups as string[]) || [];
+        if (existingFeeds.includes(feedUrl)) {
+          pendingClientSetups.delete(chatId);
+          await sendTelegramMessage("This feed URL is already added for this business.");
+          return true;
+        }
+        await db.update(campaigns).set({ targetGroups: [...existingFeeds, feedUrl] }).where(eq(campaigns.id, alertCamp.id));
+      } else {
+        const bizKeywords = biz.campaigns.flatMap(c => c.keywords);
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${biz.name} - Google Alerts`,
+          platform: "google_alerts",
+          status: "active",
+          strategy: `Monitor Google Alerts RSS feeds for ${biz.type} leads`,
+          targetGroups: [feedUrl],
+          keywords: bizKeywords,
+        });
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(
+        `<b>Google Alert feed added!</b>\n\n` +
+        `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
+        `<b>Feed:</b> ${escapeHtml(feedUrl.length > 60 ? feedUrl.slice(0, 57) + "..." : feedUrl)}\n\n` +
+        `The monitor will check this feed every 2 minutes and alert you when it finds leads.\n\n` +
+        `Use /alerts to see all feeds, or /addalert to add more.`
+      );
+      break;
+    }
+
+    case "alert_remove": {
+      const idx = parseInt(text) - 1;
+      const feedEntries = (pending.groups || []);
+      if (isNaN(idx) || idx < 0 || idx >= feedEntries.length) {
+        await sendTelegramMessage("Invalid number. Try again or /cancel.");
+        return true;
+      }
+
+      const entry = feedEntries[idx];
+      const [campId, ...feedUrlParts] = entry.split("::");
+      const feedUrl = feedUrlParts.join("::");
+      const campaignId = parseInt(campId);
+
+      const camp = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+      if (camp.length > 0) {
+        const existingFeeds = (camp[0].targetGroups as string[]) || [];
+        const newFeeds = existingFeeds.filter(f => f !== feedUrl);
+        if (newFeeds.length === 0) {
+          await db.update(campaigns).set({ status: "inactive" }).where(eq(campaigns.id, campaignId));
+        } else {
+          await db.update(campaigns).set({ targetGroups: newFeeds }).where(eq(campaigns.id, campaignId));
+        }
+      }
+
+      pendingClientSetups.delete(chatId);
+      await sendTelegramMessage(`<b>Alert feed removed.</b>\n\nUse /alerts to see remaining feeds.`);
+      break;
+    }
+  }
+
+  return true;
+}
+
+
+============================================================
+FILE: server/telegram/callbacks.ts (117 lines)
+============================================================
+import { db } from "../db";
+import { aiResponses, responseFeedback } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { sendTelegramMessage, answerCallbackQuery, editMessageReplyMarkup } from "../telegram";
+import { postRedditComment, isRedditConfigured } from "../reddit-poster";
+import { pendingRedditPosts, REDDIT_POST_TTL } from "./state";
+
+export async function handleCallbackQuery(cbq: any): Promise<void> {
+  const data = cbq.data as string;
+  const cbqChatId = String(cbq.message?.chat?.id || "");
+
+  if (data.startsWith("fb_") || data.startsWith("li_")) {
+    await handleFeedbackCallback(cbq, data, cbqChatId);
+  } else if (data.startsWith("reddit_post_")) {
+    await handleRedditPostCallback(cbq, data, cbqChatId);
+  } else if (data === "noop") {
+    await answerCallbackQuery(cbq.id, "Feedback already recorded.");
+  } else {
+    await answerCallbackQuery(cbq.id);
+  }
+}
+
+async function handleFeedbackCallback(cbq: any, data: string, cbqChatId: string): Promise<void> {
+  const parts = data.split("_");
+  const feedbackType = parts[1];
+  const responseId = parseInt(parts[2]);
+
+  if (isNaN(responseId)) {
+    await answerCallbackQuery(cbq.id);
+    return;
+  }
+
+  const feedbackMap: Record<string, string> = {
+    good: "positive",
+    bad: "bad_match",
+    salesy: "too_salesy",
+    wrong: "wrong_client",
+  };
+
+  const feedbackValue = feedbackMap[feedbackType] || feedbackType;
+
+  try {
+    const existing = await db.select().from(responseFeedback).where(eq(responseFeedback.responseId, responseId)).limit(1);
+    if (existing.length > 0) {
+      await answerCallbackQuery(cbq.id, "Feedback already recorded for this response.");
+      return;
+    }
+
+    await db.insert(responseFeedback).values({
+      responseId,
+      feedback: feedbackValue,
+    });
+
+    if (feedbackValue === "positive") {
+      await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId));
+    }
+  } catch (err) {
+    console.error("Error saving feedback:", err);
+  }
+
+  const feedbackLabels: Record<string, string> = {
+    positive: "Marked as used - great!",
+    bad_match: "Noted: bad match. I'll learn from this.",
+    too_salesy: "Noted: too salesy. I'll adjust the tone.",
+    wrong_client: "Noted: wrong client matched.",
+  };
+
+  await answerCallbackQuery(cbq.id, feedbackLabels[feedbackValue] || "Feedback saved!");
+
+  if (cbq.message?.message_id && cbqChatId) {
+    const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+    const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+    const selectedLabel = feedbackType === "good" ? "Used It" : feedbackType === "salesy" ? "Too Salesy" : feedbackType === "wrong" ? "Wrong Client" : "Bad Match";
+    const confirmRow = [{ text: `[${selectedLabel}]`, callback_data: "noop" }];
+    const newKeyboard = [...urlButtons, confirmRow];
+    await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+  }
+}
+
+async function handleRedditPostCallback(cbq: any, data: string, cbqChatId: string): Promise<void> {
+  const responseId = parseInt(data.replace("reddit_post_", ""));
+  if (isNaN(responseId)) {
+    await answerCallbackQuery(cbq.id);
+    return;
+  }
+
+  const pending = pendingRedditPosts.get(responseId);
+  if (!pending || (Date.now() - pending.timestamp) > REDDIT_POST_TTL) {
+    pendingRedditPosts.delete(responseId);
+    await answerCallbackQuery(cbq.id, "This post link has expired. Trigger a new analysis.");
+    return;
+  }
+
+  await answerCallbackQuery(cbq.id, "Posting to Reddit...");
+  const result = await postRedditComment(pending.postUrl, pending.responseText);
+  pendingRedditPosts.delete(responseId);
+
+  if (result.success) {
+    await db.insert(responseFeedback).values({ responseId, feedback: "positive" }).catch(() => {});
+    await db.update(aiResponses).set({ status: "approved", approvedAt: new Date() }).where(eq(aiResponses.id, responseId)).catch(() => {});
+
+    let confirmMsg = "Posted to Reddit!";
+    if (result.commentUrl) {
+      confirmMsg += `\n\n<a href="${result.commentUrl}">View your comment</a>`;
+    }
+    await sendTelegramMessage(confirmMsg);
+
+    if (cbq.message?.message_id && cbqChatId) {
+      const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+      const urlButtons = existingButtons.filter((row: any[]) => row.some((b: any) => b.url));
+      const newKeyboard = [...urlButtons, [{ text: "[Posted to Reddit]", callback_data: "noop" }]];
+      await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+    }
+  } else {
+    await sendTelegramMessage(`Failed to post: ${result.error}`);
+  }
+}
+
+
+============================================================
+FILE: server/telegram/index.ts (6 lines)
+============================================================
+export { handlePost, extractPostUrl, stripUrls, downloadTelegramPhotoWithMime, extractTextFromImage, getAllBusinessesWithCampaigns, type PostAnalysis } from "./analysis";
+export { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } from "./bookmarklets";
+export { handleClientWizard } from "./client-wizard";
+export { handleAdminCommand } from "./admin-commands";
+export { handleCallbackQuery } from "./callbacks";
+export { pendingContextRequests, pendingRedditPosts, clientWizards, CONTEXT_TTL, type PendingContextRequest } from "./state";
+
+
+============================================================
+FILE: server/utils/ai.ts (102 lines)
+============================================================
+import { GoogleGenAI } from "@google/genai";
+import { z, ZodSchema } from "zod";
+
+export const ai = new GoogleGenAI({
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+  httpOptions: {
+    apiVersion: "",
+    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+  },
+});
+
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
+
+export async function generateContent(
+  opts: { model: string; contents: any; config?: any },
+  timeoutMs: number = AI_TIMEOUT_MS,
+): Promise<{ text: string }> {
+  const aiCall = ai.models.generateContent(opts);
+  const timeout = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`AI call timed out after ${timeoutMs}ms (model: ${opts.model})`));
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  const result = await Promise.race([aiCall, timeout]);
+  return { text: result.text || "" };
+}
+
+export function safeParseJsonFromAI(text: string): any | null {
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
+export async function parseAIJsonWithRetry<T>(
+  generateFn: () => Promise<string>,
+  schema: ZodSchema<T>,
+  maxRetries: number = 1
+): Promise<T | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const text = await generateFn();
+      const parsed = safeParseJsonFromAI(text);
+      if (!parsed) {
+        if (attempt < maxRetries) {
+          console.warn(`AI JSON parse failed (attempt ${attempt + 1}), retrying...`);
+          continue;
+        }
+        return null;
+      }
+
+      const validated = schema.safeParse(parsed);
+      if (validated.success) {
+        return validated.data;
+      }
+
+      console.warn(`AI JSON validation failed (attempt ${attempt + 1}):`, validated.error.issues);
+      if (attempt < maxRetries) continue;
+
+      return null;
+    } catch (err) {
+      console.error(`AI generation error (attempt ${attempt + 1}):`, err);
+      if (attempt >= maxRetries) return null;
+    }
+  }
+  return null;
+}
+
+export const leadScoreSchema = z.object({
+  is_lead: z.boolean(),
+  intent_score: z.number().min(1).max(10),
+  reasoning: z.string(),
+});
+
+export type LeadScore = z.infer<typeof leadScoreSchema>;
+
+export const strategySchema = z.object({
+  platforms: z.array(z.object({ name: z.string() })),
+  groups: z.array(z.string()),
+  keywords: z.array(z.string()),
+  sampleResponse: z.string(),
+  rationale: z.string(),
+});
+
+export type Strategy = z.infer<typeof strategySchema>;
+
+export const TONE_MAP: Record<string, string> = {
+  empathetic: "empathetic, warm, and supportive",
+  professional: "professional, authoritative, and informative",
+  casual: "casual, friendly, and approachable",
+  helpful: "helpful, knowledgeable, and conversational",
+};
+
+export const MIN_POST_LENGTH = 25;
+export const MIN_SCAN_INTENT_SCORE = 4;
+export const MIN_MONITOR_INTENT_SCORE = 5;
+export const SALESY_FEEDBACK_THRESHOLD = 0.3;
+
+
+============================================================
+FILE: server/utils/html.ts (40 lines)
+============================================================
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + "...";
+}
+
+export function canonicalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    const paramsToStrip = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ref", "fbclid", "gclid"];
+    for (const p of paramsToStrip) {
+      u.searchParams.delete(p);
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+
+============================================================
+FILE: server/utils/feedback.ts (31 lines)
+============================================================
+import { db } from "../db";
+import { responseFeedback, aiResponses, leads, campaigns } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { SALESY_FEEDBACK_THRESHOLD } from "./ai";
+
+export async function getFeedbackGuidance(businessId: number): Promise<string> {
+  try {
+    const recentFeedback = await db
+      .select({ feedback: responseFeedback.feedback })
+      .from(responseFeedback)
+      .innerJoin(aiResponses, eq(responseFeedback.responseId, aiResponses.id))
+      .innerJoin(leads, eq(aiResponses.leadId, leads.id))
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(eq(campaigns.businessId, businessId))
+      .orderBy(responseFeedback.id)
+      .limit(20);
+
+    const salesyCount = recentFeedback.filter((f) => f.feedback === "too_salesy").length;
+    const negCount = recentFeedback.filter((f) => f.feedback !== "positive").length;
+    const total = recentFeedback.length;
+
+    if (total > 0) {
+      if (salesyCount > total * SALESY_FEEDBACK_THRESHOLD) {
+        return "\nIMPORTANT: Previous responses were rated as too salesy. Be EXTRA subtle - barely mention the business. Focus 90% on being helpful.";
+      } else if (negCount > total * 0.5) {
+        return "\nIMPORTANT: Previous responses had mixed reviews. Focus on being more genuine and less promotional.";
+      }
+    }
+  } catch {}
+  return "";
+}
+
+
+============================================================
+FILE: server/utils/dedup.ts (14 lines)
+============================================================
+import { db } from "../db";
+import { seenItems } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+export async function hasBeenSeen(dedupKey: string): Promise<boolean> {
+  const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
+  return existing.length > 0;
+}
+
+export async function markSeen(dedupKey: string, source: string): Promise<void> {
+  try {
+    await db.insert(seenItems).values({ dedupKey, source }).onConflictDoNothing();
+  } catch {}
+}
+
+
+============================================================
+FILE: server/utils/rate-limit.ts (50 lines)
+============================================================
+import type { Request, Response, NextFunction } from "express";
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+const buckets = new Map<string, Map<string, RateLimitBucket>>();
+
+setInterval(() => {
+  const now = Date.now();
+  buckets.forEach((limiterMap) => {
+    limiterMap.forEach((bucket, key) => {
+      if (now > bucket.resetAt) limiterMap.delete(key);
+    });
+  });
+}, 60 * 1000);
+
+export function createRateLimiter(options: {
+  name: string;
+  maxRequests: number;
+  windowMs: number;
+  keyFn?: (req: Request) => string;
+}) {
+  const { name, maxRequests, windowMs } = options;
+  const keyFn = options.keyFn || ((req: Request) => req.ip || "unknown");
+
+  if (!buckets.has(name)) {
+    buckets.set(name, new Map());
+  }
+  const limiterMap = buckets.get(name)!;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = keyFn(req);
+    const now = Date.now();
+    const bucket = limiterMap.get(key);
+
+    if (bucket && now < bucket.resetAt) {
+      if (bucket.count >= maxRequests) {
+        res.status(429).json({ error: "Too many requests. Please try again later." });
+        return;
+      }
+      bucket.count++;
+    } else {
+      limiterMap.set(key, { count: 1, resetAt: now + windowMs });
+    }
+
+    next();
+  };
+}
+
+
+============================================================
 FILE: server/reddit-monitor.ts (306 lines)
 ============================================================
 import Parser from "rss-parser";
@@ -1789,6 +3843,118 @@ export function stopRedditMonitor(): void {
     monitorInterval = null;
     console.log("Reddit monitor: stopped");
   }
+}
+
+
+============================================================
+FILE: server/reddit-poster.ts (107 lines)
+============================================================
+import Snoowrap from "snoowrap";
+
+let redditClient: Snoowrap | null = null;
+
+function getRedditClient(): Snoowrap | null {
+  if (redditClient) return redditClient;
+
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+  const username = process.env.REDDIT_USERNAME;
+  const password = process.env.REDDIT_PASSWORD;
+
+  if (!clientId || !clientSecret || !username || !password) {
+    return null;
+  }
+
+  redditClient = new Snoowrap({
+    userAgent: "Gemin-Eye/1.0 (by /u/" + username + ")",
+    clientId,
+    clientSecret,
+    username,
+    password,
+  });
+
+  redditClient.config({ requestDelay: 1000, continueAfterRatelimitError: true });
+
+  return redditClient;
+}
+
+export function isRedditConfigured(): boolean {
+  return !!(
+    process.env.REDDIT_CLIENT_ID &&
+    process.env.REDDIT_CLIENT_SECRET &&
+    process.env.REDDIT_USERNAME &&
+    process.env.REDDIT_PASSWORD
+  );
+}
+
+export async function postRedditComment(postUrl: string, commentText: string): Promise<{ success: boolean; commentUrl?: string; error?: string }> {
+  const client = getRedditClient();
+  if (!client) {
+    return { success: false, error: "Reddit credentials not configured. Add REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, and REDDIT_PASSWORD." };
+  }
+
+  try {
+    const postId = extractPostId(postUrl);
+    if (!postId) {
+      return { success: false, error: "Could not extract Reddit post ID from URL: " + postUrl };
+    }
+
+    const submission = client.getSubmission(postId);
+    const comment: any = await (submission as any).reply(commentText);
+    const commentUrl = `https://www.reddit.com${comment.permalink || ""}`;
+
+    return { success: true, commentUrl };
+  } catch (error: any) {
+    console.error("Reddit post error:", error);
+    const msg = error?.message || String(error);
+    if (msg.includes("RATELIMIT") || msg.includes("rate limit")) {
+      return { success: false, error: "Reddit rate limit hit. Wait a few minutes and try again." };
+    }
+    if (msg.includes("403") || msg.includes("Forbidden")) {
+      return { success: false, error: "Reddit credentials invalid or account lacks permission." };
+    }
+    return { success: false, error: "Reddit API error: " + msg.slice(0, 200) };
+  }
+}
+
+export async function postRedditSubmission(subreddit: string, title: string, body: string): Promise<{ success: boolean; postUrl?: string; error?: string }> {
+  const client = getRedditClient();
+  if (!client) {
+    return { success: false, error: "Reddit credentials not configured. Add REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USERNAME, and REDDIT_PASSWORD." };
+  }
+
+  try {
+    const sub = subreddit.replace(/^r\//, "");
+    const submission: any = await (client.getSubreddit(sub) as any).submitSelfpost({ title, text: body });
+    const postUrl = `https://www.reddit.com${submission.permalink || ""}`;
+
+    return { success: true, postUrl };
+  } catch (error: any) {
+    console.error("Reddit submission error:", error);
+    const msg = error?.message || String(error);
+    if (msg.includes("RATELIMIT") || msg.includes("rate limit")) {
+      return { success: false, error: "Reddit rate limit hit. Wait a few minutes and try again." };
+    }
+    if (msg.includes("SUBREDDIT_NOEXIST")) {
+      return { success: false, error: "That subreddit doesn't exist." };
+    }
+    return { success: false, error: "Reddit API error: " + msg.slice(0, 200) };
+  }
+}
+
+function extractPostId(url: string): string | null {
+  const patterns = [
+    /reddit\.com\/r\/\w+\/comments\/([a-z0-9]+)/i,
+    /redd\.it\/([a-z0-9]+)/i,
+    /reddit\.com\/comments\/([a-z0-9]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  return null;
 }
 
 
@@ -3354,6 +5520,598 @@ export default function OnboardingPage() {
               </Button>
             </div>
           </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: client/src/pages/admin.tsx (587 lines)
+============================================================
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Eye, Settings, ChevronLeft, ChevronDown, ChevronRight, Pencil, Trash2,
+  Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2
+} from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Business, Campaign } from "@shared/schema";
+
+type AdminBusiness = Business & { campaigns: Campaign[]; leadCount: number };
+
+function TagEditor({ tags, onChange, placeholder }: { tags: string[]; onChange: (t: string[]) => void; placeholder: string }) {
+  const [input, setInput] = useState("");
+
+  const addTag = () => {
+    const trimmed = input.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      onChange([...tags, trimmed]);
+      setInput("");
+    }
+  };
+
+  const removeTag = (idx: number) => {
+    onChange(tags.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((tag, i) => (
+          <Badge key={i} variant="secondary" className="text-xs gap-1">
+            {tag}
+            <button onClick={() => removeTag(i)} className="ml-0.5 opacity-60 hover:opacity-100">
+              <X className="w-3 h-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder={placeholder}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+          className="flex-1"
+          data-testid="input-tag-add"
+        />
+        <Button variant="outline" size="sm" onClick={addTag} data-testid="button-add-tag">
+          <Plus className="w-3 h-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CampaignEditor({ campaign, onSave, onDelete }: {
+  campaign: Campaign;
+  onSave: (data: Partial<Campaign>) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(campaign.name);
+  const [status, setStatus] = useState(campaign.status);
+  const [keywords, setKeywords] = useState<string[]>((campaign.keywords as string[]) || []);
+  const [targetGroups, setTargetGroups] = useState<string[]>((campaign.targetGroups as string[]) || []);
+
+  const handleSave = () => {
+    onSave({ name, status, keywords, targetGroups });
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setName(campaign.name);
+    setStatus(campaign.status);
+    setKeywords((campaign.keywords as string[]) || []);
+    setTargetGroups((campaign.targetGroups as string[]) || []);
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <Card className="p-4 space-y-3" data-testid={`card-admin-campaign-${campaign.id}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Badge variant="secondary" className="text-xs flex-shrink-0">{campaign.platform}</Badge>
+            <span className="font-medium text-sm truncate">{campaign.name}</span>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Badge variant={campaign.status === "active" ? "default" : "secondary"} className="text-xs">
+              {campaign.status}
+            </Badge>
+            <Button variant="ghost" size="icon" onClick={() => setEditing(true)} data-testid={`button-edit-campaign-${campaign.id}`}>
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onDelete} data-testid={`button-delete-campaign-${campaign.id}`}>
+              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Target className="w-3 h-3" />
+            <span>{(campaign.targetGroups as string[])?.length || 0} groups</span>
+          </div>
+          {(campaign.targetGroups as string[])?.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {(campaign.targetGroups as string[]).map((g, i) => (
+                <span key={i} className="text-xs bg-muted px-1.5 py-0.5 rounded-md">{g}</span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Hash className="w-3 h-3" />
+            <span>{(campaign.keywords as string[])?.length || 0} keywords</span>
+          </div>
+          {(campaign.keywords as string[])?.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {(campaign.keywords as string[]).map((kw, i) => (
+                <span key={i} className="text-xs bg-muted px-1.5 py-0.5 rounded-md">{kw}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4 space-y-4 border-primary/30" data-testid={`card-edit-campaign-${campaign.id}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium">Editing Campaign</span>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" onClick={handleCancel}>
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Name</label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-campaign-name" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Status</label>
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger data-testid="select-campaign-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Target Groups / Subreddits</label>
+          <TagEditor tags={targetGroups} onChange={setTargetGroups} placeholder="Add group (e.g. r/chicago)" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Keywords</label>
+          <TagEditor tags={keywords} onChange={setKeywords} placeholder="Add keyword" />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={handleCancel}>Cancel</Button>
+        <Button size="sm" onClick={handleSave} data-testid="button-save-campaign">
+          <Save className="w-3 h-3 mr-1" /> Save
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRefresh: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [editingBiz, setEditingBiz] = useState(false);
+  const [showNewCampaign, setShowNewCampaign] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { toast } = useToast();
+
+  const [bizName, setBizName] = useState(business.name);
+  const [bizType, setBizType] = useState(business.type);
+  const [bizEmail, setBizEmail] = useState(business.contactEmail || "");
+  const [bizPhone, setBizPhone] = useState(business.contactPhone || "");
+  const [bizWebsite, setBizWebsite] = useState(business.website || "");
+  const [bizAudience, setBizAudience] = useState(business.targetAudience);
+  const [bizOffering, setBizOffering] = useState(business.coreOffering);
+  const [bizTone, setBizTone] = useState(business.preferredTone);
+
+  const [newCampName, setNewCampName] = useState("");
+  const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
+
+  const updateBiz = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("PATCH", `/api/admin/businesses/${business.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Business updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      setEditingBiz(false);
+    },
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const deleteBiz = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/admin/businesses/${business.id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Business deleted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+  });
+
+  const updateCamp = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/admin/campaigns/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Campaign updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+    },
+    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+  });
+
+  const deleteCamp = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/admin/campaigns/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Campaign deleted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+    },
+    onError: () => toast({ title: "Failed to delete campaign", variant: "destructive" }),
+  });
+
+  const createCamp = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/admin/campaigns", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Campaign created" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      setShowNewCampaign(false);
+      setNewCampName("");
+      setNewCampPlatform("Reddit");
+    },
+    onError: () => toast({ title: "Failed to create campaign", variant: "destructive" }),
+  });
+
+  return (
+    <Card className="overflow-visible" data-testid={`card-admin-business-${business.id}`}>
+      <div
+        className="p-5 cursor-pointer hover-elevate"
+        onClick={() => setExpanded(!expanded)}
+        data-testid={`button-expand-business-${business.id}`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {expanded ? <ChevronDown className="w-4 h-4 flex-shrink-0" /> : <ChevronRight className="w-4 h-4 flex-shrink-0" />}
+            <div className="min-w-0">
+              <h3 className="font-semibold truncate">{business.name}</h3>
+              <p className="text-xs text-muted-foreground truncate">{business.type}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Badge variant="secondary" className="text-xs">
+              <Target className="w-3 h-3 mr-1" />{business.campaigns.length} campaigns
+            </Badge>
+            <Badge variant="secondary" className="text-xs">
+              <Users className="w-3 h-3 mr-1" />{business.leadCount} leads
+            </Badge>
+          </div>
+        </div>
+        {!expanded && (
+          <div className="flex flex-wrap items-center gap-2 mt-2 ml-7">
+            {business.contactEmail && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><Mail className="w-3 h-3" />{business.contactEmail}</span>
+            )}
+            {business.contactPhone && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{business.contactPhone}</span>
+            )}
+            {business.website && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><Link2 className="w-3 h-3" />{business.website}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="border-t px-5 pb-5 space-y-5">
+          <div className="pt-4 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-medium">Business Details</h4>
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setEditingBiz(!editingBiz); }} data-testid={`button-edit-biz-${business.id}`}>
+                <Pencil className="w-3 h-3 mr-1" /> {editingBiz ? "Cancel" : "Edit"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true); }} data-testid={`button-delete-biz-${business.id}`}>
+                <Trash2 className="w-3 h-3 mr-1 text-destructive" /> Delete
+              </Button>
+            </div>
+          </div>
+
+          {editingBiz ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Name</label>
+                  <Input value={bizName} onChange={(e) => setBizName(e.target.value)} data-testid="input-biz-name" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Type</label>
+                  <Input value={bizType} onChange={(e) => setBizType(e.target.value)} data-testid="input-biz-type" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                  <Input value={bizEmail} onChange={(e) => setBizEmail(e.target.value)} data-testid="input-biz-email" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
+                  <Input value={bizPhone} onChange={(e) => setBizPhone(e.target.value)} data-testid="input-biz-phone" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Website</label>
+                  <Input value={bizWebsite} onChange={(e) => setBizWebsite(e.target.value)} data-testid="input-biz-website" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Target Audience</label>
+                <Textarea value={bizAudience} onChange={(e) => setBizAudience(e.target.value)} className="resize-none" data-testid="input-biz-audience" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Core Offering</label>
+                <Textarea value={bizOffering} onChange={(e) => setBizOffering(e.target.value)} className="resize-none" data-testid="input-biz-offering" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Preferred Tone</label>
+                <Select value={bizTone} onValueChange={setBizTone}>
+                  <SelectTrigger data-testid="select-biz-tone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="empathetic">Empathetic</SelectItem>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="casual">Casual</SelectItem>
+                    <SelectItem value="helpful">Helpful</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => updateBiz.mutate({
+                    name: bizName, type: bizType,
+                    contactEmail: bizEmail || null, contactPhone: bizPhone || null, website: bizWebsite || null,
+                    targetAudience: bizAudience, coreOffering: bizOffering, preferredTone: bizTone,
+                  })}
+                  disabled={updateBiz.isPending}
+                  data-testid="button-save-biz"
+                >
+                  <Save className="w-3 h-3 mr-1" /> {updateBiz.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-muted-foreground">Email:</span> {business.contactEmail || "—"}</div>
+              <div><span className="text-muted-foreground">Phone:</span> {business.contactPhone || "—"}</div>
+              <div><span className="text-muted-foreground">Website:</span> {business.website || "—"}</div>
+              <div><span className="text-muted-foreground">Tone:</span> {business.preferredTone}</div>
+              <div className="col-span-2"><span className="text-muted-foreground">Audience:</span> {business.targetAudience}</div>
+              <div className="col-span-2"><span className="text-muted-foreground">Offering:</span> {business.coreOffering}</div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="text-sm font-medium">Campaigns ({business.campaigns.length})</h4>
+              <Button variant="outline" size="sm" onClick={() => setShowNewCampaign(true)} data-testid={`button-add-campaign-${business.id}`}>
+                <Plus className="w-3 h-3 mr-1" /> Add Campaign
+              </Button>
+            </div>
+
+            {showNewCampaign && (
+              <Card className="p-4 space-y-3 border-primary/30">
+                <span className="text-sm font-medium">New Campaign</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Name</label>
+                    <Input value={newCampName} onChange={(e) => setNewCampName(e.target.value)} placeholder="Campaign name" data-testid="input-new-camp-name" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Platform</label>
+                    <Select value={newCampPlatform} onValueChange={setNewCampPlatform}>
+                      <SelectTrigger data-testid="select-new-camp-platform">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Reddit">Reddit</SelectItem>
+                        <SelectItem value="Facebook">Facebook</SelectItem>
+                        <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+                        <SelectItem value="google_alerts">Google Alerts</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setShowNewCampaign(false)}>Cancel</Button>
+                  <Button
+                    size="sm"
+                    onClick={() => createCamp.mutate({ businessId: business.id, name: newCampName || `${newCampPlatform} Campaign`, platform: newCampPlatform, keywords: [], targetGroups: [] })}
+                    disabled={createCamp.isPending}
+                    data-testid="button-create-campaign"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> {createCamp.isPending ? "Creating..." : "Create"}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            <div className="space-y-3">
+              {business.campaigns.map((camp) => (
+                <CampaignEditor
+                  key={camp.id}
+                  campaign={camp}
+                  onSave={(data) => updateCamp.mutate({ id: camp.id, data })}
+                  onDelete={() => deleteCamp.mutate(camp.id)}
+                />
+              ))}
+              {business.campaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No campaigns yet</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {business.name}?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this business and all its campaigns. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => { deleteBiz.mutate(); setShowDeleteConfirm(false); }}
+              disabled={deleteBiz.isPending}
+              data-testid="button-confirm-delete-biz"
+            >
+              {deleteBiz.isPending ? "Deleting..." : "Delete Business"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
+}
+
+export default function AdminPage() {
+  const { user, isLoading: authLoading, logout } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ["/api/admin/check"],
+    enabled: !!user,
+  });
+
+  const { data: businesses, isLoading } = useQuery<AdminBusiness[]>({
+    queryKey: ["/api/admin/businesses"],
+    enabled: !!user && adminCheck?.isAdmin === true,
+  });
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Eye className="w-8 h-8 text-primary animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Eye className="w-8 h-8 text-primary animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!adminCheck) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Eye className="w-8 h-8 text-primary animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!adminCheck.isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-8 text-center space-y-3 max-w-md">
+          <Settings className="w-8 h-8 mx-auto text-muted-foreground" />
+          <h2 className="text-lg font-semibold">Admin Access Required</h2>
+          <p className="text-sm text-muted-foreground">You don't have permission to view this page.</p>
+          <Button variant="outline" onClick={() => setLocation("/")} data-testid="button-back-home">
+            <ChevronLeft className="w-3 h-3 mr-1" /> Back to Dashboard
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/")} data-testid="button-admin-back">
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-primary" />
+              <span className="font-semibold text-lg">Admin Panel</span>
+            </div>
+          </div>
+          <Badge variant="secondary" className="text-xs">
+            {businesses?.length || 0} clients
+          </Badge>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-md" />
+            ))}
+          </div>
+        ) : businesses && businesses.length > 0 ? (
+          businesses.map((biz) => (
+            <BusinessPanel key={biz.id} business={biz} onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] })} />
+          ))
+        ) : (
+          <Card className="p-8 text-center space-y-3">
+            <Users className="w-8 h-8 mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No businesses yet.</p>
+          </Card>
         )}
       </main>
     </div>

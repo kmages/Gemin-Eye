@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T20:15:24Z
+# Generated: 2026-02-15T20:29:08Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -991,11 +991,11 @@ export function registerAdminRoutes(app: Express) {
       const businessId = parseInt(req.params.id || req.params.businessId);
       const camps = await storage.getCampaignsByBusiness(businessId);
       const campaignIds = camps.map(c => c.id);
-      if (campaignIds.length === 0) return res.json({ leads: [], responses: [] });
+      if (campaignIds.length === 0) return res.json({ leads: [], responses: [], campaigns: [] });
       const bizLeads = await storage.getLeadsByCampaigns(campaignIds);
       const leadIds = bizLeads.map(l => l.id);
       const responses = leadIds.length > 0 ? await storage.getResponsesByLeads(leadIds) : [];
-      res.json({ leads: bizLeads, responses });
+      res.json({ leads: bizLeads, responses, campaigns: camps.map(c => ({ id: c.id, name: c.name, platform: c.platform })) });
     } catch (error) {
       console.error("Admin: Error fetching leads:", error);
       res.status(500).json({ error: "Failed to fetch leads" });
@@ -5897,7 +5897,7 @@ export default function OnboardingPage() {
 
 
 ============================================================
-FILE: client/src/pages/admin.tsx (739 lines)
+FILE: client/src/pages/admin.tsx (776 lines)
 ============================================================
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -6102,6 +6102,8 @@ function CampaignEditor({ campaign, onSave, onDelete }: {
 
 function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
   const { toast } = useToast();
+  const [expandedPost, setExpandedPost] = useState(false);
+  const [expandedResponse, setExpandedResponse] = useState(false);
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
     new: { label: "New", variant: "default", icon: AlertCircle },
     matched: { label: "Matched", variant: "default", icon: Zap },
@@ -6116,6 +6118,11 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
       toast({ title: "Copied!", description: "Response copied to clipboard." });
     }
   };
+
+  const postText = lead.originalPost;
+  const postIsLong = postText.length > 200;
+  const responseText = response?.content || "";
+  const responseIsLong = responseText.length > 250;
 
   return (
     <Card className="p-4 space-y-3" data-testid={`card-admin-lead-${lead.id}`}>
@@ -6134,9 +6141,16 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
       </div>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{lead.authorName} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
-        <p className="text-sm bg-muted/50 p-2.5 rounded-md leading-relaxed" data-testid={`text-admin-lead-post-${lead.id}`}>
-          {lead.originalPost.length > 200 ? lead.originalPost.slice(0, 200) + "..." : lead.originalPost}
-        </p>
+        <div
+          className="text-sm bg-muted/50 p-2.5 rounded-md leading-relaxed cursor-pointer"
+          onClick={() => postIsLong && setExpandedPost(!expandedPost)}
+          data-testid={`text-admin-lead-post-${lead.id}`}
+        >
+          <p className="whitespace-pre-wrap">{expandedPost || !postIsLong ? postText : postText.slice(0, 200) + "..."}</p>
+          {postIsLong && (
+            <span className="text-xs text-primary mt-1 inline-block">{expandedPost ? "Show less" : "Show more"}</span>
+          )}
+        </div>
       </div>
       {response && (
         <div className="space-y-1.5">
@@ -6147,9 +6161,16 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
               <Badge variant="secondary" className="text-xs ml-1">{response.status}</Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed" data-testid={`text-admin-response-${lead.id}`}>
-            {response.content.length > 250 ? response.content.slice(0, 250) + "..." : response.content}
-          </p>
+          <div
+            className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
+            onClick={() => responseIsLong && setExpandedResponse(!expandedResponse)}
+            data-testid={`text-admin-response-${lead.id}`}
+          >
+            <p className="whitespace-pre-wrap">{expandedResponse || !responseIsLong ? responseText : responseText.slice(0, 250) + "..."}</p>
+            {responseIsLong && (
+              <span className="text-xs text-primary mt-1 inline-block">{expandedResponse ? "Show less" : "Show more"}</span>
+            )}
+          </div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -6190,7 +6211,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
 
-  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[]; campaigns: { id: number; name: string; platform: string }[] }>({
     queryKey: ["/api/admin/leads", business.id],
     enabled: expanded && showLeads,
   });
@@ -6458,7 +6479,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
             </div>
 
             {showLeads && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {leadsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
@@ -6466,9 +6487,25 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
                     ))}
                   </div>
                 ) : leadsData && leadsData.leads.length > 0 ? (
-                  leadsData.leads.map((lead) => {
-                    const resp = leadsData.responses.find((r) => r.leadId === lead.id);
-                    return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                  (leadsData.campaigns || []).map((camp) => {
+                    const campLeads = leadsData.leads.filter((l) => l.campaignId === camp.id);
+                    if (campLeads.length === 0) return null;
+                    return (
+                      <div key={camp.id} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-sm font-medium">{camp.name}</span>
+                          <Badge variant="secondary" className="text-xs">{camp.platform}</Badge>
+                          <span className="text-xs text-muted-foreground">({campLeads.length})</span>
+                        </div>
+                        <div className="space-y-3 pl-5 border-l-2 border-border ml-1.5">
+                          {campLeads.map((lead) => {
+                            const resp = leadsData.responses.find((r) => r.leadId === lead.id);
+                            return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                          })}
+                        </div>
+                      </div>
+                    );
                   })
                 ) : (
                   <Card className="p-6 text-center">

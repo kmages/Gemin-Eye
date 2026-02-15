@@ -136,11 +136,11 @@ export function registerAdminRoutes(app: Express) {
       const businessId = parseInt(req.params.id || req.params.businessId);
       const camps = await storage.getCampaignsByBusiness(businessId);
       const campaignIds = camps.map(c => c.id);
-      if (campaignIds.length === 0) return res.json({ leads: [], responses: [] });
+      if (campaignIds.length === 0) return res.json({ leads: [], responses: [], campaigns: [] });
       const bizLeads = await storage.getLeadsByCampaigns(campaignIds);
       const leadIds = bizLeads.map(l => l.id);
       const responses = leadIds.length > 0 ? await storage.getResponsesByLeads(leadIds) : [];
-      res.json({ leads: bizLeads, responses });
+      res.json({ leads: bizLeads, responses, campaigns: camps.map(c => ({ id: c.id, name: c.name, platform: c.platform })) });
     } catch (error) {
       console.error("Admin: Error fetching leads:", error);
       res.status(500).json({ error: "Failed to fetch leads" });

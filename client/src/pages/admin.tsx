@@ -310,7 +310,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
 
-  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[]; campaigns: { id: number; name: string; platform: string }[] }>({
     queryKey: ["/api/admin/leads", business.id],
     enabled: expanded && showLeads,
   });
@@ -578,7 +578,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
             </div>
 
             {showLeads && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {leadsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((i) => (
@@ -586,9 +586,25 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
                     ))}
                   </div>
                 ) : leadsData && leadsData.leads.length > 0 ? (
-                  leadsData.leads.map((lead) => {
-                    const resp = leadsData.responses.find((r) => r.leadId === lead.id);
-                    return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                  (leadsData.campaigns || []).map((camp) => {
+                    const campLeads = leadsData.leads.filter((l) => l.campaignId === camp.id);
+                    if (campLeads.length === 0) return null;
+                    return (
+                      <div key={camp.id} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-sm font-medium">{camp.name}</span>
+                          <Badge variant="secondary" className="text-xs">{camp.platform}</Badge>
+                          <span className="text-xs text-muted-foreground">({campLeads.length})</span>
+                        </div>
+                        <div className="space-y-3 pl-5 border-l-2 border-border ml-1.5">
+                          {campLeads.map((lead) => {
+                            const resp = leadsData.responses.find((r) => r.leadId === lead.id);
+                            return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                          })}
+                        </div>
+                      </div>
+                    );
                   })
                 ) : (
                   <Card className="p-6 text-center">

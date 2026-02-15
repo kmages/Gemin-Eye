@@ -86,8 +86,6 @@ async function processPostForTarget(
 
   if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
-  console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
-
   const match = await parseAIJsonWithRetry(
     async () => {
       const result = await generateContent({
@@ -118,8 +116,6 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
   );
 
   if (!match) return;
-
-  console.log(`Reddit monitor: AI scored "${title.slice(0, 40)}" for ${target.businessName}: ${match.intent_score}/10 (is_lead: ${match.is_lead})`);
 
   if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
 

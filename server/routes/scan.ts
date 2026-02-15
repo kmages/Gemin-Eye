@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
+import type { Business, Campaign } from "@shared/schema";
 import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
@@ -34,7 +35,7 @@ function corsOptions(_req: Request, res: Response) {
 }
 
 async function validateScanRequest(req: Request): Promise<
-  | { valid: true; chatId: string; businessId: number; postText: string; business: any; bizCampaigns: any[] }
+  | { valid: true; chatId: string; businessId: number; postText: string; business: Business; bizCampaigns: Campaign[] }
   | { valid: false; error: { matched: false; reason: string } }
 > {
   const { chatId, businessId, token, postText } = req.body;
@@ -71,23 +72,20 @@ async function validateScanRequest(req: Request): Promise<
 
 async function handleScanRequest(
   platform: "facebook" | "linkedin",
-  business: any,
-  bizCampaigns: any[],
+  business: Business,
+  bizCampaigns: Campaign[],
   postText: string,
   chatId: string,
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
   if (isOwnResponse(postText)) {
-    console.log(`${platform} scan: skipping own response for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
     return { matched: false, reason: "own_response" };
   }
 
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
   if (!keywordMatch(postText, allKeywords)) {
-    console.log(`${platform} scan: no keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
     return { matched: false, reason: "no_keyword_match" };
   }
-  console.log(`${platform} scan: keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
 
   const platformLabel = platform === "facebook" ? "Facebook" : "LinkedIn";
   const contextLabel = platform === "facebook"
@@ -118,7 +116,7 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
 
   const match = safeParseJsonFromAI(matchResult.text);
   if (!match) {
-    console.log(`${platform} scan: AI parse error for "${business.name}" — raw AI response: "${(matchResult.text || '').slice(0, 300)}"`);
+    console.error(`${platform} scan: AI parse error for "${business.name}"`);
     return { matched: false, reason: "ai_parse_error" };
   }
 

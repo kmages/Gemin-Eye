@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
@@ -13,8 +13,9 @@ export function isMonitoringEnabled() {
 
 const ADMIN_USER_ID = "40011074";
 
-export function isAdmin(req: any, res: any, next: any) {
-  if (!req.user || req.user.claims.sub !== ADMIN_USER_ID) {
+export function isAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = req.user as { claims: { sub: string } } | undefined;
+  if (!user || user.claims.sub !== ADMIN_USER_ID) {
     return res.status(403).json({ error: "Admin access required" });
   }
   next();

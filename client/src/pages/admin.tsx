@@ -720,7 +720,7 @@ function AllLeadsView() {
 }
 
 export default function AdminPage() {
-  const { user, isLoading: authLoading, logout } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"businesses" | "leads">("businesses");

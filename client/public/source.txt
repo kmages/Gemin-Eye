@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T15:39:04Z
+# Generated: 2026-02-15T15:41:12Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -236,7 +236,7 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 
 ============================================================
-FILE: server/index.ts (130 lines)
+FILE: server/index.ts (133 lines)
 ============================================================
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
@@ -328,6 +328,9 @@ app.use((req, res, next) => {
 
   const { seedDatabase } = await import("./seed");
   await seedDatabase().catch((e) => console.error("Seed error:", e));
+
+  const { syncKeywords } = await import("./sync-keywords");
+  await syncKeywords().catch((e) => console.error("Keyword sync error:", e));
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

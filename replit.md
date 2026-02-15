@@ -89,6 +89,7 @@ The app has four main flows:
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Always push code to GitHub after every commit (requires GitHub remote to be connected).
 
 ## System Architecture
 

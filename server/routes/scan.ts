@@ -12,7 +12,7 @@ import { sendTelegramMessageToChat } from "../telegram";
 
 const scanRateLimit = createRateLimiter({
   name: "scan-endpoints",
-  maxRequests: 15,
+  maxRequests: 120,
   windowMs: 60 * 1000,
   keyFn: (req) => String(req.body?.chatId || req.ip || "unknown"),
 });

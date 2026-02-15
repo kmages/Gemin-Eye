@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T14:07:47Z
+# Generated: 2026-02-15T14:23:11Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -6907,7 +6907,7 @@ FILE: client/public/spy-glass.js (124 lines)
 
 
 ============================================================
-FILE: replit.md (179 lines)
+FILE: replit.md (185 lines)
 ============================================================
 # Gemin-Eye - AI-Powered Customer Acquisition Platform
 
@@ -6922,6 +6922,12 @@ The app has four main flows:
 4. **Admin Panel** (`/admin`) - Admin-only page to manage all clients, their businesses, campaigns, keywords, and groups
 
 ## Recent Changes (Feb 15, 2026)
+- **Smart Keyword Matching** (`server/utils/keywords.ts`)
+  - Replaced strict exact-phrase substring matching with smarter word-level matching
+  - Multi-word keywords like "treatment options" now match when both words appear anywhere in the text, not just adjacently
+  - Stop-word filtering ensures only significant words are checked (e.g., "looking for help" matches on "looking" + "help")
+  - Shared utility used by all monitors: Facebook/LinkedIn scan, Reddit RSS, Google Alerts RSS
+  - Exact phrase match still tried first for best precision
 - **AI Call Timeout Protection**
   - Added 30-second timeout wrapper (`withTimeout` in `server/utils/ai.ts`) using `Promise.race` pattern
   - Configurable via `AI_TIMEOUT_MS` environment variable, default 30s

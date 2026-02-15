@@ -8,6 +8,7 @@ export interface PendingContextRequest {
 export interface ClientWizardState {
   step: "name" | "offering" | "contact" | "location" | "keywords" | "done";
   chatId: string;
+  timestamp: number;
   name?: string;
   keywords?: string[];
   offering?: string;
@@ -19,6 +20,7 @@ export interface ClientWizardState {
 
 export interface AdminSetupState {
   step: string;
+  timestamp: number;
   name?: string;
   type?: string;
   audience?: string;
@@ -35,3 +37,45 @@ export const clientWizards = new Map<string, ClientWizardState>();
 
 export const REDDIT_POST_TTL = 30 * 60 * 1000;
 export const CONTEXT_TTL = 5 * 60 * 1000;
+const WIZARD_TTL = 60 * 60 * 1000;
+const ADMIN_SETUP_TTL = 60 * 60 * 1000;
+const CLEANUP_INTERVAL = 10 * 60 * 1000;
+
+export function cleanupStaleState(): void {
+  const now = Date.now();
+  let cleaned = 0;
+
+  pendingContextRequests.forEach((val, key) => {
+    if (now - val.timestamp > CONTEXT_TTL) {
+      pendingContextRequests.delete(key);
+      cleaned++;
+    }
+  });
+
+  pendingRedditPosts.forEach((val, key) => {
+    if (now - val.timestamp > REDDIT_POST_TTL) {
+      pendingRedditPosts.delete(key);
+      cleaned++;
+    }
+  });
+
+  clientWizards.forEach((val, key) => {
+    if (now - val.timestamp > WIZARD_TTL) {
+      clientWizards.delete(key);
+      cleaned++;
+    }
+  });
+
+  pendingClientSetups.forEach((val, key) => {
+    if (now - val.timestamp > ADMIN_SETUP_TTL) {
+      pendingClientSetups.delete(key);
+      cleaned++;
+    }
+  });
+
+  if (cleaned > 0) {
+    console.log(`State cleanup: removed ${cleaned} stale entries`);
+  }
+}
+
+setInterval(cleanupStaleState, CLEANUP_INTERVAL).unref();

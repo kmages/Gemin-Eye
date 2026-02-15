@@ -10,10 +10,26 @@ export const ai = new GoogleGenAI({
 });
 
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
+const AI_MAX_RETRIES = parseInt(process.env.AI_MAX_RETRIES || "2", 10);
 
-export async function generateContent(
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes("timed out")) return true;
+    if (msg.includes("429") || msg.includes("rate limit") || msg.includes("quota")) return true;
+    if (msg.includes("503") || msg.includes("500") || msg.includes("unavailable")) return true;
+    if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("socket")) return true;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateContentOnce(
   opts: { model: string; contents: any; config?: any },
-  timeoutMs: number = AI_TIMEOUT_MS,
+  timeoutMs: number,
 ): Promise<{ text: string }> {
   const aiCall = ai.models.generateContent(opts);
   const timeout = new Promise<never>((_, reject) => {
@@ -24,6 +40,29 @@ export async function generateContent(
   });
   const result = await Promise.race([aiCall, timeout]);
   return { text: result.text || "" };
+}
+
+export async function generateContent(
+  opts: { model: string; contents: any; config?: any },
+  timeoutMs: number = AI_TIMEOUT_MS,
+  retries: number = AI_MAX_RETRIES,
+): Promise<{ text: string }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await generateContentOnce(opts, timeoutMs);
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries && isRetryableError(err)) {
+        const backoffMs = 1000 * Math.pow(2, attempt);
+        console.warn(`AI call failed (attempt ${attempt + 1}/${retries + 1}, model: ${opts.model}), retrying in ${backoffMs}ms...`, err instanceof Error ? err.message : err);
+        await sleep(backoffMs);
+      } else if (!isRetryableError(err)) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export function safeParseJsonFromAI(text: string): any | null {

@@ -14,6 +14,8 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
     return false;
   }
 
+  wizard.timestamp = Date.now();
+
   switch (wizard.step) {
     case "name": {
       const name = text.trim();

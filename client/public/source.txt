@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T01:19:36Z
+# Generated: 2026-02-15T01:26:36Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -1647,7 +1647,7 @@ export function registerTelegramWebhook(app: any) {
       const messageText = (message.text || "").trim();
 
       if (messageText === "/start setup" || messageText === "/setup") {
-        clientWizards.set(chatId, { step: "name", chatId });
+        clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });
         await sendTelegramMessageToChat(chatId,
           `<b>Welcome to Gemin-Eye!</b>\n\n` +
           `I'm going to set up your business monitor in 5 quick steps.\n\n` +
@@ -1855,7 +1855,7 @@ async function registerWebhook(token: string) {
 
 
 ============================================================
-FILE: server/telegram/state.ts (37 lines)
+FILE: server/telegram/state.ts (81 lines)
 ============================================================
 export interface PendingContextRequest {
   postText: string;
@@ -1867,6 +1867,7 @@ export interface PendingContextRequest {
 export interface ClientWizardState {
   step: "name" | "offering" | "contact" | "location" | "keywords" | "done";
   chatId: string;
+  timestamp: number;
   name?: string;
   keywords?: string[];
   offering?: string;
@@ -1878,6 +1879,7 @@ export interface ClientWizardState {
 
 export interface AdminSetupState {
   step: string;
+  timestamp: number;
   name?: string;
   type?: string;
   audience?: string;
@@ -1894,6 +1896,48 @@ export const clientWizards = new Map<string, ClientWizardState>();
 
 export const REDDIT_POST_TTL = 30 * 60 * 1000;
 export const CONTEXT_TTL = 5 * 60 * 1000;
+const WIZARD_TTL = 60 * 60 * 1000;
+const ADMIN_SETUP_TTL = 60 * 60 * 1000;
+const CLEANUP_INTERVAL = 10 * 60 * 1000;
+
+export function cleanupStaleState(): void {
+  const now = Date.now();
+  let cleaned = 0;
+
+  pendingContextRequests.forEach((val, key) => {
+    if (now - val.timestamp > CONTEXT_TTL) {
+      pendingContextRequests.delete(key);
+      cleaned++;
+    }
+  });
+
+  pendingRedditPosts.forEach((val, key) => {
+    if (now - val.timestamp > REDDIT_POST_TTL) {
+      pendingRedditPosts.delete(key);
+      cleaned++;
+    }
+  });
+
+  clientWizards.forEach((val, key) => {
+    if (now - val.timestamp > WIZARD_TTL) {
+      clientWizards.delete(key);
+      cleaned++;
+    }
+  });
+
+  pendingClientSetups.forEach((val, key) => {
+    if (now - val.timestamp > ADMIN_SETUP_TTL) {
+      pendingClientSetups.delete(key);
+      cleaned++;
+    }
+  });
+
+  if (cleaned > 0) {
+    console.log(`State cleanup: removed ${cleaned} stale entries`);
+  }
+}
+
+setInterval(cleanupStaleState, CLEANUP_INTERVAL).unref();
 
 
 ============================================================
@@ -2328,7 +2372,7 @@ export function getAppBaseUrl(): string {
 
 
 ============================================================
-FILE: server/telegram/client-wizard.ts (236 lines)
+FILE: server/telegram/client-wizard.ts (238 lines)
 ============================================================
 import { sendTelegramMessage, sendTelegramMessageToChat } from "../telegram";
 import { storage } from "../storage";
@@ -2345,6 +2389,8 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
     clientWizards.delete(chatId);
     return false;
   }
+
+  wizard.timestamp = Date.now();
 
   switch (wizard.step) {
     case "name": {
@@ -2569,7 +2615,7 @@ RULES:
 
 
 ============================================================
-FILE: server/telegram/admin-commands.ts (567 lines)
+FILE: server/telegram/admin-commands.ts (569 lines)
 ============================================================
 import { db } from "../db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
@@ -2594,7 +2640,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
   }
 
   if (text === "/newclient") {
-    pendingClientSetups.set(chatId, { step: "name" });
+    pendingClientSetups.set(chatId, { step: "name", timestamp: Date.now() });
     await sendTelegramMessage("<b>New Client Setup</b>\n\nWhat's the business name?");
     return true;
   }
@@ -2612,7 +2658,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nOr type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "remove_select" });
+    pendingClientSetups.set(chatId, { step: "remove_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -2631,7 +2677,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "keywords_select" });
+    pendingClientSetups.set(chatId, { step: "keywords_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -2650,7 +2696,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "groups_select" });
+    pendingClientSetups.set(chatId, { step: "groups_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -2674,7 +2720,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nReply with the number, or /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_select" });
+    pendingClientSetups.set(chatId, { step: "alert_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -2738,7 +2784,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     }
     msg += `\nOr /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    pendingClientSetups.set(chatId, { step: "alert_remove", timestamp: Date.now(), groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -2797,12 +2843,14 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
   return false;
 }
 
-export async function handleClientSetupFlow(chatId: string, text: string, pending: { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }): Promise<boolean> {
+export async function handleClientSetupFlow(chatId: string, text: string, pending: AdminSetupState): Promise<boolean> {
   if (text === "/cancel") {
     pendingClientSetups.delete(chatId);
     await sendTelegramMessage("Client setup cancelled.");
     return true;
   }
+
+  pending.timestamp = Date.now();
 
   switch (pending.step) {
     case "name":
@@ -3274,7 +3322,7 @@ export { pendingContextRequests, pendingRedditPosts, clientWizards, CONTEXT_TTL,
 
 
 ============================================================
-FILE: server/utils/ai.ts (102 lines)
+FILE: server/utils/ai.ts (141 lines)
 ============================================================
 import { GoogleGenAI } from "@google/genai";
 import { z, ZodSchema } from "zod";
@@ -3288,10 +3336,26 @@ export const ai = new GoogleGenAI({
 });
 
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || "30000", 10);
+const AI_MAX_RETRIES = parseInt(process.env.AI_MAX_RETRIES || "2", 10);
 
-export async function generateContent(
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    if (msg.includes("timed out")) return true;
+    if (msg.includes("429") || msg.includes("rate limit") || msg.includes("quota")) return true;
+    if (msg.includes("503") || msg.includes("500") || msg.includes("unavailable")) return true;
+    if (msg.includes("econnreset") || msg.includes("econnrefused") || msg.includes("socket")) return true;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateContentOnce(
   opts: { model: string; contents: any; config?: any },
-  timeoutMs: number = AI_TIMEOUT_MS,
+  timeoutMs: number,
 ): Promise<{ text: string }> {
   const aiCall = ai.models.generateContent(opts);
   const timeout = new Promise<never>((_, reject) => {
@@ -3302,6 +3366,29 @@ export async function generateContent(
   });
   const result = await Promise.race([aiCall, timeout]);
   return { text: result.text || "" };
+}
+
+export async function generateContent(
+  opts: { model: string; contents: any; config?: any },
+  timeoutMs: number = AI_TIMEOUT_MS,
+  retries: number = AI_MAX_RETRIES,
+): Promise<{ text: string }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await generateContentOnce(opts, timeoutMs);
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries && isRetryableError(err)) {
+        const backoffMs = 1000 * Math.pow(2, attempt);
+        console.warn(`AI call failed (attempt ${attempt + 1}/${retries + 1}, model: ${opts.model}), retrying in ${backoffMs}ms...`, err instanceof Error ? err.message : err);
+        await sleep(backoffMs);
+      } else if (!isRetryableError(err)) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export function safeParseJsonFromAI(text: string): any | null {

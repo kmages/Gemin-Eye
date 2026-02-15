@@ -21,7 +21,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
   }
 
   if (text === "/newclient") {
-    pendingClientSetups.set(chatId, { step: "name" });
+    pendingClientSetups.set(chatId, { step: "name", timestamp: Date.now() });
     await sendTelegramMessage("<b>New Client Setup</b>\n\nWhat's the business name?");
     return true;
   }
@@ -39,7 +39,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nOr type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "remove_select" });
+    pendingClientSetups.set(chatId, { step: "remove_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -58,7 +58,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "keywords_select" });
+    pendingClientSetups.set(chatId, { step: "keywords_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -77,7 +77,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "groups_select" });
+    pendingClientSetups.set(chatId, { step: "groups_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -101,7 +101,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nReply with the number, or /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_select" });
+    pendingClientSetups.set(chatId, { step: "alert_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -165,7 +165,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     }
     msg += `\nOr /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_remove", groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    pendingClientSetups.set(chatId, { step: "alert_remove", timestamp: Date.now(), groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -224,12 +224,14 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
   return false;
 }
 
-export async function handleClientSetupFlow(chatId: string, text: string, pending: { step: string; name?: string; type?: string; audience?: string; offering?: string; tone?: string; keywords?: string[]; groups?: string[] }): Promise<boolean> {
+export async function handleClientSetupFlow(chatId: string, text: string, pending: AdminSetupState): Promise<boolean> {
   if (text === "/cancel") {
     pendingClientSetups.delete(chatId);
     await sendTelegramMessage("Client setup cancelled.");
     return true;
   }
+
+  pending.timestamp = Date.now();
 
   switch (pending.step) {
     case "name":

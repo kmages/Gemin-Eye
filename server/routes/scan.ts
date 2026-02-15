@@ -7,6 +7,7 @@ import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { keywordMatch } from "../utils/keywords";
 import { createRateLimiter } from "../utils/rate-limit";
+import { markOwnResponse, isOwnResponse } from "../utils/dedup";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
 
@@ -67,6 +68,11 @@ async function handleScanRequest(
   chatId: string,
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
+  if (isOwnResponse(postText)) {
+    console.log(`${platform} scan: skipping own response for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
+    return { matched: false, reason: "own_response" };
+  }
+
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
   if (!keywordMatch(postText, allKeywords)) {
     console.log(`${platform} scan: no keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
@@ -132,6 +138,8 @@ Return ONLY the response text, no quotes or formatting.`,
   if (!responseText) {
     return { matched: true, score: match.intent_score, reason: "no_response_generated" };
   }
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   const targetCampaign = platform === "linkedin"

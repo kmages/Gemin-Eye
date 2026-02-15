@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
+import { markOwnResponse } from "../utils/dedup";
 
 export interface BusinessWithCampaigns {
   id: number;
@@ -338,6 +339,8 @@ Return ONLY the response text, no quotes or formatting.`;
   });
 
   const responseText = responseResult.text.trim();
+
+  markOwnResponse(responseText);
 
   const activeCampaign = biz.campaigns[0];
   let savedResponseId: number | null = null;

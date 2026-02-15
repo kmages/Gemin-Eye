@@ -6,7 +6,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml } from "./utils/html";
-import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
 
@@ -82,6 +82,8 @@ async function processPostForTarget(
   const content = post.content;
   const fullText = `${title}\n${content}`;
 
+  if (isOwnResponse(fullText)) return;
+
   if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
   console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
@@ -136,6 +138,8 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const responseText = responseResult.text.trim();
   if (!responseText) return;
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {

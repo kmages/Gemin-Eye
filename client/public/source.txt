@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T16:06:06Z
+# Generated: 2026-02-15T16:22:24Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -985,7 +985,7 @@ export function registerAdminRoutes(app: Express) {
 
 
 ============================================================
-FILE: server/routes/scan.ts (236 lines)
+FILE: server/routes/scan.ts (244 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -996,6 +996,7 @@ import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { keywordMatch } from "../utils/keywords";
 import { createRateLimiter } from "../utils/rate-limit";
+import { markOwnResponse, isOwnResponse } from "../utils/dedup";
 import { generateScanToken } from "../telegram-bot";
 import { sendTelegramMessageToChat } from "../telegram";
 
@@ -1056,6 +1057,11 @@ async function handleScanRequest(
   chatId: string,
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
+  if (isOwnResponse(postText)) {
+    console.log(`${platform} scan: skipping own response for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
+    return { matched: false, reason: "own_response" };
+  }
+
   const allKeywords = bizCampaigns.flatMap(c => (c.keywords as string[]) || []);
   if (!keywordMatch(postText, allKeywords)) {
     console.log(`${platform} scan: no keyword match for "${business.name}" — post preview: "${postText.slice(0, 80)}..."`);
@@ -1121,6 +1127,8 @@ Return ONLY the response text, no quotes or formatting.`,
   if (!responseText) {
     return { matched: true, score: match.intent_score, reason: "no_response_generated" };
   }
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   const targetCampaign = platform === "linkedin"
@@ -1946,7 +1954,7 @@ setInterval(cleanupStaleState, CLEANUP_INTERVAL).unref();
 
 
 ============================================================
-FILE: server/telegram/analysis.ts (394 lines)
+FILE: server/telegram/analysis.ts (397 lines)
 ============================================================
 import { db } from "../db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
@@ -1954,6 +1962,7 @@ import { eq } from "drizzle-orm";
 import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
+import { markOwnResponse } from "../utils/dedup";
 
 export interface BusinessWithCampaigns {
   id: number;
@@ -2288,6 +2297,8 @@ Return ONLY the response text, no quotes or formatting.`;
   });
 
   const responseText = responseResult.text.trim();
+
+  markOwnResponse(responseText);
 
   const activeCampaign = biz.campaigns[0];
   let savedResponseId: number | null = null;
@@ -3624,7 +3635,7 @@ export async function getFeedbackGuidance(businessId: number): Promise<string> {
 
 
 ============================================================
-FILE: server/utils/dedup.ts (14 lines)
+FILE: server/utils/dedup.ts (56 lines)
 ============================================================
 import { db } from "../db";
 import { seenItems } from "@shared/schema";
@@ -3639,6 +3650,48 @@ export async function markSeen(dedupKey: string, source: string): Promise<void> 
   try {
     await db.insert(seenItems).values({ dedupKey, source }).onConflictDoNothing();
   } catch {}
+}
+
+const MAX_RESPONSE_FINGERPRINTS = 500;
+const responseFingerprints: Set<string> = new Set();
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function extractChunks(text: string, chunkLen: number = 40): string[] {
+  const norm = normalize(text);
+  const words = norm.split(" ");
+  const chunks: string[] = [];
+  for (let i = 0; i <= words.length - 5; i += 3) {
+    chunks.push(words.slice(i, i + 5).join(" "));
+  }
+  if (norm.length >= chunkLen) {
+    chunks.push(norm.slice(0, chunkLen));
+    chunks.push(norm.slice(-chunkLen));
+  }
+  return chunks;
+}
+
+export function markOwnResponse(responseText: string): void {
+  const chunks = extractChunks(responseText);
+  for (const chunk of chunks) {
+    responseFingerprints.add(chunk);
+    if (responseFingerprints.size > MAX_RESPONSE_FINGERPRINTS) {
+      const first = responseFingerprints.values().next().value;
+      if (first) responseFingerprints.delete(first);
+    }
+  }
+}
+
+export function isOwnResponse(postText: string): boolean {
+  if (responseFingerprints.size === 0) return false;
+  const chunks = extractChunks(postText);
+  let matchCount = 0;
+  for (const chunk of chunks) {
+    if (responseFingerprints.has(chunk)) matchCount++;
+  }
+  return matchCount >= 2;
 }
 
 
@@ -3698,7 +3751,7 @@ export function createRateLimiter(options: {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (309 lines)
+FILE: server/reddit-monitor.ts (313 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -3708,7 +3761,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml } from "./utils/html";
-import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
 
@@ -3784,6 +3837,8 @@ async function processPostForTarget(
   const content = post.content;
   const fullText = `${title}\n${content}`;
 
+  if (isOwnResponse(fullText)) return;
+
   if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
   console.log(`Reddit monitor: keyword match for "${target.businessName}" in r/${target.subreddit}: "${title.slice(0, 60)}..."`);
@@ -3838,6 +3893,8 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const responseText = responseResult.text.trim();
   if (!responseText) return;
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {
@@ -4124,7 +4181,7 @@ function extractPostId(url: string): string | null {
 
 
 ============================================================
-FILE: server/google-alerts-monitor.ts (314 lines)
+FILE: server/google-alerts-monitor.ts (318 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -4134,7 +4191,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
-import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
 
@@ -4220,6 +4277,8 @@ async function processAlertItem(
 ): Promise<void> {
   const fullText = `${item.title}\n${item.content}`;
 
+  if (isOwnResponse(fullText)) return;
+
   if (!keywordMatch(fullText, target.keywords)) return;
 
   const match = await parseAIJsonWithRetry(
@@ -4276,6 +4335,8 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const responseText = responseResult.text.trim();
   if (!responseText) return;
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {

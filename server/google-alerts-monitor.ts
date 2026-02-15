@@ -6,7 +6,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
-import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
 
@@ -92,6 +92,8 @@ async function processAlertItem(
 ): Promise<void> {
   const fullText = `${item.title}\n${item.content}`;
 
+  if (isOwnResponse(fullText)) return;
+
   if (!keywordMatch(fullText, target.keywords)) return;
 
   const match = await parseAIJsonWithRetry(
@@ -148,6 +150,8 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const responseText = responseResult.text.trim();
   if (!responseText) return;
+
+  markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {

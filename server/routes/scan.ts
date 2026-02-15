@@ -56,7 +56,11 @@ async function validateScanRequest(req: Request): Promise<
     return { valid: false, error: { matched: false, reason: "business_not_found" } };
   }
 
-  const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  const allBizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  const bizCampaigns = allBizCampaigns.filter(c => c.status === "active");
+  if (bizCampaigns.length === 0) {
+    return { valid: false, error: { matched: false, reason: "all_campaigns_paused" } };
+  }
   return { valid: true, chatId: String(chatId), businessId: Number(businessId), postText, business: biz[0], bizCampaigns };
 }
 

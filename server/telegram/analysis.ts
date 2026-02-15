@@ -42,7 +42,7 @@ export async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampa
         keywords: (c.keywords as string[]) || [],
         targetGroups: (c.targetGroups as string[]) || [],
       })),
-  }));
+  })).filter((b) => b.campaigns.length > 0);
 }
 
 const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;

@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T16:58:55Z
+# Generated: 2026-02-15T17:12:32Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -985,7 +985,7 @@ export function registerAdminRoutes(app: Express) {
 
 
 ============================================================
-FILE: server/routes/scan.ts (244 lines)
+FILE: server/routes/scan.ts (248 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -1045,7 +1045,11 @@ async function validateScanRequest(req: Request): Promise<
     return { valid: false, error: { matched: false, reason: "business_not_found" } };
   }
 
-  const bizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  const allBizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
+  const bizCampaigns = allBizCampaigns.filter(c => c.status === "active");
+  if (bizCampaigns.length === 0) {
+    return { valid: false, error: { matched: false, reason: "all_campaigns_paused" } };
+  }
   return { valid: true, chatId: String(chatId), businessId: Number(businessId), postText, business: biz[0], bizCampaigns };
 }
 
@@ -2000,7 +2004,7 @@ export async function getAllBusinessesWithCampaigns(): Promise<BusinessWithCampa
         keywords: (c.keywords as string[]) || [],
         targetGroups: (c.targetGroups as string[]) || [],
       })),
-  }));
+  })).filter((b) => b.campaigns.length > 0);
 }
 
 const URL_REGEX = /https?:\/\/(?:www\.)?(?:reddit\.com|old\.reddit\.com|redd\.it|facebook\.com|fb\.com|m\.facebook\.com)[^\s)>\]]+/gi;

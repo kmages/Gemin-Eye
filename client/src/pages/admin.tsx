@@ -643,10 +643,87 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   );
 }
 
+type AllLeadsBiz = {
+  business: { id: number; name: string };
+  campaigns: { id: number; name: string; platform: string }[];
+  leads: Lead[];
+  responses: AiResponse[];
+};
+
+function AllLeadsView() {
+  const { data, isLoading } = useQuery<AllLeadsBiz[]>({
+    queryKey: ["/api/admin/all-leads"],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-md" />)}
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <Card className="p-8 text-center space-y-3">
+        <Target className="w-8 h-8 mx-auto text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No leads found across any business.</p>
+      </Card>
+    );
+  }
+
+  const totalLeads = data.reduce((sum, b) => sum + b.leads.length, 0);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <MessageCircle className="w-4 h-4 text-primary" />
+        <span className="text-sm font-medium">{totalLeads} total leads across {data.length} businesses</span>
+      </div>
+      {data.map((entry) => (
+        <Card key={entry.business.id} className="overflow-visible" data-testid={`card-allleads-biz-${entry.business.id}`}>
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-primary" />
+                <span className="font-medium">{entry.business.name}</span>
+              </div>
+              <Badge variant="secondary" className="text-xs">{entry.leads.length} leads</Badge>
+            </div>
+          </div>
+          <div className="p-4 space-y-4">
+            {entry.campaigns.map((camp) => {
+              const campLeads = entry.leads.filter((l) => l.campaignId === camp.id);
+              if (campLeads.length === 0) return null;
+              return (
+                <div key={camp.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-sm font-medium">{camp.name}</span>
+                    <Badge variant="secondary" className="text-xs">{camp.platform}</Badge>
+                    <span className="text-xs text-muted-foreground">({campLeads.length})</span>
+                  </div>
+                  <div className="space-y-3 pl-5 border-l-2 border-border ml-1.5">
+                    {campLeads.map((lead) => {
+                      const resp = entry.responses.find((r) => r.leadId === lead.id);
+                      return <AdminLeadCard key={lead.id} lead={lead} response={resp} />;
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"businesses" | "leads">("businesses");
 
   const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
@@ -754,21 +831,44 @@ export default function AdminPage() {
           </div>
         </Card>
 
-        {isLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-24 w-full rounded-md" />
-            ))}
-          </div>
-        ) : businesses && businesses.length > 0 ? (
-          businesses.map((biz) => (
-            <BusinessPanel key={biz.id} business={biz} onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] })} />
-          ))
+        <div className="flex items-center gap-2">
+          <Button
+            variant={activeTab === "businesses" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("businesses")}
+            data-testid="button-tab-businesses"
+          >
+            <Users className="w-3 h-3 mr-1" /> Businesses
+          </Button>
+          <Button
+            variant={activeTab === "leads" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("leads")}
+            data-testid="button-tab-leads"
+          >
+            <MessageCircle className="w-3 h-3 mr-1" /> All Leads
+          </Button>
+        </div>
+
+        {activeTab === "businesses" ? (
+          isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-md" />
+              ))}
+            </div>
+          ) : businesses && businesses.length > 0 ? (
+            businesses.map((biz) => (
+              <BusinessPanel key={biz.id} business={biz} onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] })} />
+            ))
+          ) : (
+            <Card className="p-8 text-center space-y-3">
+              <Users className="w-8 h-8 mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No businesses yet.</p>
+            </Card>
+          )
         ) : (
-          <Card className="p-8 text-center space-y-3">
-            <Users className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">No businesses yet.</p>
-          </Card>
+          <AllLeadsView />
         )}
       </main>
     </div>

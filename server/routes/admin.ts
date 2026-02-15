@@ -147,6 +147,32 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.get("/api/admin/all-leads", isAuthenticated, isAdmin, async (_req: any, res) => {
+    try {
+      const allBiz = await storage.getAllBusinesses();
+      const result = [];
+      for (const biz of allBiz) {
+        const camps = await storage.getCampaignsByBusiness(biz.id);
+        const campaignIds = camps.map(c => c.id);
+        if (campaignIds.length === 0) continue;
+        const bizLeads = await storage.getLeadsByCampaigns(campaignIds);
+        if (bizLeads.length === 0) continue;
+        const leadIds = bizLeads.map(l => l.id);
+        const responses = leadIds.length > 0 ? await storage.getResponsesByLeads(leadIds) : [];
+        result.push({
+          business: { id: biz.id, name: biz.name },
+          campaigns: camps.map(c => ({ id: c.id, name: c.name, platform: c.platform })),
+          leads: bizLeads,
+          responses,
+        });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Admin: Error fetching all leads:", error);
+      res.status(500).json({ error: "Failed to fetch all leads" });
+    }
+  });
+
   app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
     res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
   });

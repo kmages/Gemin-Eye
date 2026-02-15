@@ -46,3 +46,6 @@ integrations = ["javascript_gemini_ai_integrations:2.0.0", "javascript_log_in_wi
 
 [userenv.shared]
 TELEGRAM_CHAT_ID = "426842568"
+
+[userenv.production]
+MONITORING_DISABLED = "true"

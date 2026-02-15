@@ -297,6 +297,10 @@ async function runScan(): Promise<void> {
 
 export function startGoogleAlertsMonitor(): void {
   if (monitorInterval) return;
+  if (process.env.MONITORING_DISABLED === "true") {
+    console.log("Google Alerts monitor: DISABLED via MONITORING_DISABLED env var");
+    return;
+  }
 
   console.log("Google Alerts monitor: starting (scans every 2 minutes)");
 

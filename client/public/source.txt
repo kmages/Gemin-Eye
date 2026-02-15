@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T17:13:34Z
+# Generated: 2026-02-15T17:18:44Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -985,7 +985,7 @@ export function registerAdminRoutes(app: Express) {
 
 
 ============================================================
-FILE: server/routes/scan.ts (248 lines)
+FILE: server/routes/scan.ts (252 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
@@ -1026,6 +1026,10 @@ async function validateScanRequest(req: Request): Promise<
   | { valid: false; error: { matched: false; reason: string } }
 > {
   const { chatId, businessId, token, postText } = req.body;
+
+  if (process.env.MONITORING_DISABLED === "true") {
+    return { valid: false, error: { matched: false, reason: "monitoring_disabled" } };
+  }
 
   if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
     return { valid: false, error: { matched: false, reason: "missing_fields" } };
@@ -3755,7 +3759,7 @@ export function createRateLimiter(options: {
 
 
 ============================================================
-FILE: server/reddit-monitor.ts (313 lines)
+FILE: server/reddit-monitor.ts (317 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -4051,6 +4055,10 @@ async function runScan(): Promise<void> {
 
 export function startRedditMonitor(): void {
   if (monitorInterval) return;
+  if (process.env.MONITORING_DISABLED === "true") {
+    console.log("Reddit monitor: DISABLED via MONITORING_DISABLED env var");
+    return;
+  }
 
   console.log("Reddit monitor: starting (scans every 5 minutes)");
 
@@ -4185,7 +4193,7 @@ function extractPostId(url: string): string | null {
 
 
 ============================================================
-FILE: server/google-alerts-monitor.ts (318 lines)
+FILE: server/google-alerts-monitor.ts (322 lines)
 ============================================================
 import Parser from "rss-parser";
 import { db } from "./db";
@@ -4486,6 +4494,10 @@ async function runScan(): Promise<void> {
 
 export function startGoogleAlertsMonitor(): void {
   if (monitorInterval) return;
+  if (process.env.MONITORING_DISABLED === "true") {
+    console.log("Google Alerts monitor: DISABLED via MONITORING_DISABLED env var");
+    return;
+  }
 
   console.log("Google Alerts monitor: starting (scans every 2 minutes)");
 

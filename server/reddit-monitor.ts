@@ -292,6 +292,10 @@ async function runScan(): Promise<void> {
 
 export function startRedditMonitor(): void {
   if (monitorInterval) return;
+  if (process.env.MONITORING_DISABLED === "true") {
+    console.log("Reddit monitor: DISABLED via MONITORING_DISABLED env var");
+    return;
+  }
 
   console.log("Reddit monitor: starting (scans every 5 minutes)");
 

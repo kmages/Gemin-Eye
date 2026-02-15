@@ -38,6 +38,10 @@ async function validateScanRequest(req: Request): Promise<
 > {
   const { chatId, businessId, token, postText } = req.body;
 
+  if (process.env.MONITORING_DISABLED === "true") {
+    return { valid: false, error: { matched: false, reason: "monitoring_disabled" } };
+  }
+
   if (!chatId || !businessId || !postText || typeof postText !== "string" || !token) {
     return { valid: false, error: { matched: false, reason: "missing_fields" } };
   }

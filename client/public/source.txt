@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T00:19:03Z
+# Generated: 2026-02-15T00:24:12Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -5429,7 +5429,7 @@ FILE: client/public/spy-glass.js (124 lines)
 
 
 ============================================================
-FILE: replit.md (161 lines)
+FILE: replit.md (162 lines)
 ============================================================
 # Gemin-Eye - AI-Powered Customer Acquisition Platform
 
@@ -5522,6 +5522,7 @@ The app has four main flows:
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Always push code to GitHub after every commit (requires GitHub remote to be connected).
 
 ## System Architecture
 

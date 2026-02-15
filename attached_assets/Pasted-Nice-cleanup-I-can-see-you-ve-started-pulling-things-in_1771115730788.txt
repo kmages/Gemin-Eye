@@ -1,0 +1,76 @@
+Nice cleanup — I can see you’ve started pulling things into server/utils/* and split routes into modules like routes/admin + routes/scan, plus you added a real createRateLimiter and apply it to AI endpoints.  ￼
+
+A few high-impact improvements still stand out:
+
+1) You still don’t have a root README (and likely no .env.example)
+
+On the repo landing page, there’s still no README.md detected.  ￼
+That’s still the #1 friction point for anyone trying to run this.
+
+Add:
+	•	README.md with setup + run commands (your scripts are there).  ￼
+	•	.env.example listing required env vars (Gemini key/base URL, DB URL, session/auth, Telegram bot vars, etc.). Your code clearly depends on these.  ￼
+
+2) escapeHtml() is broken (this will cause Telegram formatting bugs + possible injection issues)
+
+Right now your escapeHtml doesn’t actually escape anything (it replaces & with &, etc.), and the regexes appear malformed.  ￼
+Since you use escapeHtml() for Telegram notifications in monitors, this matters.  ￼
+
+Drop-in fix:
+
+// server/utils/html.ts
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+If you’re targeting Telegram MarkdownV2, consider escaping that instead (different rules), or keep HTML mode consistently.
+
+3) parseAIJsonWithRetry() has TypeScript typing issues + too-weak parsing
+
+Your JSON parsing util is a big improvement vs regex-in-routes, but the current implementation has type holes (e.g., Promise without a type, returning parsed as T where T isn’t defined).  ￼
+
+A sturdier typed version:
+
+import { z, ZodSchema } from "zod";
+
+export async function parseAIJsonWithRetry<T>(
+  generateFn: () => Promise<string>,
+  schema: ZodSchema<T>,
+  maxRetries = 1
+): Promise<T | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const text = await generateFn();
+    const parsed = safeParseJsonFromAI(text);
+    if (!parsed) continue;
+
+    const validated = schema.safeParse(parsed);
+    if (validated.success) return validated.data;
+
+    // On last attempt, either return null or throw—your call:
+    if (attempt === maxRetries) return null;
+  }
+  return null;
+}
+
+Also: your safeParseJsonFromAI() still does {...} regex extraction.  ￼
+If you want this rock-solid, add “JSON only” prompting + retries and strip leading/trailing non-JSON more carefully.
+
+4) Your monitor/dedup setup is solid — but tune keying
+
+I like that you moved dedup into DB with seenItems and onConflictDoNothing().  ￼
+One improvement: normalize keys so you don’t treat trivial URL variants as unique (utm params, fragments). In google-alerts-monitor, you key on item.link || item.title.  ￼
+Consider canonicalizing links before seenKey.
+
+5) Minor: repo metadata in package.json
+
+Your package is still named "rest-express" which doesn’t match the project branding.  ￼
+Renaming to gemin-eye (and adding description/repo fields) makes it feel “real” quickly.
+
+⸻
+
+If you want, I can do a tighter pass on routes/scan + Telegram webhook flow specifically (auth, CORS, token expiry, rate limiting), but I’d need you to point me at the files (or tell me the path) if they’re not under server/routes/scan.ts.

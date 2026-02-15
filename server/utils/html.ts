@@ -2,7 +2,9 @@ export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function stripHtml(html: string): string {
@@ -21,4 +23,18 @@ export function stripHtml(html: string): string {
 export function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max) + "...";
+}
+
+export function canonicalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    const paramsToStrip = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ref", "fbclid", "gclid"];
+    for (const p of paramsToStrip) {
+      u.searchParams.delete(p);
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
 }

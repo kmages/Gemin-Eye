@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { sendTelegramMessage } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { ai, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
-import { escapeHtml, stripHtml } from "./utils/html";
+import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 
@@ -240,7 +240,7 @@ async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Prom
     }));
 
     for (const item of items) {
-      const itemId = item.link || item.title || "";
+      const itemId = item.link ? canonicalizeUrl(item.link) : (item.title || "");
       if (!itemId) continue;
 
       for (const target of targets) {

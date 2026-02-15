@@ -45,7 +45,7 @@ export async function parseAIJsonWithRetry<T>(
       console.warn(`AI JSON validation failed (attempt ${attempt + 1}):`, validated.error.issues);
       if (attempt < maxRetries) continue;
 
-      return parsed as T;
+      return null;
     } catch (err) {
       console.error(`AI generation error (attempt ${attempt + 1}):`, err);
       if (attempt >= maxRetries) return null;

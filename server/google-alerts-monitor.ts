@@ -109,10 +109,16 @@ Title: "${item.title}"
 Content: "${item.content.slice(0, 600)}"
 
 Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
-Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+SCORING GUIDE (be strict and spread scores across the full range):
+1-2: Completely unrelated topic, no connection to business
+3-4: Loosely related topic but NOT asking for help or recommendations
+5-6: Related topic, asking a question, but not specifically looking for what this business offers
+7-8: Clearly seeking help/recommendations in this business's area
+9-10: Actively looking for EXACTLY what this business offers, urgent need, ready to buy/act
 
 IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
-{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+{"is_lead": true, "intent_score": 5, "reasoning": "one sentence explanation"}`,
         config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
       });
       return result.text;

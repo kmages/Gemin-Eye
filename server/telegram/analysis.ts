@@ -223,11 +223,18 @@ ${bizSummaries}
 Post: "${postText}"
 ${groupName ? `Group: "${groupName}"` : ""}
 
+INTENT SCORING GUIDE (be strict and spread scores across the full range):
+1-2: Completely unrelated topic, no connection to any business
+3-4: Loosely related topic but NOT asking for help or recommendations
+5-6: Related topic, asking a question, but not specifically looking for what the business offers
+7-8: Clearly seeking help/recommendations in this business's area
+9-10: Actively looking for EXACTLY what this business offers, urgent need, ready to buy/act
+
 Return ONLY valid JSON:
 {
   "matched_business": "<exact business name or null if no match>",
-  "intent_score": <1-10>,
-  "confidence": <1-10>,
+  "intent_score": 5,
+  "confidence": 5,
   "reasoning": "<one sentence>"
 }`;
 
@@ -330,7 +337,30 @@ Return ONLY valid JSON:
   } catch (err) {
   }
 
-  const responsePrompt = `You are writing a response to a ${platformContext} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
+  const isReddit = platform === "reddit";
+
+  const responsePrompt = isReddit
+    ? `You are writing a Reddit comment${groupName ? ` in ${groupName}` : ""}. Your ONLY goal is to be genuinely helpful. This must comply with Reddit's rules against self-promotion and spam.
+
+The post: "${postText}"
+
+Your expertise area: ${biz.coreOffering}
+Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+STRICT RULES FOR REDDIT COMPLIANCE:
+- Do NOT mention any business name, brand, website, or link
+- Do NOT say "I recommend" or "check out" or "you should try"
+- Do NOT hint that you represent or work for any company
+- Write as a knowledgeable community member sharing genuine advice
+- Answer their question directly with useful, specific information
+- Sound like a real Redditor — casual, helpful, maybe slightly opinionated
+- Keep it 2-4 sentences, natural and conversational
+
+The response should be PURELY helpful advice based on your expertise. The value is in demonstrating knowledge, not promoting anything.
+
+Return ONLY the response text, no quotes or formatting.`
+    : `You are writing a response to a ${platformContext} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post: "${postText}"
 ${groupName ? `Group: "${groupName}"` : ""}

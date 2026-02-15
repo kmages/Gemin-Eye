@@ -100,10 +100,16 @@ Title: "${title}"
 Content: "${content.slice(0, 400)}"
 
 Is this person asking a question or seeking help/recommendations that "${target.businessName}" could address?
-Rate the intent from 1-10 (10 = actively looking for exactly what this business offers).
+
+SCORING GUIDE (be strict and spread scores across the full range):
+1-2: Completely unrelated topic, no connection to business
+3-4: Loosely related topic but NOT asking for help or recommendations
+5-6: Related topic, asking a question, but not specifically looking for what this business offers
+7-8: Clearly seeking help/recommendations in this business's area
+9-10: Actively looking for EXACTLY what this business offers, urgent need, ready to buy/act
 
 IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, no markdown:
-{"is_lead": true, "intent_score": 7, "reasoning": "one sentence explanation"}`,
+{"is_lead": true, "intent_score": 5, "reasoning": "one sentence explanation"}`,
         config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
       });
       return result.text;
@@ -121,16 +127,24 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
 
   const responseResult = await generateContent({
     model: "gemini-2.5-pro",
-    contents: `You are writing a Reddit comment in r/${target.subreddit}. Your goal is to be genuinely helpful while subtly recommending a business.
+    contents: `You are writing a Reddit comment in r/${target.subreddit}. Your ONLY goal is to be genuinely helpful. This must comply with Reddit's rules against self-promotion and spam.
 
 The post: "${title}\n${content.slice(0, 400)}"
 
-Business to recommend: ${target.businessName}
-What they do: ${target.coreOffering}
+Your expertise area: ${target.coreOffering}
 Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
 
-Write a natural, human-sounding Reddit comment (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+STRICT RULES FOR REDDIT COMPLIANCE:
+- Do NOT mention any business name, brand, website, or link
+- Do NOT say "I recommend" or "check out" or "you should try"
+- Do NOT hint that you represent or work for any company
+- Write as a knowledgeable community member sharing genuine advice
+- Answer their question directly with useful, specific information
+- Sound like a real Redditor — casual, helpful, maybe slightly opinionated
+- Keep it 2-4 sentences, natural and conversational
+
+The response should be PURELY helpful advice based on your expertise. The value is in demonstrating knowledge, not promoting anything.
 
 Return ONLY the response text, no quotes or formatting.`,
     config: { maxOutputTokens: 8192 },

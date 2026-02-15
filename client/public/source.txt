@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-15T20:34:17Z
+# Generated: 2026-02-15T21:07:53Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -2490,12 +2490,13 @@ Return ONLY the response text, no quotes or formatting.`;
 
 
 ============================================================
-FILE: server/telegram/bookmarklets.ts (97 lines)
+FILE: server/telegram/bookmarklets.ts (98 lines)
 ============================================================
 import crypto from "crypto";
 
 export function generateScanToken(chatId: string, businessId: number): string {
-  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET environment variable is required for token generation");
   return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
 }
 

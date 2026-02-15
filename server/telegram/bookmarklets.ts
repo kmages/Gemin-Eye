@@ -1,7 +1,8 @@
 import crypto from "crypto";
 
 export function generateScanToken(chatId: string, businessId: number): string {
-  const secret = process.env.SESSION_SECRET || "gemin-eye-default";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET environment variable is required for token generation");
   return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
 }
 

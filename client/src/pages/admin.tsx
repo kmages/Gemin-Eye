@@ -201,6 +201,8 @@ function CampaignEditor({ campaign, onSave, onDelete }: {
 
 function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
   const { toast } = useToast();
+  const [expandedPost, setExpandedPost] = useState(false);
+  const [expandedResponse, setExpandedResponse] = useState(false);
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
     new: { label: "New", variant: "default", icon: AlertCircle },
     matched: { label: "Matched", variant: "default", icon: Zap },
@@ -215,6 +217,11 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
       toast({ title: "Copied!", description: "Response copied to clipboard." });
     }
   };
+
+  const postText = lead.originalPost;
+  const postIsLong = postText.length > 200;
+  const responseText = response?.content || "";
+  const responseIsLong = responseText.length > 250;
 
   return (
     <Card className="p-4 space-y-3" data-testid={`card-admin-lead-${lead.id}`}>
@@ -233,9 +240,16 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
       </div>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{lead.authorName} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
-        <p className="text-sm bg-muted/50 p-2.5 rounded-md leading-relaxed" data-testid={`text-admin-lead-post-${lead.id}`}>
-          {lead.originalPost.length > 200 ? lead.originalPost.slice(0, 200) + "..." : lead.originalPost}
-        </p>
+        <div
+          className="text-sm bg-muted/50 p-2.5 rounded-md leading-relaxed cursor-pointer"
+          onClick={() => postIsLong && setExpandedPost(!expandedPost)}
+          data-testid={`text-admin-lead-post-${lead.id}`}
+        >
+          <p className="whitespace-pre-wrap">{expandedPost || !postIsLong ? postText : postText.slice(0, 200) + "..."}</p>
+          {postIsLong && (
+            <span className="text-xs text-primary mt-1 inline-block">{expandedPost ? "Show less" : "Show more"}</span>
+          )}
+        </div>
       </div>
       {response && (
         <div className="space-y-1.5">
@@ -246,9 +260,16 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
               <Badge variant="secondary" className="text-xs ml-1">{response.status}</Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed" data-testid={`text-admin-response-${lead.id}`}>
-            {response.content.length > 250 ? response.content.slice(0, 250) + "..." : response.content}
-          </p>
+          <div
+            className="text-sm text-muted-foreground leading-relaxed cursor-pointer"
+            onClick={() => responseIsLong && setExpandedResponse(!expandedResponse)}
+            data-testid={`text-admin-response-${lead.id}`}
+          >
+            <p className="whitespace-pre-wrap">{expandedResponse || !responseIsLong ? responseText : responseText.slice(0, 250) + "..."}</p>
+            {responseIsLong && (
+              <span className="text-xs text-primary mt-1 inline-block">{expandedResponse ? "Show less" : "Show more"}</span>
+            )}
+          </div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">

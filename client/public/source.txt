@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-16T13:27:54Z
+# Generated: 2026-02-16T13:35:34Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -852,7 +852,7 @@ a:hover{background:#4f46e5;}</style></head>
 
 
 ============================================================
-FILE: server/routes/admin.ts (259 lines)
+FILE: server/routes/admin.ts (282 lines)
 ============================================================
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
@@ -1088,6 +1088,29 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Admin: Error fetching users:", error);
       res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.patch("/api/admin/businesses/:id/owner", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { userId } = req.body;
+      if (!userId || typeof userId !== "string") {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const biz = await storage.getBusinessById(id);
+      if (!biz) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+      const updated = await storage.updateBusiness(id, { userId });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin: Error assigning business owner:", error);
+      res.status(500).json({ error: "Failed to assign owner" });
     }
   });
 
@@ -6054,7 +6077,7 @@ export default function OnboardingPage() {
 
 
 ============================================================
-FILE: client/src/pages/admin.tsx (984 lines)
+FILE: client/src/pages/admin.tsx (1020 lines)
 ============================================================
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -6369,9 +6392,26 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
 
+  const { data: allUsers } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: expanded,
+  });
+
   const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[]; campaigns: { id: number; name: string; platform: string }[] }>({
     queryKey: ["/api/admin/leads", business.id],
     enabled: expanded && showLeads,
+  });
+
+  const assignOwner = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("PATCH", `/api/admin/businesses/${business.id}/owner`, { userId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Owner assigned" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+    },
+    onError: () => toast({ title: "Failed to assign owner", variant: "destructive" }),
   });
 
   const updateBiz = useMutation({
@@ -6560,6 +6600,25 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
               <div><span className="text-muted-foreground">Tone:</span> {business.preferredTone}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Audience:</span> {business.targetAudience}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Offering:</span> {business.coreOffering}</div>
+              <div className="col-span-2 flex items-center gap-2 pt-2 border-t">
+                <span className="text-muted-foreground flex items-center gap-1"><UserCog className="w-3 h-3" /> Owner:</span>
+                <Select
+                  value={business.userId}
+                  onValueChange={(val) => assignOwner.mutate(val)}
+                >
+                  <SelectTrigger className="w-48" data-testid={`select-owner-${business.id}`}>
+                    <SelectValue placeholder="Assign owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allUsers?.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.firstName || u.email || u.id} {u.lastName || ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {assignOwner.isPending && <span className="text-xs text-muted-foreground">Saving...</span>}
+              </div>
             </div>
           )}
 

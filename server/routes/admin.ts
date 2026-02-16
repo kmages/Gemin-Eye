@@ -235,6 +235,29 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/admin/businesses/:id/owner", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { userId } = req.body;
+      if (!userId || typeof userId !== "string") {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const biz = await storage.getBusinessById(id);
+      if (!biz) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+      const updated = await storage.updateBusiness(id, { userId });
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin: Error assigning business owner:", error);
+      res.status(500).json({ error: "Failed to assign owner" });
+    }
+  });
+
   app.patch("/api/admin/users/:userId/role", isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const requesterId = req.user.claims.sub;

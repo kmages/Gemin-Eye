@@ -311,9 +311,26 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
 
+  const { data: allUsers } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: expanded,
+  });
+
   const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[]; campaigns: { id: number; name: string; platform: string }[] }>({
     queryKey: ["/api/admin/leads", business.id],
     enabled: expanded && showLeads,
+  });
+
+  const assignOwner = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("PATCH", `/api/admin/businesses/${business.id}/owner`, { userId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Owner assigned" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+    },
+    onError: () => toast({ title: "Failed to assign owner", variant: "destructive" }),
   });
 
   const updateBiz = useMutation({
@@ -502,6 +519,25 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
               <div><span className="text-muted-foreground">Tone:</span> {business.preferredTone}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Audience:</span> {business.targetAudience}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Offering:</span> {business.coreOffering}</div>
+              <div className="col-span-2 flex items-center gap-2 pt-2 border-t">
+                <span className="text-muted-foreground flex items-center gap-1"><UserCog className="w-3 h-3" /> Owner:</span>
+                <Select
+                  value={business.userId}
+                  onValueChange={(val) => assignOwner.mutate(val)}
+                >
+                  <SelectTrigger className="w-48" data-testid={`select-owner-${business.id}`}>
+                    <SelectValue placeholder="Assign owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allUsers?.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.firstName || u.email || u.id} {u.lastName || ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {assignOwner.isPending && <span className="text-xs text-muted-foreground">Saving...</span>}
+              </div>
             </div>
           )}
 

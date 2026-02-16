@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-16T12:18:41Z
+# Generated: 2026-02-16T12:22:43Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -860,7 +860,7 @@ import { storage } from "../storage";
 import { startRedditMonitor, stopRedditMonitor } from "../reddit-monitor";
 import { startGoogleAlertsMonitor, stopGoogleAlertsMonitor } from "../google-alerts-monitor";
 
-let monitoringEnabled = process.env.MONITORING_DISABLED !== "true";
+let monitoringEnabled = process.env.MONITORING_DISABLED !== "true"; // defaults to ON
 
 export function isMonitoringEnabled() {
   return monitoringEnabled;

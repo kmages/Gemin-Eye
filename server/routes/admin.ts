@@ -5,7 +5,7 @@ import { storage } from "../storage";
 import { startRedditMonitor, stopRedditMonitor } from "../reddit-monitor";
 import { startGoogleAlertsMonitor, stopGoogleAlertsMonitor } from "../google-alerts-monitor";
 
-let monitoringEnabled = process.env.MONITORING_DISABLED !== "true";
+let monitoringEnabled = process.env.MONITORING_DISABLED !== "true"; // defaults to ON
 
 export function isMonitoringEnabled() {
   return monitoringEnabled;

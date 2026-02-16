@@ -316,12 +316,16 @@ export function registerTelegramWebhook(app: any) {
 }
 
 async function registerWebhook(token: string) {
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   const replSlug = process.env.REPL_SLUG;
   const replOwner = process.env.REPL_OWNER;
-  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
 
   let webhookUrl: string;
-  if (replitDevDomain) {
+  if (replitDomains) {
+    const primaryDomain = replitDomains.split(",")[0].trim();
+    webhookUrl = `https://${primaryDomain}/api/telegram/webhook/${token}`;
+  } else if (replitDevDomain) {
     webhookUrl = `https://${replitDevDomain}/api/telegram/webhook/${token}`;
   } else if (replSlug && replOwner) {
     webhookUrl = `https://${replSlug}.${replOwner}.repl.co/api/telegram/webhook/${token}`;

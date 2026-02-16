@@ -1,7 +1,7 @@
 # GEMIN-EYE — FULL SOURCE CODE
 # AI-Powered Customer Acquisition Platform
 # https://gemin-eye.com
-# Generated: 2026-02-16T00:18:15Z
+# Generated: 2026-02-16T00:22:20Z
 # Paste this URL into any AI (Claude, ChatGPT, etc.) for code review.
 # URL: https://gemin-eye.com/source.txt
 ############################################################
@@ -1663,7 +1663,7 @@ export async function editMessageReplyMarkup(
 
 
 ============================================================
-FILE: server/telegram-bot.ts (349 lines)
+FILE: server/telegram-bot.ts (353 lines)
 ============================================================
 import { sendTelegramMessage, sendTelegramMessageToChat, type TelegramMessageOptions } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
@@ -1983,12 +1983,16 @@ export function registerTelegramWebhook(app: any) {
 }
 
 async function registerWebhook(token: string) {
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   const replSlug = process.env.REPL_SLUG;
   const replOwner = process.env.REPL_OWNER;
-  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
 
   let webhookUrl: string;
-  if (replitDevDomain) {
+  if (replitDomains) {
+    const primaryDomain = replitDomains.split(",")[0].trim();
+    webhookUrl = `https://${primaryDomain}/api/telegram/webhook/${token}`;
+  } else if (replitDevDomain) {
     webhookUrl = `https://${replitDevDomain}/api/telegram/webhook/${token}`;
   } else if (replSlug && replOwner) {
     webhookUrl = `https://${replSlug}.${replOwner}.repl.co/api/telegram/webhook/${token}`;
@@ -2547,7 +2551,7 @@ Return ONLY the response text, no quotes or formatting.`;
 
 
 ============================================================
-FILE: server/telegram/bookmarklets.ts (98 lines)
+FILE: server/telegram/bookmarklets.ts (100 lines)
 ============================================================
 import crypto from "crypto";
 
@@ -2640,6 +2644,8 @@ export function generateBookmarkletCode(baseUrl: string, chatId: string, busines
 }
 
 export function getAppBaseUrl(): string {
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) return `https://${replitDomains.split(",")[0].trim()}`;
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   if (replitDevDomain) return `https://${replitDevDomain}`;
   const replSlug = process.env.REPL_SLUG;

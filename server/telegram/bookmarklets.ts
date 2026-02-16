@@ -89,6 +89,8 @@ export function generateBookmarkletCode(baseUrl: string, chatId: string, busines
 }
 
 export function getAppBaseUrl(): string {
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) return `https://${replitDomains.split(",")[0].trim()}`;
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   if (replitDevDomain) return `https://${replitDevDomain}`;
   const replSlug = process.env.REPL_SLUG;

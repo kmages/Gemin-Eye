@@ -1,9 +1,27 @@
 import crypto from "crypto";
 
+const TOKEN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+function getCurrentWindow(): number {
+  return Math.floor(Date.now() / TOKEN_WINDOW_MS);
+}
+
 export function generateScanToken(chatId: string, businessId: number): string {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET environment variable is required for token generation");
-  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}`).digest("hex").slice(0, 32);
+  const window = getCurrentWindow();
+  return crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}:${window}`).digest("hex").slice(0, 32);
+}
+
+export function validateScanToken(chatId: string, businessId: number, token: string): boolean {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return false;
+  const currentWindow = getCurrentWindow();
+  for (const w of [currentWindow, currentWindow - 1]) {
+    const expected = crypto.createHmac("sha256", secret).update(`${chatId}:${businessId}:${w}`).digest("hex").slice(0, 32);
+    if (token === expected) return true;
+  }
+  return false;
 }
 
 function buildRelaySetup(baseUrlVar: string, apiVar: string): string {

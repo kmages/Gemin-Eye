@@ -82,7 +82,7 @@ async function processPostForTarget(
   const content = post.content;
   const fullText = `${title}\n${content}`;
 
-  if (isOwnResponse(fullText)) return;
+  if (await isOwnResponse(fullText)) return;
 
   if (target.keywords.length > 0 && !keywordMatch(fullText, target.keywords)) return;
 
@@ -149,7 +149,7 @@ Return ONLY the response text, no quotes or formatting.`,
   const responseText = responseResult.text.trim();
   if (!responseText) return;
 
-  markOwnResponse(responseText);
+  await markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {

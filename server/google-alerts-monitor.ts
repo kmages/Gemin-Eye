@@ -92,7 +92,7 @@ async function processAlertItem(
 ): Promise<void> {
   const fullText = `${item.title}\n${item.content}`;
 
-  if (isOwnResponse(fullText)) return;
+  if (await isOwnResponse(fullText)) return;
 
   if (!keywordMatch(fullText, target.keywords)) return;
 
@@ -157,7 +157,7 @@ Return ONLY the response text, no quotes or formatting.`,
   const responseText = responseResult.text.trim();
   if (!responseText) return;
 
-  markOwnResponse(responseText);
+  await markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   try {

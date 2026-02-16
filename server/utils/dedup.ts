@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { seenItems } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export async function hasBeenSeen(dedupKey: string): Promise<boolean> {
   const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);
@@ -12,9 +12,6 @@ export async function markSeen(dedupKey: string, source: string): Promise<void> 
     await db.insert(seenItems).values({ dedupKey, source }).onConflictDoNothing();
   } catch {}
 }
-
-const MAX_RESPONSE_FINGERPRINTS = 500;
-const responseFingerprints: Set<string> = new Set();
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
@@ -34,23 +31,30 @@ function extractChunks(text: string, chunkLen: number = 40): string[] {
   return chunks;
 }
 
-export function markOwnResponse(responseText: string): void {
+const RESPONSE_FINGERPRINT_SOURCE = "own_response";
+
+export async function markOwnResponse(responseText: string): Promise<void> {
   const chunks = extractChunks(responseText);
   for (const chunk of chunks) {
-    responseFingerprints.add(chunk);
-    if (responseFingerprints.size > MAX_RESPONSE_FINGERPRINTS) {
-      const first = responseFingerprints.values().next().value;
-      if (first) responseFingerprints.delete(first);
-    }
+    const key = `resp:${chunk}`;
+    try {
+      await db.insert(seenItems).values({ dedupKey: key, source: RESPONSE_FINGERPRINT_SOURCE }).onConflictDoNothing();
+    } catch {}
   }
 }
 
-export function isOwnResponse(postText: string): boolean {
-  if (responseFingerprints.size === 0) return false;
+export async function isOwnResponse(postText: string): Promise<boolean> {
   const chunks = extractChunks(postText);
-  let matchCount = 0;
-  for (const chunk of chunks) {
-    if (responseFingerprints.has(chunk)) matchCount++;
+  if (chunks.length === 0) return false;
+
+  const keys = chunks.map(c => `resp:${c}`);
+  try {
+    const matches = await db
+      .select({ id: seenItems.id })
+      .from(seenItems)
+      .where(inArray(seenItems.dedupKey, keys));
+    return matches.length >= 2;
+  } catch {
+    return false;
   }
-  return matchCount >= 2;
 }

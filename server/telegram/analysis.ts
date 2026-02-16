@@ -382,7 +382,7 @@ Return ONLY the response text, no quotes or formatting.`;
 
   const responseText = responseResult.text.trim();
 
-  markOwnResponse(responseText);
+  await markOwnResponse(responseText);
 
   const activeCampaign = biz.campaigns[0];
   let savedResponseId: number | null = null;

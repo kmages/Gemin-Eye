@@ -9,7 +9,7 @@ import { getFeedbackGuidance } from "../utils/feedback";
 import { keywordMatch } from "../utils/keywords";
 import { createRateLimiter } from "../utils/rate-limit";
 import { markOwnResponse, isOwnResponse } from "../utils/dedup";
-import { generateScanToken } from "../telegram-bot";
+import { validateScanToken } from "../telegram/bookmarklets";
 import { sendTelegramMessageToChat } from "../telegram";
 import { isMonitoringEnabled } from "./admin";
 
@@ -48,8 +48,7 @@ async function validateScanRequest(req: Request): Promise<
     return { valid: false, error: { matched: false, reason: "missing_fields" } };
   }
 
-  const expectedToken = generateScanToken(String(chatId), Number(businessId));
-  if (token !== expectedToken) {
+  if (!validateScanToken(String(chatId), Number(businessId), token)) {
     return { valid: false, error: { matched: false, reason: "invalid_token" } };
   }
 
@@ -78,7 +77,7 @@ async function handleScanRequest(
   chatId: string,
   meta: { groupName?: string; authorName?: string; pageUrl?: string }
 ) {
-  if (isOwnResponse(postText)) {
+  if (await isOwnResponse(postText)) {
     return { matched: false, reason: "own_response" };
   }
 
@@ -152,7 +151,7 @@ Return ONLY the response text, no quotes or formatting.`,
     return { matched: true, score: match.intent_score, reason: "no_response_generated" };
   }
 
-  markOwnResponse(responseText);
+  await markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
   const targetCampaign = platform === "linkedin"

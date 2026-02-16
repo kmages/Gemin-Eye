@@ -1,7 +1,5 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
-import fs from "fs";
-import path from "path";
+import type { Server } from "http";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -10,10 +8,9 @@ import { sendTelegramMessage, formatLeadNotification, formatResponseNotification
 import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
-import { SOURCE_ARCHIVE_B64 } from "./source-archive";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
-import { registerAdminRoutes, isAdmin } from "./routes/admin";
+import { registerAdminRoutes } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 
 const aiRateLimit = createRateLimiter({
@@ -374,97 +371,6 @@ Return ONLY valid JSON with this structure:
     } catch (error) {
       console.error("Telegram notify error:", error);
       res.status(500).json({ error: "Failed to send notification" });
-    }
-  });
-
-  app.get("/api/download/source", isAuthenticated, isAdmin, (_req: any, res) => {
-    try {
-      const buffer = Buffer.from(SOURCE_ARCHIVE_B64, "base64");
-      res.setHeader("Content-Type", "application/gzip");
-      res.setHeader("Content-Disposition", "attachment; filename=gemin-eye-source.tar.gz");
-      res.setHeader("Content-Length", buffer.length.toString());
-      res.send(buffer);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to serve archive" });
-    }
-  });
-
-  app.get("/download", isAuthenticated, isAdmin, (_req: any, res) => {
-    res.setHeader("Content-Type", "text/html");
-    res.send(`<!DOCTYPE html>
-<html><head><title>Download Gemin-Eye Source</title>
-<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#111;color:#fff;}
-.box{text-align:center;padding:40px;border:1px solid #333;border-radius:12px;background:#1a1a1a;}
-a{display:inline-block;margin-top:20px;padding:14px 32px;background:#6366f1;color:#fff;text-decoration:none;border-radius:8px;font-size:18px;font-weight:600;}
-a:hover{background:#4f46e5;}</style></head>
-<body><div class="box"><h1>Gemin-Eye Source Code</h1><p>Click below to download all source files as a .tar.gz archive.</p>
-<a href="/api/download/source">Download Source Code</a></div></body></html>`);
-  });
-
-  app.get("/api/source", isAuthenticated, isAdmin, (_req: any, res) => {
-    const coreFiles = [
-      "shared/schema.ts",
-      "shared/models/auth.ts",
-      "shared/models/chat.ts",
-      "server/index.ts",
-      "server/routes.ts",
-      "server/routes/admin.ts",
-      "server/routes/scan.ts",
-      "server/storage.ts",
-      "server/db.ts",
-      "server/telegram.ts",
-      "server/telegram-bot.ts",
-      "server/reddit-monitor.ts",
-      "server/google-alerts-monitor.ts",
-      "server/utils/ai.ts",
-      "server/utils/html.ts",
-      "server/utils/feedback.ts",
-      "server/utils/rate-limit.ts",
-      "client/src/App.tsx",
-      "client/src/pages/landing.tsx",
-      "client/src/pages/dashboard.tsx",
-      "client/src/pages/onboarding.tsx",
-      "client/src/pages/client-guide.tsx",
-      "client/src/hooks/use-auth.ts",
-      "client/src/lib/queryClient.ts",
-      "client/src/components/theme-provider.tsx",
-      "client/public/spy-glass.js",
-      "client/public/li-spy-glass.js",
-      "replit.md",
-    ];
-
-    let output = "# GEMIN-EYE — FULL SOURCE CODE\n";
-    output += "# AI-Powered Customer Acquisition Platform\n";
-    output += "# https://gemin-eye.com\n";
-    output += `# Generated: ${new Date().toISOString()}\n`;
-    output += "# This file is auto-generated for AI code review.\n";
-    output += "#".repeat(60) + "\n\n";
-
-    for (const filePath of coreFiles) {
-      const fullPath = path.resolve(process.cwd(), filePath);
-      try {
-        if (!fs.existsSync(fullPath)) continue;
-        const content = fs.readFileSync(fullPath, "utf-8");
-        const lines = content.split("\n").length;
-        output += "=".repeat(60) + "\n";
-        output += `FILE: ${filePath} (${lines} lines)\n`;
-        output += "=".repeat(60) + "\n";
-        output += content + "\n\n";
-      } catch {}
-    }
-
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(output);
-  });
-
-  app.get("/api/test-telegram", isAuthenticated, async (_req: any, res) => {
-    try {
-      const success = await sendTelegramMessage(
-        `<b>Gemin-Eye Test</b>\n\nThis is a test message from the Gemin-Eye platform.\nTimestamp: ${new Date().toISOString()}\n\nIf you see this, Telegram delivery is working!`
-      );
-      res.json({ success, message: success ? "Test message sent to Telegram" : "Failed to send" });
-    } catch (err: any) {
-      res.json({ success: false, error: err?.message || String(err) });
     }
   });
 

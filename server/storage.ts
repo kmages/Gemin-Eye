@@ -1,12 +1,13 @@
 import {
-  businesses, campaigns, leads, aiResponses,
+  businesses, campaigns, leads, aiResponses, users,
   type Business, type InsertBusiness,
   type Campaign, type InsertCampaign,
   type Lead, type InsertLead,
   type AiResponse, type InsertAiResponse,
+  type User,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, ne } from "drizzle-orm";
 
 export interface DashboardData {
   businesses: Business[];
@@ -33,6 +34,9 @@ export interface IStorage {
   deleteCampaign(id: number): Promise<void>;
   deleteBusiness(id: number): Promise<void>;
   getDashboardData(userId: string): Promise<DashboardData>;
+  getUserById(id: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+  updateUserRole(id: string, role: string): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -129,6 +133,20 @@ export class DatabaseStorage implements IStorage {
     const userResponses = await db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
 
     return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: userResponses };
+  }
+
+  async getUserById(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateUserRole(id: string, role: string): Promise<User> {
+    const [user] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
+    return user;
   }
 }
 

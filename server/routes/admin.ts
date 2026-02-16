@@ -11,14 +11,25 @@ export function isMonitoringEnabled() {
   return monitoringEnabled;
 }
 
-const ADMIN_USER_ID = "40011074";
+const SUPER_ADMIN_ID = "40011074";
 
-export function isAdmin(req: Request, res: Response, next: NextFunction) {
+export async function isAdmin(req: Request, res: Response, next: NextFunction) {
   const user = req.user as { claims: { sub: string } } | undefined;
-  if (!user || user.claims.sub !== ADMIN_USER_ID) {
+  if (!user) {
     return res.status(403).json({ error: "Admin access required" });
   }
-  next();
+  if (user.claims.sub === SUPER_ADMIN_ID) {
+    return next();
+  }
+  try {
+    const dbUser = await storage.getUserById(user.claims.sub);
+    if (dbUser && dbUser.role === "admin") {
+      return next();
+    }
+  } catch (e) {
+    console.error("Error checking admin role:", e);
+  }
+  return res.status(403).json({ error: "Admin access required" });
 }
 
 export function registerAdminRoutes(app: Express) {
@@ -175,7 +186,16 @@ export function registerAdminRoutes(app: Express) {
   });
 
   app.get("/api/admin/check", isAuthenticated, async (req: any, res) => {
-    res.json({ isAdmin: req.user.claims.sub === ADMIN_USER_ID });
+    const userId = req.user.claims.sub;
+    if (userId === SUPER_ADMIN_ID) {
+      return res.json({ isAdmin: true, isSuperAdmin: true });
+    }
+    try {
+      const dbUser = await storage.getUserById(userId);
+      return res.json({ isAdmin: dbUser?.role === "admin", isSuperAdmin: false });
+    } catch {
+      return res.json({ isAdmin: false, isSuperAdmin: false });
+    }
   });
 
   app.get("/api/admin/monitoring", isAuthenticated, isAdmin, async (_req: any, res) => {
@@ -203,5 +223,37 @@ export function registerAdminRoutes(app: Express) {
     }
 
     res.json({ enabled: monitoringEnabled });
+  });
+
+  app.get("/api/admin/users", isAuthenticated, isAdmin, async (_req: any, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers);
+    } catch (error) {
+      console.error("Admin: Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.patch("/api/admin/users/:userId/role", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const requesterId = req.user.claims.sub;
+      if (requesterId !== SUPER_ADMIN_ID) {
+        return res.status(403).json({ error: "Only the super admin can change user roles" });
+      }
+      const { userId } = req.params;
+      const { role } = req.body;
+      if (!role || !["admin", "user"].includes(role)) {
+        return res.status(400).json({ error: "Role must be 'admin' or 'user'" });
+      }
+      if (userId === SUPER_ADMIN_ID) {
+        return res.status(400).json({ error: "Cannot change the super admin's role" });
+      }
+      const updated = await storage.updateUserRole(userId, role);
+      res.json(updated);
+    } catch (error) {
+      console.error("Admin: Error updating user role:", error);
+      res.status(500).json({ error: "Failed to update user role" });
+    }
   });
 }

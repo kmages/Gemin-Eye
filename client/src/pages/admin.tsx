@@ -27,11 +27,12 @@ import { Switch } from "@/components/ui/switch";
 import {
   Eye, Settings, ChevronLeft, ChevronDown, ChevronRight, Pencil, Trash2,
   Plus, Save, X, Users, Target, Hash, Globe, Mail, Phone, Link2, Power,
-  MessageCircle, ExternalLink, Copy, Zap, AlertCircle, CheckCircle, Clock
+  MessageCircle, ExternalLink, Copy, Zap, AlertCircle, CheckCircle, Clock,
+  Shield, UserCog
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
+import type { Business, Campaign, Lead, AiResponse, User } from "@shared/schema";
 
 type AdminBusiness = Business & { campaigns: Campaign[]; leadCount: number };
 
@@ -719,13 +720,110 @@ function AllLeadsView() {
   );
 }
 
+function UserManagement({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const { toast } = useToast();
+  const { data: users, isLoading } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+  });
+
+  const updateRole = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "User role updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update role", description: err?.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-md" />)}
+      </div>
+    );
+  }
+
+  if (!users || users.length === 0) {
+    return (
+      <Card className="p-8 text-center space-y-3">
+        <UserCog className="w-8 h-8 mx-auto text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">No users have logged in yet.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">{users.length} registered users</p>
+      {users.map((u) => {
+        const isOwner = u.id === "40011074";
+        return (
+          <Card key={u.id} className="p-4" data-testid={`card-user-${u.id}`}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted flex-shrink-0">
+                  <UserCog className="w-4 h-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm truncate">
+                      {u.firstName} {u.lastName}
+                    </span>
+                    {isOwner && (
+                      <Badge variant="default" className="text-xs">
+                        <Shield className="w-3 h-3 mr-1" /> Owner
+                      </Badge>
+                    )}
+                    {!isOwner && u.role === "admin" && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Shield className="w-3 h-3 mr-1" /> Admin
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{u.email || "No email"}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isSuperAdmin && !isOwner && (
+                  <Select
+                    value={u.role || "user"}
+                    onValueChange={(role) => updateRole.mutate({ userId: u.id, role })}
+                  >
+                    <SelectTrigger className="w-28" data-testid={`select-role-${u.id}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+                {!isSuperAdmin && (
+                  <Badge variant={u.role === "admin" ? "secondary" : "outline"} className="text-xs">
+                    {u.role || "user"}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"businesses" | "leads">("businesses");
+  const [activeTab, setActiveTab] = useState<"businesses" | "leads" | "users">("businesses");
 
-  const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
+  const { data: adminCheck } = useQuery<{ isAdmin: boolean; isSuperAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
     enabled: !!user,
   });
@@ -848,6 +946,14 @@ export default function AdminPage() {
           >
             <MessageCircle className="w-3 h-3 mr-1" /> All Leads
           </Button>
+          <Button
+            variant={activeTab === "users" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("users")}
+            data-testid="button-tab-users"
+          >
+            <UserCog className="w-3 h-3 mr-1" /> Users
+          </Button>
         </div>
 
         {activeTab === "businesses" ? (
@@ -867,8 +973,10 @@ export default function AdminPage() {
               <p className="text-sm text-muted-foreground">No businesses yet.</p>
             </Card>
           )
-        ) : (
+        ) : activeTab === "leads" ? (
           <AllLeadsView />
+        ) : (
+          <UserManagement isSuperAdmin={adminCheck?.isSuperAdmin ?? false} />
         )}
       </main>
     </div>

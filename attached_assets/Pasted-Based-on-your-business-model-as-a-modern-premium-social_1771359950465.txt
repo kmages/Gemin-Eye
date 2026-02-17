@@ -1,0 +1,45 @@
+Based on your business model as a modern, premium social club with a focus on professional networking and indoor play, here are the recommended Google AdWords strategies to drive membership sales.
+These recommendations focus on three core audiences: Social/Lifestyle (people looking for a third space), Professional/Networking (your "Business Builder" demographic), and Corporate/Events (high-value leads).
+1. Campaign: "The Modern Social Club" (Membership Focus)
+Goal: Capture professionals looking for a "third space" in Chicago that isn't a traditional workspace or a loud bar.
+ * Targeting: Chicago (Radius around West Town/West Loop/Fulton Market).
+ * Keywords:
+   * "Social clubs Chicago"
+   * "Private members club Chicago"
+   * "Exclusive social clubs Chicago"
+   * "Best social clubs for young professionals"
+   * "New social clubs Chicago"
+ * Negative Keywords: "Nightclub", "Country club" (unless you want to compete there, but "country club" implies golf/suburbs), "Cheap", "Free".
+ * Ad Copy Example:
+   * Headline: Chicago’s Newest Social Club | The Chicago Bocce Club
+   * Headline 2: Socialize, Network, & Play
+   * Description: A modern club for professionals. Indoor world-class courts, BYOB benefits, and exclusive member events. Join today.
+2. Campaign: "Activity & Nightlife" (Bocce Enthusiasts)
+Goal: Attract people specifically looking for indoor activities, especially during Chicago winters.
+ * Keywords:
+   * "Indoor bocce ball Chicago"
+   * "Bocce leagues Chicago"
+   * "Indoor activities for adults Chicago"
+   * "Winter activities Chicago adults"
+   * "Fun things to do in West Loop"
+ * Ad Copy Example:
+   * Headline: Play Indoor Bocce in Chicago | Join a League Today
+   * Headline 2: World-Class Courts & Lounge
+   * Description: Experience the finest indoor bocce courts in the city. Leagues, tournaments, and open play for members. Located in West Town.
+3. Campaign: "Corporate & Networking" (High-Value Members)
+Goal: Leverage your "Business Builder" series and professional amenities to attract business owners and corporate accounts.
+ * Keywords:
+   * "Business networking events Chicago"
+   * "Corporate team building ideas Chicago"
+   * "Unique event venues Chicago"
+   * "Client entertainment ideas Chicago"
+   * "West Loop networking events"
+ * Ad Copy Example:
+   * Headline: Unique Corporate Team Building | Chicago Bocce Club
+   * Headline 2: Host Your Next Client Event
+   * Description: Impress clients and engage your team. Premium amenities, locker service, and private event spaces. Book a tour.
+Strategic Adjustments for your Website
+ * Location Extensions: Ensure your Google Ads account is linked to your Google My Business profile at 410 North Paulina Street so ads show your distance to the user.
+ * Ad Extensions:
+   * Sitelink Extensions: "Membership Benefits," "Upcoming Events," "Book a Tour," "Leagues."
+   * Callout Extensions: "BYOB Privileges," "Locker Service," "Daniele Colleoni Courts," "West Town Location."

@@ -63,6 +63,7 @@ export function registerAdminRoutes(app: Express) {
         targetAudience: z.string().optional(),
         coreOffering: z.string().optional(),
         preferredTone: z.string().optional(),
+        telegramChatId: z.string().nullable().optional(),
       });
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) {

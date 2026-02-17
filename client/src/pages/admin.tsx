@@ -399,6 +399,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [bizAudience, setBizAudience] = useState(business.targetAudience);
   const [bizOffering, setBizOffering] = useState(business.coreOffering);
   const [bizTone, setBizTone] = useState(business.preferredTone);
+  const [bizTelegramChatId, setBizTelegramChatId] = useState(business.telegramChatId || "");
 
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
@@ -588,13 +589,17 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Telegram Chat ID</label>
+                <Input value={bizTelegramChatId} onChange={(e) => setBizTelegramChatId(e.target.value)} placeholder="e.g. 8491725368" data-testid="input-biz-telegram-chat-id" />
+              </div>
               <div className="flex justify-end">
                 <Button
                   size="sm"
                   onClick={() => updateBiz.mutate({
                     name: bizName, type: bizType,
                     contactEmail: bizEmail || null, contactPhone: bizPhone || null, website: bizWebsite || null,
-                    targetAudience: bizAudience, coreOffering: bizOffering, preferredTone: bizTone,
+                    targetAudience: bizAudience, coreOffering: bizOffering, preferredTone: bizTone, telegramChatId: bizTelegramChatId || null,
                   })}
                   disabled={updateBiz.isPending}
                   data-testid="button-save-biz"
@@ -609,6 +614,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
               <div><span className="text-muted-foreground">Phone:</span> {business.contactPhone || "—"}</div>
               <div><span className="text-muted-foreground">Website:</span> {business.website || "—"}</div>
               <div><span className="text-muted-foreground">Tone:</span> {business.preferredTone}</div>
+              <div><span className="text-muted-foreground">Telegram:</span> {business.telegramChatId || "Not connected"}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Audience:</span> {business.targetAudience}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Offering:</span> {business.coreOffering}</div>
               <div className="col-span-2 flex items-center gap-2 pt-2 border-t">

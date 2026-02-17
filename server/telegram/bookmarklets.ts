@@ -90,9 +90,10 @@ export function generateLinkedInBookmarkletCode(baseUrl: string, chatId: string,
     `var authorName='';try{var card=el.closest('.feed-shared-update-v2');if(card){var nameEl=card.querySelector('.update-components-actor__name span[aria-hidden],.feed-shared-actor__name span');if(nameEl)authorName=nameEl.innerText||''}}catch(e){}` +
     `var payload={chatId:CID,businessId:BID,token:TOK,postText:text,authorName:authorName||'LinkedIn user',pageUrl:window.location.href};` +
     `sendToApi(payload,function(d){pendingCount--;if(d.matched){sentCount++;el.style.outline='3px solid #0077B5';el.style.outlineOffset='4px';el.style.borderRadius='4px'}updateCounter()},function(reason){pendingCount--;failCount++;updateCounter()})}` +
-    `function scan(){var posts=extractPosts();if(posts.length===0)noNewCount++;else noNewCount=0;posts.forEach(function(p){if(scannedCount>=500)return;sendPost(p.text,p.element)});if(scannedCount>=500||noNewCount>=10){autoScrolling=false;clearInterval(scrollInterval);updateCounter()}}` +
+    `function scan(){if(document.hidden)return;var posts=extractPosts();if(posts.length===0)noNewCount++;else noNewCount=0;posts.forEach(function(p){if(scannedCount>=500)return;sendPost(p.text,p.element)});if(scannedCount>=500||noNewCount>=20){autoScrolling=false;clearInterval(scrollInterval);updateCounter()}}` +
+    `document.addEventListener('visibilitychange',function(){if(!document.hidden){noNewCount=0;if(scrollsDone<maxScrolls&&scannedCount<500){autoScrolling=true;pauseBtn.textContent='Pause'}}});` +
     `scan();var si=setInterval(scan,2000);` +
-    `var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;clearInterval(scrollInterval);updateCounter();return}window.scrollBy({top:600,behavior:'smooth'})},1500)` +
+    `var scrollInterval=setInterval(function(){if(!autoScrolling||document.hidden)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;clearInterval(scrollInterval);updateCounter();return}window.scrollBy({top:600,behavior:'smooth'})},1500)` +
     `})())`;
   return code;
 }
@@ -126,9 +127,10 @@ export function generateBookmarkletCode(baseUrl: string, chatId: string, busines
     `var groupName='';var h1=document.querySelector('h1');if(h1)groupName=h1.innerText||'';if(!groupName){var titleEl=document.querySelector('[role="banner"] a[href*="/groups/"]');if(titleEl)groupName=titleEl.innerText||''}` +
     `var payload={chatId:CID,businessId:BID,token:TOK,postText:text,postAge:postAge,groupName:groupName||document.title||'Facebook Group',pageUrl:window.location.href};` +
     `sendToApi(payload,function(d){pendingCount--;if(d.matched){if(d.reason==='post_too_old'){el.style.outline='2px dashed #999';el.style.outlineOffset='4px';el.style.borderRadius='4px'}else{sentCount++;el.style.outline='3px solid #6d28d9';el.style.outlineOffset='4px';el.style.borderRadius='4px'}}updateCounter()},function(reason){pendingCount--;failCount++;updateCounter()})}` +
-    `function scan(){var posts=extractPosts();if(posts.length===0)noNewCount++;else noNewCount=0;posts.forEach(function(p){if(scannedCount>=500)return;sendPost(p.text,p.element)});if(scannedCount>=500||noNewCount>=10){autoScrolling=false;clearInterval(scrollInterval);updateCounter()}}` +
+    `function scan(){if(document.hidden)return;var posts=extractPosts();if(posts.length===0)noNewCount++;else noNewCount=0;posts.forEach(function(p){if(scannedCount>=500)return;sendPost(p.text,p.element)});if(scannedCount>=500||noNewCount>=20){autoScrolling=false;clearInterval(scrollInterval);updateCounter()}}` +
+    `document.addEventListener('visibilitychange',function(){if(!document.hidden){noNewCount=0;if(scrollsDone<maxScrolls&&scannedCount<500){autoScrolling=true;pauseBtn.textContent='Pause'}}});` +
     `scan();var si=setInterval(scan,2000);` +
-    `var scrollInterval=setInterval(function(){if(!autoScrolling)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;clearInterval(scrollInterval);updateCounter();return}window.scrollBy({top:600,behavior:'smooth'})},1500)` +
+    `var scrollInterval=setInterval(function(){if(!autoScrolling||document.hidden)return;scrollsDone++;if(scrollsDone>=maxScrolls){autoScrolling=false;clearInterval(scrollInterval);updateCounter();return}window.scrollBy({top:600,behavior:'smooth'})},1500)` +
     `})())`;
   return code;
 }

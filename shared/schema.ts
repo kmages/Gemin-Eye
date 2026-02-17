@@ -9,6 +9,7 @@ export * from "./models/chat";
 export const businesses = pgTable("businesses", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
+  telegramChatId: varchar("telegram_chat_id"),
   name: text("name").notNull(),
   type: text("type").notNull(),
   contactEmail: text("contact_email"),

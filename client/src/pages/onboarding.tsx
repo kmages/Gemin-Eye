@@ -53,6 +53,8 @@ export default function OnboardingPage() {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<"profile" | "strategy" | "complete">("profile");
   const [strategy, setStrategy] = useState<StrategyResult | null>(null);
+  const [createdBusinessId, setCreatedBusinessId] = useState<number | null>(null);
+  const [connectToken, setConnectToken] = useState<string | null>(null);
 
   const form = useForm<BusinessFormData>({
     resolver: zodResolver(businessFormSchema),
@@ -92,10 +94,12 @@ export default function OnboardingPage() {
       const res = await apiRequest("POST", "/api/businesses", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      if (data?.id) setCreatedBusinessId(data.id);
+      if (data?.connectToken) setConnectToken(data.connectToken);
       setStep("complete");
     },
     onError: () => {
@@ -438,23 +442,24 @@ export default function OnboardingPage() {
 
             <Card className="p-6 space-y-5">
               <h2 className="font-semibold flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-primary" /> Connect Telegram (Required)
+                <MessageCircle className="w-4 h-4 text-primary" /> Connect Telegram to Receive Leads
               </h2>
               <p className="text-sm text-muted-foreground">
-                Gemin-Eye sends you lead alerts and AI-written responses through Telegram. Tap the button below to connect:
+                Your business is set up. Now connect Telegram so leads get delivered straight to your phone. Just tap the button and hit Start — that's it.
               </p>
               <Button
                 size="lg"
                 className="w-full"
-                onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")}
+                onClick={() => window.open(`https://t.me/kmages_bot?start=connect_${createdBusinessId}_${connectToken}`, "_blank")}
                 data-testid="button-open-telegram"
+                disabled={!createdBusinessId || !connectToken}
               >
                 <MessageCircle className="w-4 h-4 mr-2" />
-                Open Telegram Bot
+                Connect Telegram
                 <ExternalLink className="w-3 h-3 ml-2" />
               </Button>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>The bot will walk you through a quick setup and send you your monitoring tools.</p>
+                <p>No extra setup needed — the bot will confirm your connection and you're done.</p>
               </div>
             </Card>
 
@@ -486,7 +491,7 @@ export default function OnboardingPage() {
               <Button variant="outline" className="flex-1" onClick={() => setLocation("/dashboard")} data-testid="button-go-dashboard">
                 Go to Dashboard
               </Button>
-              <Button className="flex-1" onClick={() => window.open("https://t.me/kmages_bot?start=setup", "_blank")} data-testid="button-telegram-cta">
+              <Button className="flex-1" disabled={!createdBusinessId || !connectToken} onClick={() => window.open(`https://t.me/kmages_bot?start=connect_${createdBusinessId}_${connectToken}`, "_blank")} data-testid="button-telegram-cta">
                 <MessageCircle className="w-4 h-4 mr-2" />
                 Connect Telegram
               </Button>

@@ -91,6 +91,7 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
       const locationInfo = wizard.location || "Online";
       const biz = await storage.createBusiness({
         userId: `tg-${chatId}`,
+        telegramChatId: chatId,
         name: wizard.name!,
         type: wizard.offering || wizard.name!,
         contactEmail: wizard.contactEmail || null,

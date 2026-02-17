@@ -31,6 +31,7 @@ interface AlertTarget {
   campaignId: number;
   keywords: string[];
   ownerUserId: string;
+  telegramChatId: string | null;
 }
 
 async function getAlertTargets(): Promise<AlertTarget[]> {
@@ -63,6 +64,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           campaignId: camp.id,
           keywords,
           ownerUserId: biz.userId,
+          telegramChatId: biz.telegramChatId || null,
         });
       }
     }
@@ -220,10 +222,9 @@ Return ONLY the response text, no quotes or formatting.`,
     ]);
   }
 
-  if (target.ownerUserId.startsWith("tg-")) {
-    const clientChatId = target.ownerUserId.replace("tg-", "");
-    await sendTelegramMessageToChat(clientChatId, msg, buttons.length > 0 ? { buttons } : undefined);
-    await sendTelegramMessageToChat(clientChatId, responseText);
+  if (target.telegramChatId) {
+    await sendTelegramMessageToChat(target.telegramChatId, msg, buttons.length > 0 ? { buttons } : undefined);
+    await sendTelegramMessageToChat(target.telegramChatId, responseText);
   } else {
     await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
     await sendTelegramMessage(responseText);

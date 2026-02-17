@@ -30,6 +30,7 @@ interface SubredditTarget {
   campaignId: number;
   keywords: string[];
   ownerUserId: string;
+  telegramChatId: string | null;
 }
 
 async function getRedditTargets(): Promise<SubredditTarget[]> {
@@ -66,6 +67,7 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
           campaignId: camp.id,
           keywords,
           ownerUserId: biz.userId,
+          telegramChatId: biz.telegramChatId || null,
         });
       }
     }
@@ -207,10 +209,9 @@ Return ONLY the response text, no quotes or formatting.`,
     ]);
   }
 
-  if (target.ownerUserId.startsWith("tg-")) {
-    const clientChatId = target.ownerUserId.replace("tg-", "");
-    await sendTelegramMessageToChat(clientChatId, msg, { buttons });
-    await sendTelegramMessageToChat(clientChatId, responseText);
+  if (target.telegramChatId) {
+    await sendTelegramMessageToChat(target.telegramChatId, msg, { buttons });
+    await sendTelegramMessageToChat(target.telegramChatId, responseText);
   } else {
     await sendTelegramMessage(msg, { buttons });
     await sendTelegramMessage(responseText);

@@ -92,7 +92,9 @@ export async function registerRoutes(
         }
       }
 
-      res.json(biz);
+      const { generateConnectToken } = await import("./telegram/bookmarklets");
+      const connectToken = generateConnectToken(biz.id, userId);
+      res.json({ ...biz, connectToken });
     } catch (error) {
       console.error("Error creating business:", error);
       res.status(500).json({ error: "Failed to create business" });

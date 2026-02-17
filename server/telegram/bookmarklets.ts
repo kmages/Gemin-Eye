@@ -24,6 +24,30 @@ export function validateScanToken(chatId: string, businessId: number, token: str
   return false;
 }
 
+const CONNECT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getConnectWindow(): number {
+  return Math.floor(Date.now() / CONNECT_WINDOW_MS);
+}
+
+export function generateConnectToken(businessId: number, userId: string): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET required");
+  const w = getConnectWindow();
+  return crypto.createHmac("sha256", secret).update(`connect:${businessId}:${userId}:${w}`).digest("hex").slice(0, 16);
+}
+
+export function validateConnectTokenForOwner(businessId: number, ownerUserId: string, token: string): boolean {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return false;
+  const cw = getConnectWindow();
+  for (const w of [cw, cw - 1]) {
+    const expected = crypto.createHmac("sha256", secret).update(`connect:${businessId}:${ownerUserId}:${w}`).digest("hex").slice(0, 16);
+    if (token === expected) return true;
+  }
+  return false;
+}
+
 function buildRelaySetup(baseUrlVar: string, apiVar: string): string {
   return `var relayUrl=${baseUrlVar}+'/relay.html';` +
     `var relay=window.open(relayUrl,'gemin_eye_relay','width=300,height=120,top=50,right=50');` +

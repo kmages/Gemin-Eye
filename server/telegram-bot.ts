@@ -87,6 +87,59 @@ export function registerTelegramWebhook(app: any) {
       const fromUser = message.from;
       console.log(`Telegram message from chatId=${chatId} user=${fromUser?.first_name || ''} ${fromUser?.last_name || ''} (${fromUser?.username || 'no-username'}): ${messageText.slice(0, 50)}`);
 
+      const connectMatch = messageText.match(/^\/start connect_(\d+)_([a-f0-9]+)$/);
+      if (connectMatch) {
+        const businessId = parseInt(connectMatch[1], 10);
+        const connectToken = connectMatch[2];
+        const { db } = await import("./db");
+        const { businesses } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const rows = await db.select().from(businesses).where(eq(businesses.id, businessId)).limit(1);
+        const biz = rows[0] || null;
+        if (!biz) {
+          await sendTelegramMessageToChat(chatId,
+            `Something went wrong — that business wasn't found. Please go back to the website and try again.`
+          );
+          return;
+        }
+        const { validateConnectTokenForOwner } = await import("./telegram/bookmarklets");
+        if (!validateConnectTokenForOwner(businessId, biz.userId, connectToken)) {
+          await sendTelegramMessageToChat(chatId,
+            `That connect link is invalid or expired. Please go back to the website and try again.`
+          );
+          return;
+        }
+        if (biz) {
+          await storage.updateBusiness(businessId, { telegramChatId: chatId });
+          const { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
+          const baseUrl = getAppBaseUrl();
+          const token = generateScanToken(chatId, businessId);
+          const fbCode = generateBookmarkletCode(baseUrl, chatId, businessId, token);
+          const liCode = generateLinkedInBookmarkletCode(baseUrl, chatId, businessId, token);
+          await sendTelegramMessageToChat(chatId,
+            `<b>Connected!</b>\n\n` +
+            `You'll receive leads for <b>${escapeHtml(biz.name)}</b> right here in Telegram.\n\n` +
+            `<b>What happens now:</b>\n` +
+            `- Reddit is being scanned for leads every 5 minutes\n` +
+            `- When a lead is found, you'll get a message with an AI-written response\n` +
+            `- You can rate responses to teach the AI your style\n\n` +
+            `Your Spy Glass bookmarklets are below — save them to scan Facebook and LinkedIn manually.`
+          );
+          await sendTelegramMessageToChat(chatId,
+            `<b>Facebook Spy Glass</b>\n\n` +
+            `<code>${fbCode}</code>\n\n` +
+            `Copy the code above, create a new bookmark in your browser, and paste it as the URL. ` +
+            `Then open any Facebook group and click the bookmark to scan for leads.`
+          );
+          await sendTelegramMessageToChat(chatId,
+            `<b>LinkedIn Spy Glass</b>\n\n` +
+            `<code>${liCode}</code>\n\n` +
+            `Same process — save as a bookmark and click it on your LinkedIn feed to scan for leads.`
+          );
+        }
+        return;
+      }
+
       if (messageText === "/start setup" || messageText === "/setup") {
         clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });
         await sendTelegramMessageToChat(chatId,
@@ -109,7 +162,7 @@ export function registerTelegramWebhook(app: any) {
             `<b>Welcome to Gemin-Eye Bot!</b>\n\nI help you find and respond to leads across social media.\n\n<b>Send me a post:</b>\n- Paste text + URL\n- Or just screenshot the post!\n\n<b>I'll automatically:</b>\n1. Match it to your businesses\n2. Score the lead intent\n3. Craft a human-sounding response\n4. Let you rate the response or post it directly\n\n<b>Reddit Commander:</b>\n/post r/subreddit Title | Body text\n\n<b>Managing Clients:</b>\n/newclient - Add a new business\n/removeclient - Remove a business\n/keywords - Update keywords for a business\n/groups - Update target groups\n/businesses - List all businesses\n\n<b>Google Alerts (Web-Wide Monitoring):</b>\n/addalert - Add a Google Alert RSS feed\n/alerts - View all alert feeds\n/removealert - Remove an alert feed\n\n<b>Quick tip:</b> Include the post URL and I'll add an "Open Post" button. For Reddit leads, tap "Post to Reddit" to comment directly!`
           );
         } else {
-          const existingBiz: Business[] = await storage.getBusinessesByUser(`tg-${chatId}`);
+          const existingBiz: Business[] = await storage.getBusinessesByTelegramChatId(chatId);
           if (existingBiz.length > 0) {
             const bizNames = existingBiz.map(b => `- <b>${escapeHtml(b.name)}</b>`).join("\n");
             await sendTelegramMessageToChat(chatId,
@@ -124,12 +177,11 @@ export function registerTelegramWebhook(app: any) {
               `/help - Full usage guide`
             );
           } else {
-            clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });
             await sendTelegramMessageToChat(chatId,
               `<b>Welcome to Gemin-Eye!</b>\n\n` +
-              `I help businesses find customers by monitoring social media for people asking about what you offer.\n\n` +
-              `Let's get you set up! I just need a few details about your business.\n\n` +
-              `<b>Step 1:</b> What is the name of your business?\n<i>(e.g., Mario's Tacos)</i>`
+              `To get started, set up your business on our website first. It takes about 2 minutes:\n\n` +
+              `<a href="https://gemin-eye.com/onboarding">gemin-eye.com/onboarding</a>\n\n` +
+              `Once your business is set up, you'll get a link to connect Telegram — and leads will start flowing right here.`
             );
           }
         }
@@ -153,13 +205,14 @@ export function registerTelegramWebhook(app: any) {
         return;
       }
 
-      const isClient = !isAdmin && (await storage.getBusinessesByUser(`tg-${chatId}`)).length > 0;
+      const isClient = !isAdmin && (await storage.getBusinessesByTelegramChatId(chatId)).length > 0;
       const isAuthorized = isAdmin || isClient;
 
       if (!isAuthorized) {
         if (messageText && !messageText.startsWith("/")) {
           await sendTelegramMessageToChat(chatId,
-            `You don't have a business set up yet. Send /start to get started!`
+            `You don't have a business connected yet.\n\n` +
+            `Set up your business at <a href="https://gemin-eye.com/onboarding">gemin-eye.com/onboarding</a> — you'll get a link to connect Telegram at the end.`
           );
         }
         return;

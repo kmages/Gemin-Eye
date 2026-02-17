@@ -18,6 +18,7 @@ export interface DashboardData {
 
 export interface IStorage {
   getBusinessesByUser(userId: string): Promise<Business[]>;
+  getBusinessesByTelegramChatId(chatId: string): Promise<Business[]>;
   createBusiness(data: InsertBusiness): Promise<Business>;
   getCampaignsByBusiness(businessId: number): Promise<Campaign[]>;
   getCampaignsByUser(userId: string): Promise<Campaign[]>;
@@ -42,6 +43,10 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   async getBusinessesByUser(userId: string): Promise<Business[]> {
     return db.select().from(businesses).where(eq(businesses.userId, userId)).orderBy(desc(businesses.createdAt));
+  }
+
+  async getBusinessesByTelegramChatId(chatId: string): Promise<Business[]> {
+    return db.select().from(businesses).where(eq(businesses.telegramChatId, chatId)).orderBy(desc(businesses.createdAt));
   }
 
   async createBusiness(data: InsertBusiness): Promise<Business> {

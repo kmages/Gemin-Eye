@@ -291,6 +291,98 @@ function AdminLeadCard({ lead, response }: { lead: Lead; response?: AiResponse }
   );
 }
 
+function BookmarkletSection({ businessId }: { businessId: number }) {
+  const [showBookmarklets, setShowBookmarklets] = useState(false);
+  const { toast } = useToast();
+
+  const { data, isLoading, refetch } = useQuery<{ facebook?: string; linkedin?: string; businessName?: string; error?: string; message?: string }>({
+    queryKey: ["/api/admin/businesses", businessId, "bookmarklets"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/businesses/${businessId}/bookmarklets`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: showBookmarklets,
+  });
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: `${label} bookmarklet copied` });
+    } catch {
+      toast({ title: "Failed to copy", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-medium">Bookmarklets</h4>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { setShowBookmarklets(!showBookmarklets); if (!showBookmarklets) refetch(); }}
+          data-testid={`button-toggle-bookmarklets-${businessId}`}
+        >
+          <Zap className="w-3 h-3 mr-1" /> {showBookmarklets ? "Hide" : "Show Bookmarklets"}
+        </Button>
+      </div>
+
+      {showBookmarklets && (
+        <div className="space-y-3">
+          {isLoading ? (
+            <Skeleton className="h-20 w-full rounded-md" />
+          ) : data?.error === "no_telegram" ? (
+            <Card className="p-4 text-center">
+              <AlertCircle className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">{data.message}</p>
+            </Card>
+          ) : data?.facebook ? (
+            <div className="space-y-3">
+              <Card className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5" /> Facebook Spy Glass
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(data.facebook!, "Facebook")}
+                    data-testid={`button-copy-fb-bookmarklet-${businessId}`}
+                  >
+                    <Copy className="w-3 h-3 mr-1" /> Copy
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground break-all line-clamp-2 font-mono">{data.facebook?.slice(0, 120)}...</p>
+              </Card>
+              <Card className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5" /> LinkedIn Spy Glass
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(data.linkedin!, "LinkedIn")}
+                    data-testid={`button-copy-li-bookmarklet-${businessId}`}
+                  >
+                    <Copy className="w-3 h-3 mr-1" /> Copy
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground break-all line-clamp-2 font-mono">{data.linkedin?.slice(0, 120)}...</p>
+              </Card>
+            </div>
+          ) : (
+            <Card className="p-4 text-center">
+              <AlertCircle className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">Failed to generate bookmarklets.</p>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [editingBiz, setEditingBiz] = useState(false);
@@ -600,6 +692,8 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
               )}
             </div>
           </div>
+
+          <BookmarkletSection businessId={business.id} />
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">

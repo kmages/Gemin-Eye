@@ -4,6 +4,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { startRedditMonitor, stopRedditMonitor } from "../reddit-monitor";
 import { startGoogleAlertsMonitor, stopGoogleAlertsMonitor } from "../google-alerts-monitor";
+import { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } from "../telegram/bookmarklets";
 
 let monitoringEnabled = process.env.MONITORING_DISABLED !== "true"; // defaults to ON
 
@@ -277,6 +278,28 @@ export function registerAdminRoutes(app: Express) {
     } catch (error) {
       console.error("Admin: Error updating user role:", error);
       res.status(500).json({ error: "Failed to update user role" });
+    }
+  });
+
+  app.get("/api/admin/businesses/:id/bookmarklets", isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const businessId = Number(req.params.id);
+      const biz = await storage.getBusinessById(businessId);
+      if (!biz) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+      const chatId = biz.telegramChatId;
+      if (!chatId) {
+        return res.json({ error: "no_telegram", message: "This business has no Telegram chat connected. Connect Telegram first." });
+      }
+      const baseUrl = getAppBaseUrl();
+      const token = generateScanToken(chatId, businessId);
+      const facebook = generateBookmarkletCode(baseUrl, chatId, businessId, token);
+      const linkedin = generateLinkedInBookmarkletCode(baseUrl, chatId, businessId, token);
+      res.json({ facebook, linkedin, businessName: biz.name, chatId });
+    } catch (error) {
+      console.error("Admin: Error generating bookmarklets:", error);
+      res.status(500).json({ error: "Failed to generate bookmarklets" });
     }
   });
 }

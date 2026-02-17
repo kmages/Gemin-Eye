@@ -289,9 +289,9 @@ export function registerAdminRoutes(app: Express) {
       if (!biz) {
         return res.status(404).json({ error: "Business not found" });
       }
-      const chatId = biz.telegramChatId;
+      const chatId = biz.telegramChatId || process.env.TELEGRAM_CHAT_ID;
       if (!chatId) {
-        return res.json({ error: "no_telegram", message: "This business has no Telegram chat connected. Connect Telegram first." });
+        return res.json({ error: "no_telegram", message: "This business has no Telegram chat connected and no default admin chat ID configured." });
       }
       const baseUrl = getAppBaseUrl();
       const token = generateScanToken(chatId, businessId);

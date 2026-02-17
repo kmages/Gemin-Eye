@@ -49,8 +49,9 @@ export function validateConnectTokenForOwner(businessId: number, ownerUserId: st
 }
 
 function buildRelaySetup(baseUrlVar: string, apiVar: string): string {
-  return `var relayUrl=${baseUrlVar}+'/relay.html';` +
-    `var relay=window.open(relayUrl,'gemin_eye_relay','width=300,height=120,top=50,right=50');` +
+  return `var relayId='ge_'+Math.random().toString(36).slice(2,8);` +
+    `var relayUrl=${baseUrlVar}+'/relay.html';` +
+    `var relay=window.open(relayUrl,relayId,'width=300,height=120,top=50,right=50');` +
     `if(!relay||relay.closed){alert('Please allow popups for this page, then try again.');window.__geminEyeActive=false;window.__geminEyeLiActive=false;return}` +
     `var msgCounter=0;var pendingCallbacks={};` +
     `window.addEventListener('message',function(ev){if(!ev.data||ev.data.type!=='gemin-eye-result')return;var cb=pendingCallbacks[ev.data.msgId];if(cb){delete pendingCallbacks[ev.data.msgId];cb(ev.data.data)}});` +

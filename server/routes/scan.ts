@@ -69,13 +69,73 @@ async function validateScanRequest(req: Request): Promise<
   return { valid: true, chatId: String(chatId), businessId: Number(businessId), postText, business: biz[0], bizCampaigns };
 }
 
+const TWO_WEEKS_HOURS = 14 * 24;
+
+function parsePostAgeHours(ageStr: string): number | null {
+  if (!ageStr || typeof ageStr !== "string") return null;
+  const s = ageStr.trim().toLowerCase();
+  let m = s.match(/^(\d+)\s*s$/);
+  if (m) return 0;
+  m = s.match(/^(\d+)\s*m$/);
+  if (m) return parseFloat(m[1]) / 60;
+  m = s.match(/^(\d+)\s*(h|hr|hrs)$/);
+  if (m) return parseFloat(m[1]);
+  m = s.match(/^(\d+)\s*d$/);
+  if (m) return parseFloat(m[1]) * 24;
+  m = s.match(/^(\d+)\s*w$/);
+  if (m) return parseFloat(m[1]) * 24 * 7;
+  m = s.match(/^(\d+)\s*(mo)$/);
+  if (m) return parseFloat(m[1]) * 24 * 30;
+  m = s.match(/^(\d+)\s*(y|yr|yrs)$/);
+  if (m) return parseFloat(m[1]) * 24 * 365;
+  if (s === "just now") return 0;
+  if (s === "yesterday") return 24;
+  m = s.match(/^(\d+)\s+(min|minute|mins)s?\s+ago$/);
+  if (m) return parseFloat(m[1]) / 60;
+  m = s.match(/^(\d+)\s+(hour|hr|hours|hrs)\s+ago$/);
+  if (m) return parseFloat(m[1]);
+  m = s.match(/^(\d+)\s+days?\s+ago$/);
+  if (m) return parseFloat(m[1]) * 24;
+  m = s.match(/^(\d+)\s+weeks?\s+ago$/);
+  if (m) return parseFloat(m[1]) * 24 * 7;
+  m = s.match(/^(\d+)\s+(month|months|mo)\s+ago$/);
+  if (m) return parseFloat(m[1]) * 24 * 30;
+  m = s.match(/^(\d+)\s+(year|years|yr|yrs)\s+ago$/);
+  if (m) return parseFloat(m[1]) * 24 * 365;
+
+  const months: Record<string, number> = {
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+    july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+    jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+  m = s.match(/^([a-z]+)\s+(\d{1,2})(?:,?\s+(\d{4}))?/);
+  if (m && months[m[1]] !== undefined) {
+    const year = m[3] ? parseInt(m[3]) : new Date().getFullYear();
+    const date = new Date(year, months[m[1]], parseInt(m[2]));
+    if (!isNaN(date.getTime())) {
+      const hours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
+      return hours > 0 ? hours : null;
+    }
+  }
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    const year = parseInt(m[3]) < 100 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
+    const date = new Date(year, parseInt(m[1]) - 1, parseInt(m[2]));
+    if (!isNaN(date.getTime())) {
+      const hours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
+      return hours > 0 ? hours : null;
+    }
+  }
+  return null;
+}
+
 async function handleScanRequest(
   platform: "facebook" | "linkedin",
   business: Business,
   bizCampaigns: Campaign[],
   postText: string,
   chatId: string,
-  meta: { groupName?: string; authorName?: string; pageUrl?: string }
+  meta: { groupName?: string; authorName?: string; pageUrl?: string; postAge?: string }
 ) {
   if (await isOwnResponse(postText)) {
     return { matched: false, reason: "own_response" };
@@ -184,6 +244,14 @@ Return ONLY the response text, no quotes or formatting.`,
     }
   }
 
+  const postAgeHours = parsePostAgeHours(meta.postAge || "");
+  const isTooOld = postAgeHours !== null && postAgeHours > TWO_WEEKS_HOURS;
+
+  if (isTooOld) {
+    console.log(`${platform} scan: lead saved but skipping Telegram (post age: ${meta.postAge})`);
+    return { matched: true, score: match.intent_score, notified: false, reason: "post_too_old" };
+  }
+
   const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
   let msg = `<b>${platformLabel} Lead Found</b>\n\n`;
   msg += `<b>Business:</b> ${escapeHtml(business.name)}\n`;
@@ -193,6 +261,11 @@ Return ONLY the response text, no quotes or formatting.`,
     msg += `<b>Author:</b> ${escapeHtml(meta.authorName || "LinkedIn user")}\n`;
   }
   msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  if (meta.postAge) {
+    const ageText = meta.postAge.trim().toLowerCase();
+    const needsAgo = !ageText.includes("ago") && ageText !== "just now" && ageText !== "yesterday";
+    msg += `<b>Posted:</b> ${escapeHtml(meta.postAge)}${needsAgo ? " ago" : ""}\n`;
+  }
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
   msg += `<b>Post:</b>\n<i>"${escapeHtml(postText.slice(0, 200))}"</i>`;
 
@@ -217,7 +290,7 @@ Return ONLY the response text, no quotes or formatting.`,
   await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
   await sendTelegramMessageToChat(chatId, responseText);
 
-  return { matched: true, score: match.intent_score };
+  return { matched: true, score: match.intent_score, notified: true };
 }
 
 export function registerScanRoutes(app: Express) {
@@ -230,8 +303,8 @@ export function registerScanRoutes(app: Express) {
       if (!validation.valid) { res.json(validation.error); return; }
 
       const { chatId, postText, business, bizCampaigns } = validation;
-      const { groupName, pageUrl } = req.body;
-      const result = await handleScanRequest("facebook", business, bizCampaigns, postText, chatId, { groupName, pageUrl });
+      const { groupName, pageUrl, postAge } = req.body;
+      const result = await handleScanRequest("facebook", business, bizCampaigns, postText, chatId, { groupName, pageUrl, postAge });
       res.json(result);
     } catch (error) {
       console.error("FB scan error:", error);

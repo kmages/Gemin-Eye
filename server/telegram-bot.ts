@@ -84,6 +84,8 @@ export function registerTelegramWebhook(app: any) {
 
       const chatId = String(message.chat.id);
       const messageText = (message.text || "").trim();
+      const fromUser = message.from;
+      console.log(`Telegram message from chatId=${chatId} user=${fromUser?.first_name || ''} ${fromUser?.last_name || ''} (${fromUser?.username || 'no-username'}): ${messageText.slice(0, 50)}`);
 
       if (messageText === "/start setup" || messageText === "/setup") {
         clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });

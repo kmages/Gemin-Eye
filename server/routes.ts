@@ -319,6 +319,40 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/bookmarklets/:businessId/:chatId/:token", async (req, res) => {
+    try {
+      const { businessId, chatId, token } = req.params;
+      const bizId = parseInt(businessId);
+      if (isNaN(bizId)) {
+        return res.status(400).json({ error: "Invalid business ID" });
+      }
+
+      const { validateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
+
+      if (!validateScanToken(chatId, bizId, token)) {
+        return res.status(403).json({ error: "Invalid or expired token" });
+      }
+
+      const business = await storage.getBusinessById(bizId);
+      if (!business) {
+        return res.status(404).json({ error: "Business not found" });
+      }
+
+      const baseUrl = getAppBaseUrl();
+      const facebookCode = generateBookmarkletCode(baseUrl, chatId, bizId, token);
+      const linkedinCode = generateLinkedInBookmarkletCode(baseUrl, chatId, bizId, token);
+
+      res.json({
+        businessName: business.name,
+        facebookCode,
+        linkedinCode,
+      });
+    } catch (error) {
+      console.error("Error generating bookmarklets:", error);
+      res.status(500).json({ error: "Failed to generate bookmarklets" });
+    }
+  });
+
   registerAdminRoutes(app);
   registerScanRoutes(app);
 

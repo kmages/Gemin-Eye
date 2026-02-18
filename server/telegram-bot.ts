@@ -111,30 +111,25 @@ export function registerTelegramWebhook(app: any) {
         }
         if (biz) {
           await storage.updateBusiness(businessId, { telegramChatId: chatId });
-          const { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
+          const { generateScanToken, getAppBaseUrl } = await import("./telegram/bookmarklets");
           const baseUrl = getAppBaseUrl();
-          const token = generateScanToken(chatId, businessId);
-          const fbCode = generateBookmarkletCode(baseUrl, chatId, businessId, token);
-          const liCode = generateLinkedInBookmarkletCode(baseUrl, chatId, businessId, token);
+          const scanToken = generateScanToken(chatId, businessId);
+          const bookmarkletPageUrl = `${baseUrl}/bookmarklets/${businessId}/${chatId}/${scanToken}`;
           await sendTelegramMessageToChat(chatId,
             `<b>Connected!</b>\n\n` +
             `You'll receive leads for <b>${escapeHtml(biz.name)}</b> right here in Telegram.\n\n` +
             `<b>What happens now:</b>\n` +
             `- Reddit is being scanned for leads every 5 minutes\n` +
             `- When a lead is found, you'll get a message with an AI-written response\n` +
-            `- You can rate responses to teach the AI your style\n\n` +
-            `Your Spy Glass bookmarklets are below — save them to scan Facebook and LinkedIn manually.`
+            `- You can rate responses to teach the AI your style`,
+            { disable_web_page_preview: true }
           );
           await sendTelegramMessageToChat(chatId,
-            `<b>Facebook Spy Glass</b>\n\n` +
-            `<code>${fbCode}</code>\n\n` +
-            `Copy the code above, create a new bookmark in your browser, and paste it as the URL. ` +
-            `Then open any Facebook group and click the bookmark to scan for leads.`
-          );
-          await sendTelegramMessageToChat(chatId,
-            `<b>LinkedIn Spy Glass</b>\n\n` +
-            `<code>${liCode}</code>\n\n` +
-            `Same process — save as a bookmark and click it on your LinkedIn feed to scan for leads.`
+            `<b>Spy Glass Bookmarklets</b>\n\n` +
+            `Use these tools to manually scan Facebook groups and LinkedIn for leads.\n\n` +
+            `Tap the link below to get your bookmarklet codes with easy copy buttons:\n` +
+            `<a href="${bookmarkletPageUrl}">Get Your Bookmarklets</a>`,
+            { disable_web_page_preview: false }
           );
         }
         return;

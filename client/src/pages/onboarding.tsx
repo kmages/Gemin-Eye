@@ -434,19 +434,53 @@ export default function OnboardingPage() {
               <div className="w-20 h-20 mx-auto rounded-full bg-chart-2/10 flex items-center justify-center">
                 <CheckCircle className="w-10 h-10 text-chart-2" />
               </div>
-              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">Strategy Created!</h2>
+              <h2 className="text-3xl font-serif font-bold" data-testid="text-complete-title">You're All Set!</h2>
               <p className="text-muted-foreground max-w-md mx-auto">
-                Now connect Telegram to receive lead alerts instantly on your phone.
+                One last step — connect Telegram so we can send leads to your phone.
               </p>
             </div>
 
-            <Card className="p-6 space-y-5">
-              <h2 className="font-semibold flex items-center gap-2">
-                <MessageCircle className="w-4 h-4 text-primary" /> Connect Telegram to Receive Leads
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Your business is set up. Now connect Telegram so leads get delivered straight to your phone. Just tap the button and hit Start — that's it.
-              </p>
+            <Card className="p-6 space-y-6">
+              <div className="flex items-center gap-3 pb-2 border-b">
+                <div className="w-10 h-10 rounded-full bg-[#2AABEE]/10 flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-5 h-5 text-[#2AABEE]" />
+                </div>
+                <div>
+                  <h2 className="font-semibold" data-testid="text-telegram-title">Connect Telegram</h2>
+                  <p className="text-xs text-muted-foreground">Takes about 10 seconds</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-primary">1</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Tap the button below</p>
+                    <p className="text-xs text-muted-foreground">It opens our bot in Telegram</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-xs font-bold text-primary">2</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Press "Start" inside Telegram</p>
+                    <p className="text-xs text-muted-foreground">You'll see a big blue Start button at the bottom</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-chart-2/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-chart-2" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Done — leads will arrive here</p>
+                    <p className="text-xs text-muted-foreground">Plus your bookmarklet tools for Facebook and LinkedIn</p>
+                  </div>
+                </div>
+              </div>
+
               <Button
                 size="lg"
                 className="w-full"
@@ -455,47 +489,18 @@ export default function OnboardingPage() {
                 disabled={!createdBusinessId || !connectToken}
               >
                 <MessageCircle className="w-4 h-4 mr-2" />
-                Connect Telegram
+                Open Telegram Bot
                 <ExternalLink className="w-3 h-3 ml-2" />
               </Button>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>No extra setup needed — the bot will confirm your connection and you're done.</p>
-              </div>
+
+              <p className="text-xs text-center text-muted-foreground">
+                Don't have Telegram? <a href="https://telegram.org/apps" target="_blank" rel="noopener noreferrer" className="underline" data-testid="link-download-telegram">Download it free here</a> — it's a messaging app like WhatsApp.
+              </p>
             </Card>
 
-            <Card className="p-6 space-y-4">
-              <h2 className="font-semibold flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" /> What Happens Next
-              </h2>
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <div className="flex gap-3">
-                  <span className="font-semibold text-foreground shrink-0">1.</span>
-                  <span><b className="text-foreground">Reddit monitoring is live</b> - AI scans your target subreddits every 5 minutes for leads</span>
-                </div>
-                <div className="flex gap-3">
-                  <span className="font-semibold text-foreground shrink-0">2.</span>
-                  <span><b className="text-foreground">Telegram alerts</b> - When a lead is found, you get a message with the AI-written response ready to post</span>
-                </div>
-                <div className="flex gap-3">
-                  <span className="font-semibold text-foreground shrink-0">3.</span>
-                  <span><b className="text-foreground">Spy Glass bookmarklets</b> - The bot will send you bookmark tools to manually scan Facebook and LinkedIn</span>
-                </div>
-                <div className="flex gap-3">
-                  <span className="font-semibold text-foreground shrink-0">4.</span>
-                  <span><b className="text-foreground">Rate responses</b> - Tap feedback buttons to teach the AI your style over time</span>
-                </div>
-              </div>
-            </Card>
-
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setLocation("/dashboard")} data-testid="button-go-dashboard">
-                Go to Dashboard
-              </Button>
-              <Button className="flex-1" disabled={!createdBusinessId || !connectToken} onClick={() => window.open(`https://t.me/kmages_bot?start=connect_${createdBusinessId}_${connectToken}`, "_blank")} data-testid="button-telegram-cta">
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Connect Telegram
-              </Button>
-            </div>
+            <Button variant="outline" className="w-full" onClick={() => setLocation("/dashboard")} data-testid="button-go-dashboard">
+              Skip for now — Go to Dashboard
+            </Button>
           </div>
         )}
       </main>

@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { clientWizards, type ClientWizardState } from "./state";
-import { generateScanToken, getAppBaseUrl } from "./bookmarklets";
 
 export async function handleClientWizard(chatId: string, text: string): Promise<boolean> {
   const wizard = clientWizards.get(chatId);
@@ -166,24 +165,12 @@ RULES:
 
       clientWizards.delete(chatId);
 
-      const baseUrl = getAppBaseUrl();
-      const scanToken = generateScanToken(chatId, biz.id);
-      const bookmarkletPageUrl = `${baseUrl}/bookmarklets/${biz.id}/${chatId}/${scanToken}`;
-
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +
         `<b>Location:</b> ${escapeHtml(locationInfo)}\n` +
         `I am now watching for: <b>${wizard.keywords.map(k => escapeHtml(k)).join(", ")}</b>\n\n` +
         `<b>Reddit Monitoring:</b> ${redditSubs.map(s => escapeHtml(s)).join(", ")}`,
         { disable_web_page_preview: true }
-      );
-
-      await sendTelegramMessageToChat(chatId,
-        `<b>Spy Glass Bookmarklets</b>\n\n` +
-        `Use these tools to manually scan Facebook groups and LinkedIn for leads.\n\n` +
-        `Tap the link below to get your bookmarklet codes with easy copy buttons:\n` +
-        `<a href="${bookmarkletPageUrl}">Get Your Bookmarklets</a>`,
-        { disable_web_page_preview: false }
       );
 
       await sendTelegramMessageToChat(chatId,

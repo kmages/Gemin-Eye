@@ -111,25 +111,15 @@ export function registerTelegramWebhook(app: any) {
         }
         if (biz) {
           await storage.updateBusiness(businessId, { telegramChatId: chatId });
-          const { generateScanToken, getAppBaseUrl } = await import("./telegram/bookmarklets");
-          const baseUrl = getAppBaseUrl();
-          const scanToken = generateScanToken(chatId, businessId);
-          const bookmarkletPageUrl = `${baseUrl}/bookmarklets/${businessId}/${chatId}/${scanToken}`;
           await sendTelegramMessageToChat(chatId,
             `<b>Connected!</b>\n\n` +
             `You'll receive leads for <b>${escapeHtml(biz.name)}</b> right here in Telegram.\n\n` +
             `<b>What happens now:</b>\n` +
             `- Reddit is being scanned for leads every 5 minutes\n` +
             `- When a lead is found, you'll get a message with an AI-written response\n` +
-            `- You can rate responses to teach the AI your style`,
+            `- You can rate responses to teach the AI your style\n\n` +
+            `Head to your <a href="https://gemin-eye.com/dashboard">dashboard</a> to access all your tools.`,
             { disable_web_page_preview: true }
-          );
-          await sendTelegramMessageToChat(chatId,
-            `<b>Spy Glass Bookmarklets</b>\n\n` +
-            `Use these tools to manually scan Facebook groups and LinkedIn for leads.\n\n` +
-            `Tap the link below to get your bookmarklet codes with easy copy buttons:\n` +
-            `<a href="${bookmarkletPageUrl}">Get Your Bookmarklets</a>`,
-            { disable_web_page_preview: false }
           );
         }
         return;
@@ -165,8 +155,8 @@ export function registerTelegramWebhook(app: any) {
               `Your businesses:\n${bizNames}\n\n` +
               `<b>What you can do:</b>\n` +
               `- Send me a post URL + text to analyze\n` +
-              `- Screenshot a post and send the image\n` +
-              `- Use your bookmarklets to scan Facebook/LinkedIn groups\n\n` +
+              `- Screenshot a post and send the image\n\n` +
+              `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for all tools including Spy Glass scanners.\n\n` +
               `<b>Commands:</b>\n` +
               `/setup - Add another business\n` +
               `/help - Full usage guide`
@@ -188,11 +178,11 @@ export function registerTelegramWebhook(app: any) {
           `<b>Gemin-Eye - Your Lead Finder</b>\n\n` +
           `<b>How it works:</b>\n` +
           `- I automatically scan Reddit for posts matching your keywords\n` +
-          `- When I find a lead, I'll message you with an AI-written response\n` +
-          `- Use your bookmarklets to manually scan Facebook/LinkedIn groups\n\n` +
+          `- When I find a lead, I'll message you with an AI-written response\n\n` +
           `<b>Manual scanning:</b>\n` +
           `- Send me any post text + URL and I'll analyze it\n` +
           `- Or screenshot a post and send the image\n\n` +
+          `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for Spy Glass tools to scan Facebook and LinkedIn.\n\n` +
           `<b>Commands:</b>\n` +
           `/setup - Add a new business\n` +
           `/help - This guide`

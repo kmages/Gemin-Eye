@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
@@ -9,10 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
-  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings
+  CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
+  Search, Monitor, Check
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { SiFacebook, SiLinkedin } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
 
@@ -164,6 +166,77 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   );
 }
 
+interface BookmarkletInfo {
+  businessId: number;
+  businessName: string;
+  bookmarkletPageUrl: string;
+  facebookCode: string;
+  linkedinCode: string;
+}
+
+function SpyGlassCopyButton({ code, label, icon: Icon, testId }: { code: string; label: string; icon: any; testId: string }) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      toast({ title: "Copied!", description: `${label} bookmarklet code copied to clipboard.` });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Copy failed", description: "Please try selecting and copying manually.", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Button variant="outline" onClick={handleCopy} data-testid={testId}>
+      <Icon className="w-4 h-4 mr-2" />
+      {copied ? <><Check className="w-3 h-3 mr-1" /> Copied!</> : `Copy ${label}`}
+    </Button>
+  );
+}
+
+function SpyGlassSection({ bookmarklets }: { bookmarklets: BookmarkletInfo[] }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold" data-testid="text-spyglass-title">Spy Glass Tools</h2>
+        <Badge variant="secondary" className="text-xs">Desktop</Badge>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Scan Facebook groups and LinkedIn from your desktop browser. Copy a bookmarklet code, save it as a browser bookmark, then click it while on Facebook or LinkedIn to scan for leads.
+      </p>
+      <div className="grid gap-4">
+        {bookmarklets.map((bm) => (
+          <Card key={bm.businessId} className="p-5 space-y-4" data-testid={`card-spyglass-${bm.businessId}`}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="font-medium" data-testid={`text-spyglass-biz-${bm.businessId}`}>{bm.businessName}</h3>
+              <Button variant="ghost" size="sm" onClick={() => window.open(bm.bookmarkletPageUrl, '_blank')} data-testid={`button-spyglass-page-${bm.businessId}`}>
+                <ExternalLink className="w-3 h-3 mr-1" /> Full Setup Guide
+              </Button>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <SpyGlassCopyButton
+                code={bm.facebookCode}
+                label="Facebook"
+                icon={SiFacebook}
+                testId={`button-copy-fb-${bm.businessId}`}
+              />
+              <SpyGlassCopyButton
+                code={bm.linkedinCode}
+                label="LinkedIn"
+                icon={SiLinkedin}
+                testId={`button-copy-li-${bm.businessId}`}
+              />
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [, setLocation] = useLocation();
@@ -192,6 +265,11 @@ export default function Dashboard() {
 
   const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
     queryKey: ["/api/leads"],
+    enabled: !!user,
+  });
+
+  const { data: bookmarklets } = useQuery<BookmarkletInfo[]>({
+    queryKey: ["/api/my-bookmarklets"],
     enabled: !!user,
   });
 
@@ -292,6 +370,10 @@ export default function Dashboard() {
                 color="bg-chart-4/10 text-chart-4"
               />
             </div>
+
+            {bookmarklets && bookmarklets.length > 0 && (
+              <SpyGlassSection bookmarklets={bookmarklets} />
+            )}
 
             {campaigns && campaigns.length > 0 && (
               <div className="space-y-4">

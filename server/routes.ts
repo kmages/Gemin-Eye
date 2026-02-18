@@ -319,6 +319,36 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/my-bookmarklets", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const businesses = await storage.getBusinessesByUser(userId);
+      const { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
+      const baseUrl = getAppBaseUrl();
+
+      const results = businesses
+        .filter(b => b.telegramChatId)
+        .map(b => {
+          const chatId = b.telegramChatId!;
+          const token = generateScanToken(chatId, b.id);
+          return {
+            businessId: b.id,
+            businessName: b.name,
+            facebookCode: generateBookmarkletCode(baseUrl, chatId, b.id, token),
+            linkedinCode: generateLinkedInBookmarkletCode(baseUrl, chatId, b.id, token),
+            bookmarkletPageUrl: `${baseUrl}/bookmarklets/${b.id}/${chatId}/${token}`,
+          };
+        });
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error generating user bookmarklets:", error);
+      res.status(500).json({ error: "Failed to generate bookmarklets" });
+    }
+  });
+
   app.get("/api/bookmarklets/:businessId/:chatId/:token", async (req, res) => {
     try {
       const { businessId, chatId, token } = req.params;

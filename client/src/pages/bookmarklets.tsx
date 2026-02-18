@@ -64,7 +64,7 @@ export default function BookmarkletsPage() {
           <AlertCircle className="w-10 h-10 text-destructive mx-auto" />
           <h2 className="text-lg font-semibold" data-testid="text-error-title">Link Expired or Invalid</h2>
           <p className="text-sm text-muted-foreground" data-testid="text-error-message">
-            This bookmarklet link may have expired. Please request a new one from the Telegram bot.
+            This bookmarklet link may have expired. Please visit your dashboard to get a fresh link.
           </p>
         </Card>
       </div>

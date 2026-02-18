@@ -441,61 +441,68 @@ export default function OnboardingPage() {
             </div>
 
             <Card className="p-6 space-y-6">
-              <div className="flex items-center gap-3 pb-2 border-b">
-                <div className="w-10 h-10 rounded-full bg-[#2AABEE]/10 flex items-center justify-center shrink-0">
-                  <MessageCircle className="w-5 h-5 text-[#2AABEE]" />
+              <h2 className="font-semibold text-center" data-testid="text-telegram-title">Get Leads on Your Phone in 3 Steps</h2>
+
+              <div className="space-y-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-sm font-bold text-primary">1</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Download Telegram</p>
+                    <p className="text-xs text-muted-foreground mb-2">Free messaging app — like WhatsApp or iMessage</p>
+                    <div className="flex flex-wrap gap-2">
+                      <a href="https://apps.apple.com/app/telegram-messenger/id686449807" target="_blank" rel="noopener noreferrer" data-testid="link-telegram-ios">
+                        <Badge variant="outline" className="text-xs">iPhone</Badge>
+                      </a>
+                      <a href="https://play.google.com/store/apps/details?id=org.telegram.messenger" target="_blank" rel="noopener noreferrer" data-testid="link-telegram-android">
+                        <Badge variant="outline" className="text-xs">Android</Badge>
+                      </a>
+                      <a href="https://desktop.telegram.org/" target="_blank" rel="noopener noreferrer" data-testid="link-telegram-desktop">
+                        <Badge variant="outline" className="text-xs">Desktop</Badge>
+                      </a>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="font-semibold" data-testid="text-telegram-title">Connect Telegram</h2>
-                  <p className="text-xs text-muted-foreground">Takes about 10 seconds</p>
+
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-sm font-bold text-primary">2</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Create your account</p>
+                    <p className="text-xs text-muted-foreground">Just enter your phone number — takes 30 seconds</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-sm font-bold text-primary">3</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Tap "Connect Telegram" below</p>
+                    <p className="text-xs text-muted-foreground mb-3">This links your account — leads go straight to your phone</p>
+                    <Button
+                      size="lg"
+                      className="w-full"
+                      onClick={() => window.open(`https://t.me/kmages_bot?start=connect_${createdBusinessId}_${connectToken}`, "_blank")}
+                      data-testid="button-open-telegram"
+                      disabled={!createdBusinessId || !connectToken}
+                    >
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Connect Telegram
+                      <ExternalLink className="w-3 h-3 ml-2" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-xs font-bold text-primary">1</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Tap the button below</p>
-                    <p className="text-xs text-muted-foreground">It opens our bot in Telegram</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-xs font-bold text-primary">2</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Press "Start" inside Telegram</p>
-                    <p className="text-xs text-muted-foreground">You'll see a big blue Start button at the bottom</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-chart-2/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle className="w-3.5 h-3.5 text-chart-2" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Done — leads will arrive here</p>
-                    <p className="text-xs text-muted-foreground">Plus your bookmarklet tools for Facebook and LinkedIn</p>
-                  </div>
-                </div>
+              <div className="flex items-start gap-3 pt-2 border-t">
+                <CheckCircle className="w-4 h-4 text-chart-2 shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground">
+                  Already have Telegram? Skip to step 3 — just tap Connect.
+                </p>
               </div>
-
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() => window.open(`https://t.me/kmages_bot?start=connect_${createdBusinessId}_${connectToken}`, "_blank")}
-                data-testid="button-open-telegram"
-                disabled={!createdBusinessId || !connectToken}
-              >
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Open Telegram Bot
-                <ExternalLink className="w-3 h-3 ml-2" />
-              </Button>
-
-              <p className="text-xs text-center text-muted-foreground">
-                Don't have Telegram? <a href="https://telegram.org/apps" target="_blank" rel="noopener noreferrer" className="underline" data-testid="link-download-telegram">Download it free here</a> — it's a messaging app like WhatsApp.
-              </p>
             </Card>
 
             <Button variant="outline" className="w-full" onClick={() => setLocation("/dashboard")} data-testid="button-go-dashboard">

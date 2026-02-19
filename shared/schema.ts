@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -39,6 +39,7 @@ export const campaigns = pgTable("campaigns", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_campaigns_business_id").on(table.businessId),
+  index("idx_campaigns_platform_status").on(table.platform, table.status),
 ]);
 
 export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
@@ -113,7 +114,9 @@ export const responseFeedback = pgTable("response_feedback", {
   feedback: text("feedback").notNull(),
   reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_response_feedback_response_id").on(table.responseId),
+]);
 
 export const responseFeedbackRelations = relations(responseFeedback, ({ one }) => ({
   response: one(aiResponses, {
@@ -138,7 +141,20 @@ export const seenItems = pgTable("seen_items", {
   dedupKey: text("dedup_key").notNull().unique(),
   source: text("source").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_seen_items_created_at").on(table.createdAt),
+]);
+
+export const rateLimitBuckets = pgTable("rate_limit_buckets", {
+  id: serial("id").primaryKey(),
+  limiterName: text("limiter_name").notNull(),
+  key: text("key").notNull(),
+  count: integer("count").notNull().default(1),
+  resetAt: timestamp("reset_at").notNull(),
+}, (table) => [
+  uniqueIndex("idx_rate_limit_name_key").on(table.limiterName, table.key),
+  index("idx_rate_limit_reset_at").on(table.resetAt),
+]);
 
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;

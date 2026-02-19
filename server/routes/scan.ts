@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
 import type { Business, Campaign } from "@shared/schema";
-import { generateContent, safeParseJsonFromAI, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
+import { generateContent, parseAIJsonWithSchema, scanMatchSchema, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { keywordMatch } from "../utils/keywords";
@@ -173,9 +173,9 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
     config: { maxOutputTokens: 512, thinkingConfig: { thinkingBudget: 0 } },
   });
 
-  const match = safeParseJsonFromAI(matchResult.text);
+  const match = parseAIJsonWithSchema(matchResult.text, scanMatchSchema);
   if (!match) {
-    console.error(`${platform} scan: AI parse error for "${business.name}"`);
+    console.error(`${platform} scan: AI parse/validation error for "${business.name}"`);
     return { matched: false, reason: "ai_parse_error" };
   }
 

@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { generateContent, safeParseJsonFromAI } from "../utils/ai";
+import { generateContent, safeParseJsonFromAI, parseAIJsonWithSchema, analysisMatchSchema } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { markOwnResponse } from "../utils/dedup";
@@ -153,7 +153,7 @@ If you cannot read any text from the image, return: {"post_text": "", "platform"
     });
 
     const responseText = result.text;
-    const parsed = safeParseJsonFromAI(responseText);
+    const parsed = safeParseJsonFromAI(responseText) as Record<string, any> | null;
     if (!parsed) return null;
     if (!parsed.post_text || parsed.post_text.length < 3) return null;
 
@@ -245,7 +245,7 @@ Return ONLY valid JSON:
   });
 
   const matchText = matchResult.text;
-  const match = safeParseJsonFromAI(matchText);
+  const match = parseAIJsonWithSchema(matchText, analysisMatchSchema);
   if (!match) {
     return {
       message: "Could not analyze this post. Try again.",
@@ -280,7 +280,7 @@ Return ONLY valid JSON:
     };
   }
 
-  const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business.toLowerCase());
+  const biz = allBiz.find((b) => b.name.toLowerCase() === match.matched_business!.toLowerCase());
   if (!biz) {
     return {
       message: `<b>No match found</b>\n\nCouldn't match to a specific business.\n\n<b>Reason:</b> ${escapeHtml(match.reasoning || "")}`,

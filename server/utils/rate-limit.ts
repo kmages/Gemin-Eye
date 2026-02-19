@@ -1,20 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
+import { db } from "../db";
+import { rateLimitBuckets } from "@shared/schema";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 
-interface RateLimitBucket {
-  count: number;
-  resetAt: number;
-}
-
-const buckets = new Map<string, Map<string, RateLimitBucket>>();
-
-setInterval(() => {
-  const now = Date.now();
-  buckets.forEach((limiterMap) => {
-    limiterMap.forEach((bucket, key) => {
-      if (now > bucket.resetAt) limiterMap.delete(key);
-    });
-  });
-}, 60 * 1000);
+setInterval(async () => {
+  try {
+    await db.delete(rateLimitBuckets).where(lt(rateLimitBuckets.resetAt, new Date()));
+  } catch {}
+}, 5 * 60 * 1000);
 
 export function createRateLimiter(options: {
   name: string;
@@ -25,26 +18,48 @@ export function createRateLimiter(options: {
   const { name, maxRequests, windowMs } = options;
   const keyFn = options.keyFn || ((req: Request) => req.ip || "unknown");
 
-  if (!buckets.has(name)) {
-    buckets.set(name, new Map());
-  }
-  const limiterMap = buckets.get(name)!;
-
-  return (req: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const key = keyFn(req);
-    const now = Date.now();
-    const bucket = limiterMap.get(key);
+    const now = new Date();
 
-    if (bucket && now < bucket.resetAt) {
-      if (bucket.count >= maxRequests) {
-        res.status(429).json({ error: "Too many requests. Please try again later." });
-        return;
+    try {
+      const existing = await db
+        .select()
+        .from(rateLimitBuckets)
+        .where(
+          and(
+            eq(rateLimitBuckets.limiterName, name),
+            eq(rateLimitBuckets.key, key),
+            gt(rateLimitBuckets.resetAt, now),
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const bucket = existing[0];
+        if (bucket.count >= maxRequests) {
+          res.status(429).json({ error: "Too many requests. Please try again later." });
+          return;
+        }
+        await db
+          .update(rateLimitBuckets)
+          .set({ count: sql`${rateLimitBuckets.count} + 1` })
+          .where(eq(rateLimitBuckets.id, bucket.id));
+      } else {
+        const resetAt = new Date(now.getTime() + windowMs);
+        await db
+          .insert(rateLimitBuckets)
+          .values({ limiterName: name, key, count: 1, resetAt })
+          .onConflictDoUpdate({
+            target: [rateLimitBuckets.limiterName, rateLimitBuckets.key],
+            set: { count: sql`1`, resetAt },
+          });
       }
-      bucket.count++;
-    } else {
-      limiterMap.set(key, { count: 1, resetAt: now + windowMs });
-    }
 
-    next();
+      next();
+    } catch (err) {
+      console.error("Rate limiter DB error, allowing request:", err);
+      next();
+    }
   };
 }

@@ -65,15 +65,29 @@ export async function generateContent(
   throw lastError;
 }
 
-export function safeParseJsonFromAI(text: string): any | null {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    return null;
-  }
+export function safeParseJsonFromAI(text: string): unknown | null {
+  const cleaned = text
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
+
+  try { return JSON.parse(cleaned); } catch {}
+
+  const match = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (!match) return null;
+  try { return JSON.parse(match[1]); } catch { return null; }
+}
+
+export function parseAIJsonWithSchema<T>(
+  text: string,
+  schema: ZodSchema<T>,
+): T | null {
+  const parsed = safeParseJsonFromAI(text);
+  if (!parsed) return null;
+  const validated = schema.safeParse(parsed);
+  if (validated.success) return validated.data;
+  console.warn("AI JSON schema validation failed:", validated.error.issues);
+  return null;
 }
 
 export async function parseAIJsonWithRetry<T>(
@@ -127,6 +141,23 @@ export const strategySchema = z.object({
 });
 
 export type Strategy = z.infer<typeof strategySchema>;
+
+export const scanMatchSchema = z.object({
+  is_lead: z.boolean(),
+  intent_score: z.number().min(1).max(10),
+  reasoning: z.string(),
+});
+
+export type ScanMatch = z.infer<typeof scanMatchSchema>;
+
+export const analysisMatchSchema = z.object({
+  matched_business: z.string().nullable(),
+  intent_score: z.number().min(1).max(10),
+  confidence: z.number().min(1).max(10).optional(),
+  reasoning: z.string(),
+});
+
+export type AnalysisMatch = z.infer<typeof analysisMatchSchema>;
 
 export const TONE_MAP: Record<string, string> = {
   empathetic: "empathetic, warm, and supportive",

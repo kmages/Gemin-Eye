@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
-import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
+import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE, getMentalHealthGuidance } from "./utils/ai";
 import { escapeHtml } from "./utils/html";
 import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
@@ -125,12 +125,14 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
   if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
 
   const feedbackGuidance = await getFeedbackGuidance(target.businessId);
+  const postText = `${title}\n${content.slice(0, 400)}`;
+  const mentalHealthGuidance = getMentalHealthGuidance(target.coreOffering, postText, true);
 
   const responseResult = await generateContent({
     model: "gemini-2.5-pro",
     contents: `You are writing a Reddit comment in r/${target.subreddit}. Your ONLY goal is to be genuinely helpful. This must comply with Reddit's rules against self-promotion and spam.
 
-The post: "${title}\n${content.slice(0, 400)}"
+The post: "${postText}"
 
 Your expertise area: ${target.coreOffering}
 Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
@@ -146,7 +148,7 @@ STRICT RULES FOR REDDIT COMPLIANCE:
 - Keep it 2-4 sentences, natural and conversational
 
 The response should be PURELY helpful advice based on your expertise. The value is in demonstrating knowledge, not promoting anything.
-
+${mentalHealthGuidance}
 Return ONLY the response text, no quotes or formatting.`,
     config: { maxOutputTokens: 8192 },
   });

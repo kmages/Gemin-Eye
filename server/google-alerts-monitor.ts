@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
-import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
+import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE, getMentalHealthGuidance } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
 import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
@@ -142,17 +142,21 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
     item.source === "YouTube" ? "YouTube comment" :
     `${item.source} comment/reply`;
 
+  const isRedditPlatform = item.source === "Reddit";
+  const postContent = `${item.title}\n${item.content.slice(0, 600)}`;
+  const mentalHealthGuidance = getMentalHealthGuidance(target.coreOffering, postContent, isRedditPlatform);
+
   const responseResult = await generateContent({
     model: "gemini-2.5-pro",
     contents: `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly recommending a business.
 
-The post/question: "${item.title}\n${item.content.slice(0, 600)}"
+The post/question: "${postContent}"
 
 Business to recommend: ${target.businessName}
 What they do: ${target.coreOffering}
 Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
-
+${mentalHealthGuidance}
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
 
 Return ONLY the response text, no quotes or formatting.`,

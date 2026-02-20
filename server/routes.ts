@@ -8,7 +8,7 @@ import { sendTelegramMessage, formatLeadNotification, formatResponseNotification
 import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
-import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
+import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP, getMentalHealthGuidance } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
 import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
@@ -236,6 +236,9 @@ CRITICAL RULES FOR GROUPS:
         return res.status(404).json({ error: "Business not found" });
       }
 
+      const isReddit = lead.platform?.toLowerCase() === "reddit";
+      const mentalHealthGuidance = getMentalHealthGuidance(business.coreOffering, lead.originalPost || "", isReddit);
+
       const prompt = `You are writing a response to a social media post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
 The post was in the group "${lead.groupName}" on ${lead.platform}.
@@ -245,7 +248,7 @@ Posted by: ${lead.authorName}
 Business to recommend: ${business.name}
 What they do: ${business.coreOffering}
 Tone: ${TONE_MAP[business.preferredTone] || "friendly and helpful"}
-
+${mentalHealthGuidance}
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
 
 Return ONLY the response text, no quotes or formatting.`;

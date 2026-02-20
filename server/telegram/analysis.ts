@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { businesses, campaigns, leads, aiResponses, responseFeedback } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { generateContent, safeParseJsonFromAI, parseAIJsonWithSchema, analysisMatchSchema } from "../utils/ai";
+import { generateContent, safeParseJsonFromAI, parseAIJsonWithSchema, analysisMatchSchema, getMentalHealthGuidance } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { markOwnResponse } from "../utils/dedup";
@@ -338,6 +338,7 @@ Return ONLY valid JSON:
   }
 
   const isReddit = platform === "reddit";
+  const mentalHealthGuidance = getMentalHealthGuidance(biz.coreOffering, postText, isReddit);
 
   const responsePrompt = isReddit
     ? `You are writing a Reddit comment${groupName ? ` in ${groupName}` : ""}. Your ONLY goal is to be genuinely helpful. This must comply with Reddit's rules against self-promotion and spam.
@@ -358,7 +359,7 @@ STRICT RULES FOR REDDIT COMPLIANCE:
 - Keep it 2-4 sentences, natural and conversational
 
 The response should be PURELY helpful advice based on your expertise. The value is in demonstrating knowledge, not promoting anything.
-
+${mentalHealthGuidance}
 Return ONLY the response text, no quotes or formatting.`
     : `You are writing a response to a ${platformContext} post in a community group. Your goal is to be genuinely helpful while subtly recommending a business.
 
@@ -369,7 +370,7 @@ Business to recommend: ${biz.name}
 What they do: ${biz.coreOffering}
 Tone: ${toneMap[biz.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
-
+${mentalHealthGuidance}
 Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation based on personal experience or knowledge. Include the business name naturally.
 
 Return ONLY the response text, no quotes or formatting.`;

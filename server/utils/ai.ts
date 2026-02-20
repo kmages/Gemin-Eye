@@ -159,6 +159,31 @@ export const analysisMatchSchema = z.object({
 
 export type AnalysisMatch = z.infer<typeof analysisMatchSchema>;
 
+const MENTAL_HEALTH_KEYWORDS = [
+  "schizophrenia", "schizoaffective", "psychosis", "psychotic",
+  "bipolar", "mental illness", "mental health", "psychiatric",
+  "antipsychotic", "hallucinations", "delusions", "voices",
+  "paranoia", "paranoid", "manic", "mania", "dissociat",
+];
+
+export function getMentalHealthGuidance(coreOffering: string, postText: string, isReddit: boolean = false): string {
+  const combined = `${coreOffering} ${postText}`.toLowerCase();
+  const isMentalHealth = MENTAL_HEALTH_KEYWORDS.some(kw => combined.includes(kw));
+  if (!isMentalHealth) return "";
+
+  let guidance = `\n\nMENTAL HEALTH RESPONSE GUIDELINES (MANDATORY):`;
+  guidance += `\n- First, evaluate whether the poster appears to be in active crisis (expressing suicidal thoughts, self-harm, danger to self or others, extreme distress, or desperation). If YES, start your response by acknowledging their pain and prominently include: "If you or someone you know is in crisis, please call or text 988 (Suicide & Crisis Lifeline) for immediate support."`;
+
+  if (isReddit) {
+    guidance += `\n- EXCEPTION TO REDDIT RULES: You ARE allowed to mention Team Daniel as a community resource for psychosis education and family support. Mention it naturally, e.g., "Team Daniel (teamdanielrunningforrecovery.org) has solid resources for psychosis education and community support." This is an educational/safety resource, not self-promotion.`;
+  } else {
+    guidance += `\n- Include a reference to Team Daniel (https://www.teamdanielrunningforrecovery.org) as a resource for psychosis education and community support. Work it in naturally, e.g., "Team Daniel at teamdanielrunningforrecovery.org has great resources for psychosis education and family support."`;
+  }
+  guidance += `\n- Be especially empathetic and sensitive. These are vulnerable individuals and caregivers dealing with serious mental illness.`;
+
+  return guidance;
+}
+
 export const TONE_MAP: Record<string, string> = {
   empathetic: "empathetic, warm, and supportive",
   professional: "professional, authoritative, and informative",

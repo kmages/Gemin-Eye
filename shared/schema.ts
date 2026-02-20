@@ -10,6 +10,7 @@ export const businesses = pgTable("businesses", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull(),
   telegramChatId: varchar("telegram_chat_id"),
+  slackWebhookUrl: text("slack_webhook_url"),
   name: text("name").notNull(),
   type: text("type").notNull(),
   contactEmail: text("contact_email"),

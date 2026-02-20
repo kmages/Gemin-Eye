@@ -189,14 +189,22 @@ Return ONLY the response text, no quotes or formatting.`,
     console.error("Error saving Reddit lead to DB:", err);
   }
 
-  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+  const scoreBar = "★".repeat(match.intent_score) + "☆".repeat(10 - match.intent_score);
+  const contentSnippet = content.slice(0, 400).trim();
 
-  let msg = `<b>Reddit Lead Found</b>\n\n`;
-  msg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
-  msg += `<b>Subreddit:</b> r/${escapeHtml(target.subreddit)}\n`;
-  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
-  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>`;
+  let baseMsg = `<b>🔔 Reddit Lead</b>\n\n`;
+  baseMsg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
+  baseMsg += `<b>Subreddit:</b> r/${escapeHtml(target.subreddit)}\n`;
+  baseMsg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  baseMsg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  baseMsg += `<b>📰 Post:</b>\n<i>"${escapeHtml(title.slice(0, 200))}"</i>\n\n`;
+  if (contentSnippet) {
+    baseMsg += `<b>📝 Content:</b>\n${escapeHtml(contentSnippet)}\n\n`;
+  }
+
+  let telegramMsg = baseMsg;
+  telegramMsg += `<b>💬 Suggested Response:</b>\n<code>${escapeHtml(responseText)}</code>\n\n`;
+  telegramMsg += `👆 Tap "Open Post" below, then paste the reply.`;
 
   const buttons = [];
   if (post.link) {
@@ -215,16 +223,14 @@ Return ONLY the response text, no quotes or formatting.`,
   }
 
   if (target.telegramChatId) {
-    await sendTelegramMessageToChat(target.telegramChatId, msg, { buttons });
-    await sendTelegramMessageToChat(target.telegramChatId, responseText);
+    await sendTelegramMessageToChat(target.telegramChatId, telegramMsg, { buttons });
   } else {
-    await sendTelegramMessage(msg, { buttons });
-    await sendTelegramMessage(responseText);
+    await sendTelegramMessage(telegramMsg, { buttons });
   }
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    await sendSlackMessage(slackUrl, msg, responseText, post.link || null);
+    await sendSlackMessage(slackUrl, baseMsg, responseText, post.link || null);
   }
 }
 

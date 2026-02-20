@@ -199,17 +199,23 @@ Return ONLY the response text, no quotes or formatting.`,
     console.error("Error saving Google Alert lead to DB:", err);
   }
 
-  const scoreBar = "*".repeat(match.intent_score) + "_".repeat(10 - match.intent_score);
+  const scoreBar = "★".repeat(match.intent_score) + "☆".repeat(10 - match.intent_score);
+  const contentSnippet = item.content.slice(0, 400).trim();
 
-  let msg = `<b>Google Alert Lead Found</b>\n\n`;
-  msg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
-  msg += `<b>Source:</b> ${escapeHtml(item.source)}\n`;
-  msg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
-  msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>`;
+  let baseMsg = `<b>🔔 Google Alert Lead</b>\n\n`;
+  baseMsg += `<b>Business:</b> ${escapeHtml(target.businessName)}\n`;
+  baseMsg += `<b>Source:</b> ${escapeHtml(item.source)}\n`;
+  baseMsg += `<b>Intent:</b> ${scoreBar} ${match.intent_score}/10\n`;
+  baseMsg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
+  baseMsg += `<b>📰 Title:</b>\n<i>"${escapeHtml(item.title.slice(0, 200))}"</i>\n\n`;
+  if (contentSnippet) {
+    baseMsg += `<b>📝 Content:</b>\n${escapeHtml(contentSnippet)}\n\n`;
+  }
 
+  let telegramMsg = baseMsg;
+  telegramMsg += `<b>💬 Suggested Response:</b>\n<code>${escapeHtml(responseText)}</code>`;
   if (item.link) {
-    msg += `\n\nTap "Open Page" below, then paste the reply.`;
+    telegramMsg += `\n\n👆 Tap "Open Page" below, then paste the reply.`;
   }
 
   const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
@@ -230,16 +236,14 @@ Return ONLY the response text, no quotes or formatting.`,
   }
 
   if (target.telegramChatId) {
-    await sendTelegramMessageToChat(target.telegramChatId, msg, buttons.length > 0 ? { buttons } : undefined);
-    await sendTelegramMessageToChat(target.telegramChatId, responseText);
+    await sendTelegramMessageToChat(target.telegramChatId, telegramMsg, buttons.length > 0 ? { buttons } : undefined);
   } else {
-    await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
-    await sendTelegramMessage(responseText);
+    await sendTelegramMessage(telegramMsg, buttons.length > 0 ? { buttons } : undefined);
   }
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    await sendSlackMessage(slackUrl, msg, responseText, item.link || null);
+    await sendSlackMessage(slackUrl, baseMsg, responseText, item.link || null);
   }
 }
 

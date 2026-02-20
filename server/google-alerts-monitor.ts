@@ -3,6 +3,7 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
+import { sendSlackMessage } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
@@ -32,6 +33,7 @@ interface AlertTarget {
   keywords: string[];
   ownerUserId: string;
   telegramChatId: string | null;
+  slackWebhookUrl: string | null;
 }
 
 async function getAlertTargets(): Promise<AlertTarget[]> {
@@ -65,6 +67,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           keywords,
           ownerUserId: biz.userId,
           telegramChatId: biz.telegramChatId || null,
+          slackWebhookUrl: biz.slackWebhookUrl || null,
         });
       }
     }
@@ -228,6 +231,10 @@ Return ONLY the response text, no quotes or formatting.`,
   } else {
     await sendTelegramMessage(msg, buttons.length > 0 ? { buttons } : undefined);
     await sendTelegramMessage(responseText);
+  }
+
+  if (target.slackWebhookUrl) {
+    await sendSlackMessage(target.slackWebhookUrl, msg, responseText, item.link || null);
   }
 }
 

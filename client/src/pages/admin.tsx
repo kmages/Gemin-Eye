@@ -400,6 +400,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
   const [bizOffering, setBizOffering] = useState(business.coreOffering);
   const [bizTone, setBizTone] = useState(business.preferredTone);
   const [bizTelegramChatId, setBizTelegramChatId] = useState(business.telegramChatId || "");
+  const [bizSlackWebhookUrl, setBizSlackWebhookUrl] = useState(business.slackWebhookUrl || "");
 
   const [newCampName, setNewCampName] = useState("");
   const [newCampPlatform, setNewCampPlatform] = useState("Reddit");
@@ -593,13 +594,17 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
                 <label className="text-xs text-muted-foreground mb-1 block">Telegram Chat ID</label>
                 <Input value={bizTelegramChatId} onChange={(e) => setBizTelegramChatId(e.target.value)} placeholder="e.g. 8491725368" data-testid="input-biz-telegram-chat-id" />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Slack Webhook URL</label>
+                <Input value={bizSlackWebhookUrl} onChange={(e) => setBizSlackWebhookUrl(e.target.value)} placeholder="https://hooks.slack.com/services/..." data-testid="input-biz-slack-webhook" />
+              </div>
               <div className="flex justify-end">
                 <Button
                   size="sm"
                   onClick={() => updateBiz.mutate({
                     name: bizName, type: bizType,
                     contactEmail: bizEmail || null, contactPhone: bizPhone || null, website: bizWebsite || null,
-                    targetAudience: bizAudience, coreOffering: bizOffering, preferredTone: bizTone, telegramChatId: bizTelegramChatId || null,
+                    targetAudience: bizAudience, coreOffering: bizOffering, preferredTone: bizTone, telegramChatId: bizTelegramChatId || null, slackWebhookUrl: bizSlackWebhookUrl || null,
                   })}
                   disabled={updateBiz.isPending}
                   data-testid="button-save-biz"
@@ -615,6 +620,7 @@ function BusinessPanel({ business, onRefresh }: { business: AdminBusiness; onRef
               <div><span className="text-muted-foreground">Website:</span> {business.website || "—"}</div>
               <div><span className="text-muted-foreground">Tone:</span> {business.preferredTone}</div>
               <div><span className="text-muted-foreground">Telegram:</span> {business.telegramChatId || "Not connected"}</div>
+              <div><span className="text-muted-foreground">Slack:</span> {business.slackWebhookUrl ? "Connected" : "Not connected"}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Audience:</span> {business.targetAudience}</div>
               <div className="col-span-2"><span className="text-muted-foreground">Offering:</span> {business.coreOffering}</div>
               <div className="col-span-2 flex items-center gap-2 pt-2 border-t">

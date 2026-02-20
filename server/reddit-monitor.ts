@@ -3,6 +3,7 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
+import { sendSlackMessage } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml } from "./utils/html";
@@ -31,6 +32,7 @@ interface SubredditTarget {
   keywords: string[];
   ownerUserId: string;
   telegramChatId: string | null;
+  slackWebhookUrl: string | null;
 }
 
 async function getRedditTargets(): Promise<SubredditTarget[]> {
@@ -68,6 +70,7 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
           keywords,
           ownerUserId: biz.userId,
           telegramChatId: biz.telegramChatId || null,
+          slackWebhookUrl: biz.slackWebhookUrl || null,
         });
       }
     }
@@ -215,6 +218,10 @@ Return ONLY the response text, no quotes or formatting.`,
   } else {
     await sendTelegramMessage(msg, { buttons });
     await sendTelegramMessage(responseText);
+  }
+
+  if (target.slackWebhookUrl) {
+    await sendSlackMessage(target.slackWebhookUrl, msg, responseText, post.link || null);
   }
 }
 

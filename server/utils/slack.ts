@@ -9,7 +9,7 @@ function htmlToPlain(html: string): string {
   return html
     .replace(/<b>(.*?)<\/b>/gi, "*$1*")
     .replace(/<i>(.*?)<\/i>/gi, "_$1_")
-    .replace(/<code>(.*?)<\/code>/gis, "```$1```")
+    .replace(/<code>([\s\S]*?)<\/code>/gi, "```$1```")
     .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -31,7 +31,7 @@ export async function sendSlackMessage(
       },
       {
         type: "section",
-        text: { type: "mrkdwn", text: htmlToPlain(leadMsg) },
+        text: { type: "mrkdwn", text: htmlToPlain(leadMsg).slice(0, 2900) },
       },
     ];
 

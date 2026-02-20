@@ -58,6 +58,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Admin Panel**: Comprehensive management of clients, businesses, campaigns, keywords, and groups. Includes a monitoring kill switch.
 - **Bookmarklets**: Facebook and LinkedIn "Spy Glass" bookmarklets for clients to manually scan groups.
 - **Telegram Bot**: Facilitates client onboarding, lead alerts, feedback, and admin commands.
+- **Slack Integration**: Sends lead notifications to Slack channels via incoming webhooks, configured per-business alongside Telegram.
 - **Robustness**: Includes AI call timeout protection, rate limiting, Zod validation for AI JSON parsing, and modularized code.
 - **Performance**: Optimized dashboard data fetching and modularized Telegram bot for better maintainability and scalability.
 

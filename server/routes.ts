@@ -10,6 +10,7 @@ import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
+import { sendSlackMessage } from "./utils/slack";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 
@@ -432,11 +433,42 @@ Return ONLY valid JSON with this structure:
         latestResponse?.content
       );
 
-      const success = await sendTelegramMessage(msg);
-      res.json({ success });
+      const telegramOk = await sendTelegramMessage(msg);
+
+      let slackOk = false;
+      if (business?.slackWebhookUrl) {
+        slackOk = await sendSlackMessage(
+          business.slackWebhookUrl,
+          msg,
+          latestResponse?.content,
+          lead.postUrl
+        );
+      }
+
+      res.json({ success: telegramOk || slackOk, telegram: telegramOk, slack: slackOk });
     } catch (error) {
-      console.error("Telegram notify error:", error);
+      console.error("Notify lead error:", error);
       res.status(500).json({ error: "Failed to send notification" });
+    }
+  });
+
+  app.post("/api/slack/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const { webhookUrl } = req.body;
+      if (!webhookUrl) return res.status(400).json({ error: "webhookUrl required" });
+
+      const success = await sendSlackMessage(
+        webhookUrl,
+        "<b>Gemin-Eye Connected!</b>\n\nYour Slack notifications are working. You'll receive lead alerts here when new leads are found."
+      );
+      if (success) {
+        res.json({ success: true, message: "Test message sent to Slack!" });
+      } else {
+        res.status(500).json({ error: "Failed to send. Check the webhook URL." });
+      }
+    } catch (error) {
+      console.error("Slack test error:", error);
+      res.status(500).json({ error: "Failed to send test message" });
     }
   });
 

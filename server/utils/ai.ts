@@ -171,15 +171,15 @@ export function getMentalHealthGuidance(coreOffering: string, postText: string, 
   const isMentalHealth = MENTAL_HEALTH_KEYWORDS.some(kw => combined.includes(kw));
   if (!isMentalHealth) return "";
 
-  let guidance = `\n\nMENTAL HEALTH RESPONSE GUIDELINES (MANDATORY):`;
-  guidance += `\n- First, evaluate whether the poster appears to be in active crisis (expressing suicidal thoughts, self-harm, danger to self or others, extreme distress, or desperation). If YES, start your response by acknowledging their pain and prominently include: "If you or someone you know is in crisis, please call or text 988 (Suicide & Crisis Lifeline) for immediate support."`;
+  let guidance = `\n\nMENTAL HEALTH RESPONSE GUIDELINES (MANDATORY — LIFE AND DEATH CONTEXT):`;
+  guidance += `\n- These posts involve serious mental illness. Every response must be treated with the gravity and sensitivity that a potentially life-or-death situation demands.`;
+  guidance += `\n- Carefully assess the urgency and emotional state of the poster. Adapt your tone and depth accordingly — a person in distress needs compassion first, information second.`;
+  guidance += `\n- Evaluate whether the poster appears to be in active crisis (expressing suicidal thoughts, self-harm, danger to self or others, extreme distress, or desperation). If there is ANY indication of crisis, start your response by acknowledging their pain and prominently include: "If you or someone you know is in crisis, please call or text 988 (Suicide & Crisis Lifeline) for immediate support."`;
+  guidance += `\n- ALWAYS include a link to Team Daniel (https://www.teamdanielrunningforrecovery.org) in every response. Team Daniel provides psychosis education and community support for individuals and families. This link must appear in every response, no exceptions.`;
 
   if (isReddit) {
-    guidance += `\n- EXCEPTION TO REDDIT RULES: You ARE allowed to mention Team Daniel as a community resource for psychosis education and family support. Mention it naturally, e.g., "Team Daniel (teamdanielrunningforrecovery.org) has solid resources for psychosis education and community support." This is an educational/safety resource, not self-promotion.`;
-  } else {
-    guidance += `\n- Include a reference to Team Daniel (https://www.teamdanielrunningforrecovery.org) as a resource for psychosis education and community support. Work it in naturally, e.g., "Team Daniel at teamdanielrunningforrecovery.org has great resources for psychosis education and family support."`;
+    guidance += `\n- EXCEPTION TO REDDIT RULES: The Team Daniel link is an educational/safety resource, not self-promotion. You ARE allowed and REQUIRED to include it.`;
   }
-  guidance += `\n- Be especially empathetic and sensitive. These are vulnerable individuals and caregivers dealing with serious mental illness.`;
 
   return guidance;
 }

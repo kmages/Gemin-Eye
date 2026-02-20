@@ -78,7 +78,7 @@ export function getDefaultSlackWebhook(): string | null {
 }
 
 export function getSlackWebhook(businessWebhookUrl: string | null): string | null {
-  return businessWebhookUrl || getDefaultSlackWebhook();
+  return businessWebhookUrl || null;
 }
 
 export function isSlackWebhookUrl(url: string): boolean {

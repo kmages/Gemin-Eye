@@ -54,7 +54,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Smart Keyword Matching**: Utilizes a sophisticated keyword matching algorithm that includes multi-word and stop-word filtering for more accurate lead detection.
 - **AI-Generated Responses**: Crafts helpful, community-compliant responses tailored to the platform (e.g., Reddit responses exclude promotional content).
 - **Lead Scoring**: Employs Gemini Flash for unbiased lead scoring across various monitoring channels.
-- **Client Onboarding**: Multi-step wizard (web or Telegram-based) for business description and AI-generated monitoring strategy.
+- **Client Onboarding**: Multi-step wizard (web or Telegram-based) for business description and AI-generated monitoring strategy. Automatically creates Google Alerts campaigns for every new business.
 - **Admin Panel**: Comprehensive management of clients, businesses, campaigns, keywords, and groups. Includes a monitoring kill switch.
 - **Bookmarklets**: Facebook and LinkedIn "Spy Glass" bookmarklets for clients to manually scan groups.
 - **Telegram Bot**: Facilitates client onboarding, lead alerts, feedback, and admin commands.

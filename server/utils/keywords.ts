@@ -40,3 +40,35 @@ export function keywordMatch(text: string, keywords: string[]): boolean {
 
   return false;
 }
+
+export function buildGoogleAlertFeeds(keywords: string[], businessType: string): string[] {
+  const topKeywords = keywords.slice(0, 8);
+
+  const searchQueries: string[] = [];
+
+  if (topKeywords.length >= 4) {
+    searchQueries.push(topKeywords.slice(0, 2).join("+"));
+    searchQueries.push(topKeywords.slice(2, 4).join("+"));
+    if (topKeywords.length >= 6) {
+      searchQueries.push(topKeywords.slice(4, 6).join("+"));
+    }
+  } else if (topKeywords.length >= 2) {
+    searchQueries.push(topKeywords.slice(0, 2).join("+"));
+  }
+
+  const typeWords = businessType.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).slice(0, 3).join("+");
+  if (typeWords) {
+    searchQueries.push(typeWords);
+  }
+
+  const seen = new Set<string>();
+  const feeds: string[] = [];
+  for (const q of searchQueries) {
+    const encoded = encodeURIComponent(q).replace(/%2B/g, "+");
+    if (seen.has(encoded)) continue;
+    seen.add(encoded);
+    feeds.push(`https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`);
+  }
+
+  return feeds.slice(0, 5);
+}

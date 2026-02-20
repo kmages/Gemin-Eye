@@ -10,6 +10,7 @@ import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
+import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
@@ -91,6 +92,22 @@ export async function registerRoutes(
             keywords: strategy.keywords,
           });
         }
+      }
+
+      const gaKeywords = (strategy?.keywords || []).length > 0
+        ? strategy!.keywords
+        : [type];
+      const gaFeeds = buildGoogleAlertFeeds(gaKeywords, type);
+      if (gaFeeds.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${name} - Google Alerts`,
+          platform: "google_alerts",
+          status: "active",
+          strategy: `Monitor Google News for ${type} discussions`,
+          targetGroups: gaFeeds,
+          keywords: gaKeywords.slice(0, 15),
+        });
       }
 
       const { generateConnectToken } = await import("./telegram/bookmarklets");

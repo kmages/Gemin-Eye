@@ -5,6 +5,7 @@ import { sendTelegramMessage } from "../telegram";
 import { storage } from "../storage";
 import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
+import { buildGoogleAlertFeeds } from "../utils/keywords";
 import { postRedditSubmission, isRedditConfigured } from "../reddit-poster";
 import { pendingClientSetups, type AdminSetupState } from "./state";
 import { getAllBusinessesWithCampaigns } from "./analysis";
@@ -358,6 +359,19 @@ RULES:
           strategy: `Monitor communities for ${pending.type} leads`,
           targetGroups: pending.groups,
           keywords: pending.keywords || [],
+        });
+      }
+
+      const gaFeeds = buildGoogleAlertFeeds(pending.keywords || [], pending.type!);
+      if (gaFeeds.length > 0) {
+        await storage.createCampaign({
+          businessId: biz.id,
+          name: `${pending.name} - Google Alerts`,
+          platform: "google_alerts",
+          status: "active",
+          strategy: `Monitor Google News for ${pending.type} discussions`,
+          targetGroups: gaFeeds,
+          keywords: (pending.keywords || []).slice(0, 15),
         });
       }
 

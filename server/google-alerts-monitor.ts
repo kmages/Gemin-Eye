@@ -3,7 +3,7 @@ import { db } from "./db";
 import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
-import { sendSlackMessage } from "./utils/slack";
+import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE } from "./utils/ai";
 import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
@@ -233,8 +233,9 @@ Return ONLY the response text, no quotes or formatting.`,
     await sendTelegramMessage(responseText);
   }
 
-  if (target.slackWebhookUrl) {
-    await sendSlackMessage(target.slackWebhookUrl, msg, responseText, item.link || null);
+  const slackUrl = getSlackWebhook(target.slackWebhookUrl);
+  if (slackUrl) {
+    await sendSlackMessage(slackUrl, msg, responseText, item.link || null);
   }
 }
 

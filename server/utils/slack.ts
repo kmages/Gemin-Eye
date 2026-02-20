@@ -73,6 +73,14 @@ export async function sendSlackMessage(
   }
 }
 
+export function getDefaultSlackWebhook(): string | null {
+  return process.env.SLACK_WEBHOOK || null;
+}
+
+export function getSlackWebhook(businessWebhookUrl: string | null): string | null {
+  return businessWebhookUrl || getDefaultSlackWebhook();
+}
+
 export function isSlackWebhookUrl(url: string): boolean {
   return /^https:\/\/hooks\.slack\.com\/services\//.test(url);
 }

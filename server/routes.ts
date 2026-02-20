@@ -10,7 +10,7 @@ import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
-import { sendSlackMessage } from "./utils/slack";
+import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 
@@ -436,9 +436,10 @@ Return ONLY valid JSON with this structure:
       const telegramOk = await sendTelegramMessage(msg);
 
       let slackOk = false;
-      if (business?.slackWebhookUrl) {
+      const slackUrl = getSlackWebhook(business?.slackWebhookUrl || null);
+      if (slackUrl) {
         slackOk = await sendSlackMessage(
-          business.slackWebhookUrl,
+          slackUrl,
           msg,
           latestResponse?.content,
           lead.postUrl

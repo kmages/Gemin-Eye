@@ -287,13 +287,15 @@ Return ONLY the response text, no quotes or formatting.`;
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    console.log(`Sending Slack notification for ${target.businessName} lead to webhook`);
-    const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, item.link || null);
-    if (!slackOk) {
-      console.error(`Slack send failed for ${target.businessName}`);
+    if (match.intent_score >= 7) {
+      console.log(`Sending Slack notification for ${target.businessName} Google Alerts lead (score ${match.intent_score})`);
+      const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, item.link || null);
+      if (!slackOk) {
+        console.error(`Slack send failed for ${target.businessName}`);
+      }
+    } else {
+      console.log(`Skipping Slack for ${target.businessName} Google Alerts lead (score ${match.intent_score} < 7)`);
     }
-  } else {
-    console.log(`No Slack webhook configured for ${target.businessName}`);
   }
 }
 

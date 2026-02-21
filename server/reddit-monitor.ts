@@ -235,10 +235,14 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    console.log(`Sending Slack notification for ${target.businessName} Reddit lead`);
-    const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, post.link || null);
-    if (!slackOk) {
-      console.error(`Slack send failed for ${target.businessName}`);
+    if (match.intent_score >= 7) {
+      console.log(`Sending Slack notification for ${target.businessName} Reddit lead (score ${match.intent_score})`);
+      const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, post.link || null);
+      if (!slackOk) {
+        console.error(`Slack send failed for ${target.businessName}`);
+      }
+    } else {
+      console.log(`Skipping Slack for ${target.businessName} Reddit lead (score ${match.intent_score} < 7)`);
     }
   }
 }

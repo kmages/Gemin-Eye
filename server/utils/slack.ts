@@ -23,23 +23,34 @@ export async function sendSlackMessage(
   responseText?: string,
   postUrl?: string | null,
 ): Promise<boolean> {
+  if (!webhookUrl || !isSlackWebhookUrl(webhookUrl)) {
+    console.error(`Invalid Slack webhook URL: ${webhookUrl?.slice(0, 30)}...`);
+    return false;
+  }
+
   try {
+    const plainLead = htmlToPlain(leadMsg).slice(0, 2900);
+
     const blocks: SlackBlock[] = [
       {
         type: "header",
-        text: { type: "plain_text", text: "New Lead Found", emoji: true },
+        text: { type: "plain_text", text: "🔔 New Lead Found", emoji: true },
       },
       {
         type: "section",
-        text: { type: "mrkdwn", text: htmlToPlain(leadMsg).slice(0, 2900) },
+        text: { type: "mrkdwn", text: plainLead },
       },
     ];
 
     if (responseText) {
-      blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: "*Suggested Response (copy & paste):*\n```" + responseText.slice(0, 2900) + "```" },
-      });
+      const sanitizedResponse = responseText.replace(/```/g, "'''").slice(0, 2500);
+      blocks.push(
+        { type: "divider" } as any,
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: "*💬 Suggested Response (copy & paste):*\n```" + sanitizedResponse + "```" },
+        },
+      );
     }
 
     if (postUrl) {
@@ -56,14 +67,34 @@ export async function sendSlackMessage(
       });
     }
 
+    const payload = JSON.stringify({ blocks });
+
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blocks }),
+      body: payload,
     });
 
     if (!res.ok) {
-      console.error(`Slack webhook error: ${res.status} ${await res.text()}`);
+      const errBody = await res.text();
+      console.error(`Slack webhook error: ${res.status} - ${errBody} (payload ${payload.length} bytes)`);
+      const fallbackPayload = JSON.stringify({
+        text: `${plainLead.slice(0, 1500)}\n\n*Suggested Response:*\n${(responseText || "").replace(/```/g, "'''").slice(0, 1000)}${postUrl ? `\n\n<${postUrl}|Open Post>` : ""}`,
+      });
+      try {
+        const fallbackRes = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: fallbackPayload,
+        });
+        if (fallbackRes.ok) {
+          console.log("Slack fallback plain text sent successfully");
+          return true;
+        }
+        console.error(`Slack fallback also failed: ${fallbackRes.status}`);
+      } catch (fallbackErr: any) {
+        console.error(`Slack fallback error: ${fallbackErr?.message}`);
+      }
       return false;
     }
     return true;

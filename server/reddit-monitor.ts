@@ -230,7 +230,11 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    await sendSlackMessage(slackUrl, baseMsg, responseText, post.link || null);
+    console.log(`Sending Slack notification for ${target.businessName} Reddit lead`);
+    const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, post.link || null);
+    if (!slackOk) {
+      console.error(`Slack send failed for ${target.businessName}`);
+    }
   }
 }
 

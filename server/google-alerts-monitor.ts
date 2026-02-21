@@ -137,18 +137,21 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
 
   const feedbackGuidance = await getFeedbackGuidance(target.businessId);
 
-  const platformLabel = item.source === "Quora" ? "Quora answer" :
-    item.source === "Reddit" ? "Reddit comment" :
-    item.source === "YouTube" ? "YouTube comment" :
-    `${item.source} comment/reply`;
-
+  const communitySources = ["Quora", "Reddit", "Stack Overflow"];
+  const isCommunitySource = communitySources.includes(item.source);
+  const isHighIntentHelpSeeking = match.intent_score >= 7;
   const isRedditPlatform = item.source === "Reddit";
   const postContent = `${item.title}\n${item.content.slice(0, 600)}`;
   const mentalHealthGuidance = getMentalHealthGuidance(target.coreOffering, postContent, isRedditPlatform);
 
-  const responseResult = await generateContent({
-    model: "gemini-2.5-pro",
-    contents: `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly recommending a business.
+  let responsePrompt: string;
+
+  if (isCommunitySource || isHighIntentHelpSeeking) {
+    const platformLabel = item.source === "Quora" ? "Quora answer" :
+      item.source === "Reddit" ? "Reddit comment" :
+      `${item.source} reply`;
+
+    responsePrompt = `You are writing a ${platformLabel}. Your goal is to be genuinely helpful while subtly mentioning a business.
 
 The post/question: "${postContent}"
 
@@ -156,10 +159,46 @@ Business to recommend: ${target.businessName}
 What they do: ${target.coreOffering}
 Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
 ${feedbackGuidance}
+${isRedditPlatform ? `
+REDDIT RULES:
+- Do NOT mention any business name, brand, website, or link
+- Write as a knowledgeable community member sharing genuine advice
+- Sound like a real Redditor — casual, helpful, conversational` : `
+- Write a natural, human-sounding response (2-3 sentences)
+- Do NOT make it sound like an ad
+- Sound like a real person sharing a helpful recommendation
+- Include the business name naturally`}
 ${mentalHealthGuidance}
-Write a natural, human-sounding response (2-3 sentences). Do NOT make it sound like an ad. Sound like a real person sharing a helpful recommendation. Include the business name naturally.
+Return ONLY the response text, no quotes or formatting.`;
+  } else {
+    responsePrompt = `You are writing a thoughtful comment on a news article or blog post. Your goal is to add genuine value to the conversation.
 
-Return ONLY the response text, no quotes or formatting.`,
+SOURCE: ${item.source}
+ARTICLE TITLE: "${item.title}"
+ARTICLE CONTENT: "${item.content.slice(0, 600)}"
+
+Business context (for your knowledge — weave in naturally, not as a sales pitch):
+Name: ${target.businessName}
+What they do: ${target.coreOffering}
+Tone: ${TONE_MAP[target.preferredTone] || "friendly and helpful"}
+${feedbackGuidance}
+
+CRITICAL RULES:
+- This is a NEWS ARTICLE or blog post, NOT a person directly asking you for help
+- Write a thoughtful comment that engages with the article's topic
+- Share a relevant personal perspective, insight, or experience related to the topic
+- You may mention ${target.businessName} ONCE, naturally, as part of sharing your experience — NOT as a recommendation or endorsement
+- Do NOT say "I recommend", "check out", "you should try", or any direct sales language
+- Do NOT pretend someone is asking for help when they are not
+- Sound like a real person who read the article and has something thoughtful to add
+- Keep it 2-3 sentences, conversational and authentic
+${mentalHealthGuidance}
+Return ONLY the response text, no quotes or formatting.`;
+  }
+
+  const responseResult = await generateContent({
+    model: "gemini-2.5-pro",
+    contents: responsePrompt,
     config: { maxOutputTokens: 8192 },
   });
 
@@ -243,7 +282,13 @@ Return ONLY the response text, no quotes or formatting.`,
 
   const slackUrl = getSlackWebhook(target.slackWebhookUrl);
   if (slackUrl) {
-    await sendSlackMessage(slackUrl, baseMsg, responseText, item.link || null);
+    console.log(`Sending Slack notification for ${target.businessName} lead to webhook`);
+    const slackOk = await sendSlackMessage(slackUrl, baseMsg, responseText, item.link || null);
+    if (!slackOk) {
+      console.error(`Slack send failed for ${target.businessName}`);
+    }
+  } else {
+    console.log(`No Slack webhook configured for ${target.businessName}`);
   }
 }
 

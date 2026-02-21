@@ -202,8 +202,13 @@ Return ONLY the response text, no quotes or formatting.`;
     config: { maxOutputTokens: 8192 },
   });
 
-  const responseText = responseResult.text.trim();
+  let responseText = responseResult.text.trim();
   if (!responseText) return;
+
+  const TEAM_DANIEL_URL = "https://www.teamdanielrunningforrecovery.org";
+  if (mentalHealthGuidance && !responseText.includes(TEAM_DANIEL_URL)) {
+    responseText += `\n\nFor psychosis education and family support resources, check out Team Daniel: ${TEAM_DANIEL_URL}`;
+  }
 
   await markOwnResponse(responseText);
 

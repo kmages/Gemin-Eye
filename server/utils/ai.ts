@@ -176,9 +176,10 @@ export function getMentalHealthGuidance(coreOffering: string, postText: string, 
   guidance += `\n- Carefully assess the urgency and emotional state of the poster. Adapt your tone and depth accordingly — a person in distress needs compassion first, information second.`;
   guidance += `\n- Evaluate whether the poster appears to be in active crisis (expressing suicidal thoughts, self-harm, danger to self or others, extreme distress, or desperation). If there is ANY indication of crisis, start your response by acknowledging their pain and prominently include: "If you or someone you know is in crisis, please call or text 988 (Suicide & Crisis Lifeline) for immediate support."`;
   guidance += `\n- ALWAYS include a link to Team Daniel (https://www.teamdanielrunningforrecovery.org) in every response. Team Daniel provides psychosis education and community support for individuals and families. This link must appear in every response, no exceptions.`;
+  guidance += `\n- Your response MUST contain the exact text "https://www.teamdanielrunningforrecovery.org" somewhere in the body. If this URL is missing from your response, your response will be REJECTED.`;
 
   if (isReddit) {
-    guidance += `\n- EXCEPTION TO REDDIT RULES: The Team Daniel link is an educational/safety resource, not self-promotion. You ARE allowed and REQUIRED to include it.`;
+    guidance += `\n- EXCEPTION TO REDDIT RULES: The Team Daniel link (https://www.teamdanielrunningforrecovery.org) is an educational/safety resource, not self-promotion. You ARE allowed and REQUIRED to include it. Do NOT omit this link.`;
   }
 
   return guidance;

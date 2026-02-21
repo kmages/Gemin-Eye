@@ -297,11 +297,11 @@ RULES:
 - Focus on communities where people actively ask for recommendations related to this business.`,
           config: { maxOutputTokens: 512 },
         });
-        const groupJson = safeParseJsonFromAI(groupResult.text);
+        const groupJson = safeParseJsonFromAI(groupResult.text) as Record<string, any>;
         if (groupJson) {
           aiGroups = [
-            ...(groupJson.subreddits || []),
-            ...(groupJson.facebook_groups || []),
+            ...((groupJson.subreddits as string[]) || []),
+            ...((groupJson.facebook_groups as string[]) || []),
           ];
         }
       } catch (e) {

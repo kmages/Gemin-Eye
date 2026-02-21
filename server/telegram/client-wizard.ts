@@ -122,9 +122,9 @@ RULES:
 - Focus on communities where people ask for recommendations related to this business.`,
           config: { maxOutputTokens: 256 },
         });
-        const groupJson = safeParseJsonFromAI(groupResult.text);
-        if (groupJson?.subreddits?.length > 0) {
-          redditSubs = groupJson.subreddits;
+        const groupJson = safeParseJsonFromAI(groupResult.text) as Record<string, any> | null;
+        if (groupJson && groupJson.subreddits?.length > 0) {
+          redditSubs = groupJson.subreddits as string[];
         }
       } catch (e) {
         console.error("Client wizard AI group gen failed:", e);

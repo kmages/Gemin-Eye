@@ -37,6 +37,7 @@ export const campaigns = pgTable("campaigns", {
   strategy: text("strategy"),
   targetGroups: jsonb("target_groups").$type<string[]>().default([]),
   keywords: jsonb("keywords").$type<string[]>().default([]),
+  slackWebhookUrl: text("slack_webhook_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_campaigns_business_id").on(table.businessId),

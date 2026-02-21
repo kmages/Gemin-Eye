@@ -67,7 +67,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           keywords,
           ownerUserId: biz.userId,
           telegramChatId: biz.telegramChatId || null,
-          slackWebhookUrl: biz.slackWebhookUrl || null,
+          slackWebhookUrl: camp.slackWebhookUrl || biz.slackWebhookUrl || null,
         });
       }
     }

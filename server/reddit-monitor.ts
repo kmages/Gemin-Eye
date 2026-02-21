@@ -70,7 +70,7 @@ async function getRedditTargets(): Promise<SubredditTarget[]> {
           keywords,
           ownerUserId: biz.userId,
           telegramChatId: biz.telegramChatId || null,
-          slackWebhookUrl: biz.slackWebhookUrl || null,
+          slackWebhookUrl: camp.slackWebhookUrl || biz.slackWebhookUrl || null,
         });
       }
     }

@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
-  Search, Monitor, Check
+  Search, Monitor, Check, Bookmark
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -299,6 +299,11 @@ export default function Dashboard() {
             <span className="font-semibold text-lg tracking-tight">Gemin-Eye</span>
           </div>
           <div className="flex items-center gap-3">
+            {bookmarklets && bookmarklets.length > 0 && (
+              <Button variant="ghost" size="icon" onClick={() => window.open(bookmarklets[0].bookmarkletPageUrl, '_blank')} data-testid="button-bookmarklets" title="Spy Glass Bookmarklets">
+                <Bookmark className="w-4 h-4" />
+              </Button>
+            )}
             {adminCheck?.isAdmin && (
               <Button variant="ghost" size="icon" onClick={() => setLocation("/admin")} data-testid="button-admin">
                 <Settings className="w-4 h-4" />

@@ -349,10 +349,10 @@ Return ONLY valid JSON with this structure:
       const { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
       const baseUrl = getAppBaseUrl();
 
+      const ADMIN_CHAT_ID = "8491725368";
       const results = businesses
-        .filter(b => b.telegramChatId)
         .map(b => {
-          const chatId = b.telegramChatId!;
+          const chatId = b.telegramChatId || ADMIN_CHAT_ID;
           const token = generateScanToken(chatId, b.id);
           return {
             businessId: b.id,

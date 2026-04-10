@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gemin-Eye — System Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Inter, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.65;
+    color: #1e1e2e;
+    background: #fff;
+  }
+
+  @page {
+    size: A4;
+    margin: 2.2cm 2cm 2.2cm 2cm;
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 8pt;
+      color: #888;
+    }
+  }
+
+  /* ── Cover ────────────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 25cm;
+    padding: 3cm 2cm;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: #fff;
+  }
+  .cover-eyebrow {
+    font-size: 9pt;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 1.2cm;
+  }
+  .cover-title {
+    font-size: 42pt;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 0.5cm;
+  }
+  .cover-subtitle {
+    font-size: 15pt;
+    font-weight: 300;
+    opacity: 0.85;
+    max-width: 14cm;
+    margin-bottom: 2cm;
+  }
+  .cover-meta {
+    font-size: 9pt;
+    opacity: 0.65;
+  }
+  .cover-divider {
+    width: 3cm;
+    height: 4px;
+    background: rgba(255,255,255,0.5);
+    border-radius: 2px;
+    margin-bottom: 1cm;
+  }
+
+  /* ── TOC ────────────────────────────────────────── */
+  .toc-page {
+    page-break-after: always;
+    padding: 1cm 0;
+  }
+  .toc-title {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #4f46e5;
+    margin-bottom: 0.8cm;
+    border-bottom: 2px solid #4f46e5;
+    padding-bottom: 0.3cm;
+  }
+  .toc-entry {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 0.18cm 0;
+    border-bottom: 1px dotted #d1d5db;
+    font-size: 10pt;
+  }
+  .toc-entry.section { font-weight: 600; color: #1e1e2e; padding-top: 0.3cm; }
+  .toc-entry.sub { padding-left: 0.8cm; color: #555; font-weight: 400; }
+  .toc-num { color: #4f46e5; font-weight: 600; min-width: 0.6cm; }
+
+  /* ── General page structure ─────────────────────── */
+  .page { padding: 0.2cm 0; }
+  .chapter-break { page-break-before: always; }
+
+  /* ── Headers ─────────────────────────────────────── */
+  h1 {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #4f46e5;
+    border-bottom: 2.5px solid #4f46e5;
+    padding-bottom: 0.25cm;
+    margin-bottom: 0.6cm;
+    margin-top: 0;
+  }
+  h1 .num { color: #7c3aed; margin-right: 0.4em; }
+
+  h2 {
+    font-size: 13pt;
+    font-weight: 600;
+    color: #1e1e2e;
+    margin-top: 0.7cm;
+    margin-bottom: 0.3cm;
+    display: flex;
+    align-items: center;
+    gap: 0.3em;
+  }
+  h2::before {
+    content: "";
+    display: inline-block;
+    width: 4px;
+    height: 1em;
+    background: #7c3aed;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  h3 {
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: #4f46e5;
+    margin-top: 0.5cm;
+    margin-bottom: 0.2cm;
+  }
+
+  p { margin-bottom: 0.35cm; }
+
+  /* ── Callout boxes ───────────────────────────────── */
+  .callout {
+    background: #f5f3ff;
+    border-left: 4px solid #7c3aed;
+    border-radius: 0 6px 6px 0;
+    padding: 0.4cm 0.6cm;
+    margin: 0.5cm 0;
+    font-size: 10pt;
+  }
+  .callout.info {
+    background: #eff6ff;
+    border-color: #3b82f6;
+  }
+  .callout.warn {
+    background: #fffbeb;
+    border-color: #f59e0b;
+  }
+  .callout.success {
+    background: #f0fdf4;
+    border-color: #22c55e;
+  }
+  .callout-label {
+    font-weight: 700;
+    font-size: 8.5pt;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.15cm;
+  }
+
+  /* ── Lists ──────────────────────────────────────── */
+  ul, ol {
+    padding-left: 1.4em;
+    margin-bottom: 0.35cm;
+  }
+  li { margin-bottom: 0.2cm; }
+  li::marker { color: #7c3aed; }
+
+  /* ── Tables ──────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5cm 0;
+    font-size: 9.5pt;
+  }
+  thead tr {
+    background: #4f46e5;
+    color: #fff;
+  }
+  thead th {
+    padding: 0.25cm 0.4cm;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+  }
+  tbody tr:nth-child(even) { background: #f9f7ff; }
+  tbody tr:nth-child(odd) { background: #fff; }
+  tbody td {
+    padding: 0.22cm 0.4cm;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+  }
+
+  /* ── Flow diagram blocks ─────────────────────────── */
+  .flow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.2cm;
+    margin: 0.5cm 0;
+  }
+  .flow-box {
+    background: #4f46e5;
+    color: #fff;
+    border-radius: 6px;
+    padding: 0.25cm 0.5cm;
+    font-size: 9pt;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .flow-box.light {
+    background: #ede9fe;
+    color: #4f46e5;
+  }
+  .flow-arrow {
+    color: #7c3aed;
+    font-size: 13pt;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  /* ── Stat cards ──────────────────────────────────── */
+  .stats {
+    display: flex;
+    gap: 0.4cm;
+    margin: 0.5cm 0;
+  }
+  .stat-card {
+    flex: 1;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    border-radius: 8px;
+    padding: 0.4cm 0.5cm;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #4f46e5;
+    line-height: 1.1;
+  }
+  .stat-label {
+    font-size: 8pt;
+    color: #666;
+    margin-top: 0.1cm;
+    font-weight: 500;
+  }
+
+  /* ── Code block ──────────────────────────────────── */
+  .code-block {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: 6px;
+    padding: 0.4cm 0.6cm;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 8.5pt;
+    margin: 0.4cm 0;
+    overflow: hidden;
+    white-space: pre-wrap;
+  }
+
+  /* ── Section divider label ───────────────────────── */
+  .section-tag {
+    display: inline-block;
+    background: #4f46e5;
+    color: #fff;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.1cm 0.35cm;
+    border-radius: 3px;
+    margin-bottom: 0.25cm;
+  }
+
+  footer {
+    font-size: 8pt;
+    color: #aaa;
+    text-align: center;
+    margin-top: 1cm;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 0.3cm;
+  }
+</style>
+</head>
+<body>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║              COVER PAGE                      ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="cover">
+  <div class="cover-eyebrow">Technical &amp; Product Overview</div>
+  <div class="cover-title">Gemin-Eye</div>
+  <div class="cover-divider"></div>
+  <div class="cover-subtitle">AI-Powered Customer Acquisition Platform — How It Works</div>
+  <div class="cover-meta">
+    Version 1.0 &nbsp;·&nbsp; April 2026 &nbsp;·&nbsp; Confidential
+  </div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║         TABLE OF CONTENTS                    ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="toc-page page">
+  <div class="toc-title">Table of Contents</div>
+
+  <div class="toc-entry section"><span class="toc-num">1</span> What is Gemin-Eye?</div>
+  <div class="toc-entry section"><span class="toc-num">2</span> System Architecture at a Glance</div>
+  <div class="toc-entry section"><span class="toc-num">3</span> Lead Discovery — How Gemin-Eye Finds Prospects</div>
+  <div class="toc-entry sub"><span></span> 3.1 Automated Reddit Monitor</div>
+  <div class="toc-entry sub"><span></span> 3.2 Automated Google Alerts Monitor</div>
+  <div class="toc-entry sub"><span></span> 3.3 Spy Glass Bookmarklets (Facebook &amp; LinkedIn)</div>
+  <div class="toc-entry sub"><span></span> 3.4 Telegram Bot Input</div>
+  <div class="toc-entry section"><span class="toc-num">4</span> AI Engine — Scoring &amp; Response Generation</div>
+  <div class="toc-entry sub"><span></span> 4.1 Lead Scoring (Gemini Flash)</div>
+  <div class="toc-entry sub"><span></span> 4.2 Response Crafting (Gemini Pro)</div>
+  <div class="toc-entry sub"><span></span> 4.3 Keyword Matching Algorithm</div>
+  <div class="toc-entry sub"><span></span> 4.4 Mental Health Safety Layer</div>
+  <div class="toc-entry section"><span class="toc-num">5</span> Lead Delivery — Telegram &amp; Slack</div>
+  <div class="toc-entry section"><span class="toc-num">6</span> Feedback Loop — Teaching the AI</div>
+  <div class="toc-entry section"><span class="toc-num">7</span> Client Onboarding</div>
+  <div class="toc-entry section"><span class="toc-num">8</span> Admin Panel</div>
+  <div class="toc-entry section"><span class="toc-num">9</span> Data Model &amp; Storage</div>
+  <div class="toc-entry section"><span class="toc-num">10</span> Security &amp; Robustness</div>
+  <div class="toc-entry section"><span class="toc-num">11</span> Technology Stack Summary</div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   1. WHAT IS GEMIN-EYE                       ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 1</div>
+  <h1><span class="num">1.</span> What is Gemin-Eye?</h1>
+
+  <p>
+    Gemin-Eye is an AI-powered customer acquisition platform that silently monitors online communities — Reddit, Facebook groups, LinkedIn feeds, Google Alerts, Quora, and more — looking for people who are actively asking questions that your business can answer.
+  </p>
+
+  <p>
+    When someone posts "Does anyone know a good bocce ball court in Chicago?" or "Looking for a graphic designer for my small business," Gemin-Eye catches it within minutes, scores it for purchase intent, crafts a natural, community-appropriate reply, and delivers the full package to the business owner's phone via Telegram — ready to copy and paste.
+  </p>
+
+  <div class="callout success">
+    <div class="callout-label">The core idea</div>
+    Instead of paying for advertisements that interrupt people, Gemin-Eye finds the moments when potential customers are already asking for help — and equips businesses to show up at exactly the right time with a genuinely helpful answer.
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-value">5 min</div>
+      <div class="stat-label">Reddit scan interval</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">2 min</div>
+      <div class="stat-label">Google Alerts interval</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">1–10</div>
+      <div class="stat-label">Intent score range</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">2–4</div>
+      <div class="stat-label">Sentence AI responses</div>
+    </div>
+  </div>
+
+  <h2>Who Uses It</h2>
+  <p>
+    Gemin-Eye is a multi-tenant platform. A single installation serves multiple client businesses. Each client has one or more <strong>businesses</strong> on the platform, and each business has multiple <strong>campaigns</strong> targeting different channels and communities. Business owners receive their own personalised lead feed; an admin can see and manage everything.
+  </p>
+
+  <h2>What Makes It Different</h2>
+  <ul>
+    <li><strong>Organic reach:</strong> Responses read like genuine community members wrote them — because the AI is specifically instructed to sound like one.</li>
+    <li><strong>Platform-aware:</strong> Reddit responses never mention the business name or include links (to avoid bans). Facebook and LinkedIn responses can be warmer and more promotional.</li>
+    <li><strong>Self-improving:</strong> Every time an owner gives feedback ("Used It", "Bad Match", "Too Salesy"), the AI learns their preferences for future responses.</li>
+    <li><strong>Zero manual monitoring:</strong> The system runs 24/7 in the background. Owners only see leads that have already been pre-qualified by AI.</li>
+  </ul>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   2. ARCHITECTURE AT A GLANCE                ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 2</div>
+  <h1><span class="num">2.</span> System Architecture at a Glance</h1>
+
+  <p>
+    Gemin-Eye is a full-stack Node.js application with a React frontend, Express backend, and PostgreSQL database. It runs as a single deployable unit — no separate microservices — but is internally well-modularised.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Frontend</td><td>React 18, TypeScript, Vite, TanStack Query, Tailwind CSS, shadcn/ui</td><td>Dashboard, admin panel, onboarding wizard</td></tr>
+      <tr><td>Backend</td><td>Express.js, TypeScript, esbuild</td><td>REST API, background monitors, Telegram bot</td></tr>
+      <tr><td>AI</td><td>Google Gemini 2.5 Pro &amp; Flash via @google/genai SDK</td><td>Scoring and response generation</td></tr>
+      <tr><td>Database</td><td>PostgreSQL + Drizzle ORM</td><td>All persistent state</td></tr>
+      <tr><td>Auth</td><td>Replit OIDC / Passport.js</td><td>Session-based auth</td></tr>
+      <tr><td>Messaging</td><td>Telegram Bot API + Slack Incoming Webhooks</td><td>Lead delivery to clients</td></tr>
+      <tr><td>Monitoring</td><td>Custom RSS polling (Node.js setInterval)</td><td>Reddit &amp; Google Alerts scanning</td></tr>
+    </tbody>
+  </table>
+
+  <h2>High-Level Data Flow</h2>
+
+  <div class="flow">
+    <div class="flow-box">Internet<br/>(Reddit / Google<br/>Alerts / FB / LI)</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box light">Monitor / Bookmarklet<br/>/ Telegram input</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Keyword<br/>Matching</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box light">Gemini Flash<br/>Lead Scoring</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Gemini Pro<br/>Response Gen</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box light">Telegram / Slack<br/>Delivery</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Business Owner<br/>Feedback</div>
+  </div>
+
+  <h2>Key Design Decisions</h2>
+  <ul>
+    <li><strong>Single deployment unit:</strong> The same Node process serves the React app and all API routes. This keeps infrastructure simple and costs low.</li>
+    <li><strong>Interface-based storage layer:</strong> All database access goes through typed TypeScript interfaces (<code>IStorage</code>, <code>IAuthStorage</code>, <code>IChatStorage</code>). This makes it easy to swap or test the storage layer independently.</li>
+    <li><strong>Modular Telegram bot:</strong> The bot is split into separate modules — analysis, bookmarklets, feedback, notifications — keeping each concern small and maintainable.</li>
+    <li><strong>Rate-limit protection:</strong> All AI calls have a timeout wrapper. The batch processor handles retries and rate limiting to prevent hitting Gemini API limits during busy scan cycles.</li>
+  </ul>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   3. LEAD DISCOVERY                          ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 3</div>
+  <h1><span class="num">3.</span> Lead Discovery — How Gemin-Eye Finds Prospects</h1>
+
+  <p>
+    Gemin-Eye has four distinct channels for ingesting potential leads. Two are fully automated (running 24/7 in the background), one is semi-automated (user-triggered via bookmarklet), and one allows direct manual input.
+  </p>
+
+  <h2>3.1 Automated Reddit Monitor</h2>
+
+  <p>
+    The Reddit monitor (<code>server/reddit-monitor.ts</code>) runs every <strong>5 minutes</strong> using Node's <code>setInterval</code>. On each cycle it:
+  </p>
+  <ol>
+    <li>Queries the database for all active Reddit campaigns to get their configured subreddits.</li>
+    <li>Fetches the RSS feed for each subreddit: <code>https://reddit.com/r/{subreddit}/new.rss</code>.</li>
+    <li>Parses the XML feed and extracts post titles, body text, author, and URL.</li>
+    <li>Skips posts it has already seen (tracked by post ID in the database).</li>
+    <li>Runs each new post through the keyword matching algorithm against each business's keyword list.</li>
+    <li>If a match is found, it passes the post to the AI scoring &amp; response pipeline.</li>
+  </ol>
+
+  <div class="callout info">
+    <div class="callout-label">Why RSS?</div>
+    Reddit's RSS feeds are public and require no API key, avoiding OAuth complexity and rate limit tiers. Each subreddit has a <code>/new.rss</code> endpoint that returns the 25 most recent posts in standard XML.
+  </div>
+
+  <h3>Subreddit Configuration</h3>
+  <p>Each Reddit campaign can target multiple subreddits. For example, the Chicago Bocce campaign targets <code>r/AskChicago</code>, <code>r/chicago</code>, <code>r/ChicagoSuburbs</code>, and <code>r/ChicagoSocialClub</code>. The admin panel allows adding or removing subreddits at any time without restarting the server.</p>
+
+  <h2>3.2 Automated Google Alerts Monitor</h2>
+
+  <p>
+    The Google Alerts monitor (<code>server/google-alerts-monitor.ts</code>) runs every <strong>2 minutes</strong>. Google Alerts can be configured to publish results as an RSS feed — Gemin-Eye polls these feeds and processes the results.
+  </p>
+
+  <p>Each alert result typically includes:</p>
+  <ul>
+    <li>A headline and snippet from the matching page</li>
+    <li>The source URL, which reveals the platform (Quora, Reddit, Stack Overflow, news site, forum, etc.)</li>
+    <li>A publication timestamp</li>
+  </ul>
+
+  <p>The monitor parses the source URL to identify the originating platform, then applies platform-specific processing before scoring. For instance, a Quora result is tagged as such and the response generation is tuned accordingly.</p>
+
+  <div class="callout warn">
+    <div class="callout-label">Google Alerts setup</div>
+    Google Alerts RSS feeds are created manually by the business owner at <strong>google.com/alerts</strong> using their target keywords. They then paste the RSS feed URL into their Gemin-Eye campaign. Gemin-Eye automatically creates a Google Alerts campaign for every new business during onboarding.
+  </div>
+
+  <h2>3.3 Spy Glass Bookmarklets (Facebook &amp; LinkedIn)</h2>
+
+  <p>
+    The Spy Glass is a <strong>browser bookmarklet</strong> — a small JavaScript snippet saved as a browser bookmark. When a business owner is browsing a Facebook group or LinkedIn feed, they click the bookmarklet and it:
+  </p>
+  <ol>
+    <li>Scans the DOM of the current page, extracting all visible post text.</li>
+    <li>Sends the scraped content to Gemin-Eye's API: <code>POST /api/scan/facebook</code> or <code>POST /api/scan/linkedin</code>.</li>
+    <li>The request is authenticated via a <strong>Scan Token</strong> embedded in the bookmarklet URL — a unique token that links to a specific business and Telegram chat ID.</li>
+    <li>Gemin-Eye scores every post against the business's keyword list and returns qualified leads to the owner's Telegram within seconds.</li>
+  </ol>
+
+  <p>
+    Each business owner gets personalised bookmarklets from their dashboard (the Spy Glass icon in the header). The bookmarklets are pre-configured with their unique scan token — no login required in the browser.
+  </p>
+
+  <h2>3.4 Telegram Bot Input</h2>
+
+  <p>
+    Business owners can also paste content directly into the Telegram bot:
+  </p>
+  <ul>
+    <li><strong>Text:</strong> Paste a post URL or raw post text directly into the chat. The bot extracts the content and runs it through scoring.</li>
+    <li><strong>Screenshots:</strong> Send an image of a post. Gemini's vision capabilities perform OCR to extract the text, which is then scored as normal.</li>
+  </ul>
+
+  <p>
+    This channel is useful when an owner spots something interesting while casually browsing — they don't need to leave Telegram to get a lead scored and a response generated.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   4. AI ENGINE                               ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 4</div>
+  <h1><span class="num">4.</span> AI Engine — Scoring &amp; Response Generation</h1>
+
+  <p>
+    Every candidate post passes through a two-stage AI pipeline. Two different Gemini models are used intentionally — Flash is faster and cheaper for high-volume scoring; Pro produces higher quality, more nuanced prose for response generation.
+  </p>
+
+  <h2>4.1 Lead Scoring (Gemini Flash)</h2>
+
+  <p>
+    Once a post passes keyword matching, it is sent to <strong>Gemini 2.5 Flash</strong> for lead scoring. The prompt provides the model with:
+  </p>
+  <ul>
+    <li>The full text of the post</li>
+    <li>The business name, type, core offering, and target audience</li>
+    <li>The campaign's keyword list</li>
+    <li>The source platform and community context</li>
+  </ul>
+
+  <p>The model returns a structured JSON response:</p>
+
+  <div class="code-block">{
+  "score": 8,
+  "reasoning": "Post author is actively looking for a bocce ball venue
+                in Chicago for a group event. Clear high-intent signal.",
+  "isLead": true
+}</div>
+
+  <p>
+    The <strong>score</strong> is an integer from 1–10. Thresholds differ slightly by channel:
+  </p>
+
+  <table>
+    <thead><tr><th>Channel</th><th>Minimum Score to Qualify</th></tr></thead>
+    <tbody>
+      <tr><td>Automated monitors (Reddit, Google Alerts)</td><td>≥ 5</td></tr>
+      <tr><td>Manual scan (bookmarklet, Telegram input)</td><td>≥ 4</td></tr>
+      <tr><td>Slack delivery</td><td>≥ 7</td></tr>
+    </tbody>
+  </table>
+
+  <p>Posts that fall below the threshold are recorded in the database but not delivered to the owner. This keeps the lead feed signal-to-noise high.</p>
+
+  <h2>4.2 Response Crafting (Gemini Pro)</h2>
+
+  <p>
+    Qualified leads are then passed to <strong>Gemini 2.5 Pro</strong> to generate a suggested reply. The model receives everything Gemini Flash received, plus:
+  </p>
+  <ul>
+    <li>Any feedback history from the owner (e.g. "responses have been too salesy lately")</li>
+    <li>Platform-specific tone instructions</li>
+    <li>The business's unique value proposition and messaging style</li>
+  </ul>
+
+  <h3>Platform-Specific Rules</h3>
+  <table>
+    <thead><tr><th>Platform</th><th>Response Style</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Reddit</td>
+        <td>Sound like a regular Reddit user. Never mention the business by name. Never include links. Be genuinely helpful. Let the owner decide whether to disclose affiliation in a follow-up comment.</td>
+      </tr>
+      <tr>
+        <td>Facebook Groups</td>
+        <td>Warm, community-oriented. The business can be mentioned naturally. Conversational tone.</td>
+      </tr>
+      <tr>
+        <td>LinkedIn</td>
+        <td>Professional tone. Can reference expertise and credibility. Subtle promotion is acceptable.</td>
+      </tr>
+      <tr>
+        <td>Google Alerts (Quora/Forums)</td>
+        <td>Authoritative, long-form friendly. Position the owner as an expert.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Responses are always 2–4 sentences — short enough to feel natural, long enough to be genuinely useful.</p>
+
+  <h2>4.3 Keyword Matching Algorithm</h2>
+
+  <p>
+    Before any AI is invoked, a fast keyword filter narrows down which posts are worth scoring. This saves Gemini API calls on clearly irrelevant posts.
+  </p>
+
+  <p>Key features of the matching algorithm:</p>
+  <ul>
+    <li><strong>Multi-word phrase support:</strong> Keywords like "graphic designer Chicago" are matched as a phrase, not individual words.</li>
+    <li><strong>Stop-word filtering:</strong> Common English words (the, a, is, in, etc.) are excluded from single-word matching to prevent false positives.</li>
+    <li><strong>Case-insensitive:</strong> Matches regardless of capitalisation.</li>
+    <li><strong>Partial word protection:</strong> Uses word boundary matching to avoid matching "sport" inside "transportation".</li>
+    <li><strong>Scoring:</strong> Posts with more keyword matches receive a higher pre-AI priority score, helping rank leads when many arrive simultaneously.</li>
+  </ul>
+
+  <h2>4.4 Mental Health Safety Layer</h2>
+
+  <p>
+    Gemin-Eye includes a dedicated safety module that activates when post content contains mental health crisis signals (words like "psychosis", "schizophrenia", "suicidal", "crisis", etc.).
+  </p>
+
+  <p>When triggered:</p>
+  <ul>
+    <li>The AI is instructed to adopt a compassionate, non-promotional tone regardless of business context.</li>
+    <li>The response always includes the <strong>988 Suicide &amp; Crisis Lifeline</strong> number.</li>
+    <li>A specific resource URL may be appended: <code>teamdanielrunningforrecovery.org</code>.</li>
+    <li>If the AI-generated response somehow omits these elements, a code-level fallback inserts them before delivery.</li>
+  </ul>
+
+  <div class="callout warn">
+    <div class="callout-label">Safety first</div>
+    This layer is non-negotiable and cannot be disabled by campaigns or admin configuration. Human wellbeing always takes priority over lead generation.
+  </div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   5. LEAD DELIVERY                           ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 5</div>
+  <h1><span class="num">5.</span> Lead Delivery — Telegram &amp; Slack</h1>
+
+  <h2>Telegram Notifications</h2>
+
+  <p>
+    Telegram is the primary delivery channel. Each qualified lead triggers a structured Telegram message sent to the business owner's configured chat ID. A typical lead message includes:
+  </p>
+
+  <div class="callout">
+    <strong>🎯 New Lead — Chicago Bocce</strong><br/>
+    <strong>Source:</strong> Reddit · r/AskChicago &nbsp; <strong>Score:</strong> 8/10<br/><br/>
+    <em>"Anyone know of a good bocce ball spot near downtown Chicago? Planning a team outing for ~20 people"</em><br/><br/>
+    <strong>💬 Suggested reply (tap to copy):</strong><br/>
+    <code>Jackson Park and Diversey Driving Range both have public bocce courts, but if you want a dedicated facility with food and drinks, you might want to check out places that specifically cater to group events — some offer private lane rentals for parties your size. Worth calling ahead to check availability!</code>
+  </div>
+
+  <p>
+    The AI response is formatted as a Telegram <code>code</code> block, which makes it a single tap to copy on mobile. The owner can paste it directly into Reddit without any editing if satisfied.
+  </p>
+
+  <h3>Feedback Buttons</h3>
+  <p>Every lead message includes three inline buttons:</p>
+  <ul>
+    <li><strong>✅ Used It</strong> — Owner posted this response. Positive signal.</li>
+    <li><strong>👎 Bad Match</strong> — Post was not relevant to the business. Negative signal.</li>
+    <li><strong>📢 Too Salesy</strong> — Response was too promotional for the platform.</li>
+  </ul>
+
+  <h2>Slack Integration</h2>
+
+  <p>
+    Campaigns can optionally be configured with a <strong>Slack Incoming Webhook URL</strong>. When a lead scores <strong>7 or above</strong>, Gemin-Eye also posts to the configured Slack channel using rich Block Kit formatting.
+  </p>
+
+  <p>
+    Slack notifications include the same information as Telegram — business name, source, score, post snippet, and suggested response — formatted as structured blocks for clean rendering in Slack.
+  </p>
+
+  <p>
+    Leads with scores below 7 are still stored in the database and delivered via Telegram, but are considered lower-confidence and do not warrant a Slack ping. This threshold can be adjusted per campaign in the admin panel.
+  </p>
+
+  <h3>Multiple Webhooks per Business</h3>
+  <p>
+    A business can have different Slack webhooks for different campaigns. For example, one webhook for Reddit leads and a different webhook for Google Alerts leads — allowing teams to route different lead types to different Slack channels or workspaces.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   6. FEEDBACK LOOP                           ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 6</div>
+  <h1><span class="num">6.</span> Feedback Loop — Teaching the AI</h1>
+
+  <p>
+    One of Gemin-Eye's most powerful features is its ability to improve over time based on owner feedback. This is not vague "machine learning" — it is a direct, interpretable feedback injection system.
+  </p>
+
+  <h2>How Feedback Works</h2>
+
+  <ol>
+    <li>Owner taps a feedback button on a Telegram lead message.</li>
+    <li>The feedback is recorded in the <code>response_feedback</code> table with the response ID, feedback type, and timestamp.</li>
+    <li>On the <em>next</em> lead generated for that business, the system queries recent feedback history.</li>
+    <li>A summary of that feedback is injected into the Gemini Pro prompt: e.g. "Recent owner feedback: last 3 responses were marked 'Too Salesy'. Tone down promotional language."</li>
+    <li>Gemini Pro adapts its response style accordingly.</li>
+  </ol>
+
+  <div class="callout success">
+    <div class="callout-label">Why this matters</div>
+    Every business owner has a unique voice and tolerance for promotion. The feedback loop means Gemin-Eye personalises itself to each business over time without any manual reconfiguration. The longer a business uses the platform, the better the responses get.
+  </div>
+
+  <h2>Feedback Types and Their Meanings</h2>
+
+  <table>
+    <thead><tr><th>Button</th><th>Meaning</th><th>Effect on Future Responses</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>✅ Used It</td>
+        <td>Owner was happy and posted the response</td>
+        <td>Reinforces current tone and style — no changes needed</td>
+      </tr>
+      <tr>
+        <td>👎 Bad Match</td>
+        <td>The lead was not relevant to the business</td>
+        <td>Signals that keyword matching may be too broad; prompts for tighter targeting</td>
+      </tr>
+      <tr>
+        <td>📢 Too Salesy</td>
+        <td>Response felt too promotional for the community</td>
+        <td>AI is instructed to reduce promotional content and be more genuinely helpful</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Viewing Feedback in the Dashboard</h2>
+
+  <p>
+    The web dashboard includes a Response Feedback section where owners can see an aggregate view of how their AI responses have been performing over time — overall satisfaction rate, most common feedback types, and trends.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   7. CLIENT ONBOARDING                       ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 7</div>
+  <h1><span class="num">7.</span> Client Onboarding</h1>
+
+  <p>
+    New businesses are onboarded through a guided multi-step wizard, available both on the web and through the Telegram bot. The onboarding process is designed to take less than 5 minutes.
+  </p>
+
+  <h2>Step 1 — Business Information</h2>
+  <p>
+    The owner provides their business website URL. Gemin-Eye <strong>scrapes the website</strong> to understand what the business actually does — extracting the business type, core offering, and target audience from the real site content rather than relying on the owner's self-description. This ensures the AI is always working with accurate context.
+  </p>
+
+  <h2>Step 2 — AI Strategy Generation</h2>
+  <p>
+    Gemini Pro analyses the scraped business data and generates a comprehensive <strong>monitoring strategy</strong>:
+  </p>
+  <ul>
+    <li>A curated list of target keywords and phrases</li>
+    <li>Recommended subreddits to monitor</li>
+    <li>Recommended Facebook group types to target</li>
+    <li>Sample responses demonstrating the recommended tone</li>
+    <li>Notes on what to watch out for (off-topic communities, etc.)</li>
+  </ul>
+  <p>The owner reviews and can accept or modify the strategy before it is saved.</p>
+
+  <h2>Step 3 — Telegram Connection</h2>
+  <p>
+    The owner connects their Telegram account so leads can be delivered. They are guided to start a conversation with the Gemin-Eye bot, which registers their chat ID automatically. From this point, all leads are delivered to their Telegram.
+  </p>
+
+  <h2>Automatic Campaign Creation</h2>
+  <p>
+    Upon completing onboarding, Gemin-Eye automatically creates the following campaigns for every new business:
+  </p>
+  <ul>
+    <li>A <strong>Reddit campaign</strong> with the AI-recommended subreddits</li>
+    <li>A <strong>Google Alerts campaign</strong> with instructions to set up alerts for their keywords</li>
+    <li>A <strong>Facebook campaign</strong> pre-configured for Spy Glass bookmarklet use</li>
+  </ul>
+
+  <h2>Telegram-Based Onboarding</h2>
+  <p>
+    For users who prefer mobile-first workflows, the entire onboarding journey can be completed through the Telegram bot using a conversational interface — no web browser required.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   8. ADMIN PANEL                             ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 8</div>
+  <h1><span class="num">8.</span> Admin Panel</h1>
+
+  <p>
+    The admin panel is accessible only to super-admin accounts and provides a birds-eye view of the entire platform.
+  </p>
+
+  <h2>Client &amp; Business Management</h2>
+  <ul>
+    <li>View all registered clients and their associated businesses</li>
+    <li>Assign businesses to user accounts (e.g. when setting up a new client)</li>
+    <li>Edit business details, keyword lists, and campaign configurations</li>
+    <li>Manually trigger a lead scoring evaluation for any business</li>
+  </ul>
+
+  <h2>Campaign Management</h2>
+  <ul>
+    <li>View all campaigns across all businesses</li>
+    <li>Add or remove subreddits from Reddit campaigns</li>
+    <li>Configure Slack webhook URLs per campaign</li>
+    <li>Pause or activate individual campaigns</li>
+    <li>Set custom keyword lists per campaign</li>
+  </ul>
+
+  <h2>Monitoring Kill Switch</h2>
+  <p>
+    The admin panel includes a <strong>global monitoring kill switch</strong> that can instantly pause all automated Reddit and Google Alerts scanning across the entire platform. This is useful during maintenance windows, when the AI API is experiencing issues, or when temporarily reducing API costs.
+  </p>
+
+  <h2>Bookmarklet Generator</h2>
+  <p>
+    The admin can generate personalised Spy Glass bookmarklets for any business at any time — useful when onboarding a client who prefers manual Facebook or LinkedIn scanning, or when a client needs to regenerate their scan token.
+  </p>
+
+  <h2>Lead &amp; Response Review</h2>
+  <p>
+    Admins can browse all leads and AI-generated responses across all businesses, with filters by business, campaign, score, and date. This allows quality auditing of the AI's output and helps identify any systematic issues.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   9. DATA MODEL                              ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 9</div>
+  <h1><span class="num">9.</span> Data Model &amp; Storage</h1>
+
+  <p>
+    All data is stored in PostgreSQL via Drizzle ORM. The schema is defined in <code>shared/schema.ts</code> and shared between the frontend and backend for full type safety.
+  </p>
+
+  <table>
+    <thead><tr><th>Table</th><th>Description</th><th>Key Fields</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>users</strong></td>
+        <td>Platform accounts (owners &amp; admins)</td>
+        <td>id, email, role, telegramChatId, createdAt</td>
+      </tr>
+      <tr>
+        <td><strong>sessions</strong></td>
+        <td>Express session storage</td>
+        <td>sid, sess, expire</td>
+      </tr>
+      <tr>
+        <td><strong>businesses</strong></td>
+        <td>Client businesses registered on the platform</td>
+        <td>id, userId, name, type, coreOffering, targetAudience, website, telegramChatId</td>
+      </tr>
+      <tr>
+        <td><strong>campaigns</strong></td>
+        <td>Monitoring campaigns per business per channel</td>
+        <td>id, businessId, type (reddit/facebook/google_alerts/linkedin), keywords, subreddits, slackWebhookUrl, isActive</td>
+      </tr>
+      <tr>
+        <td><strong>leads</strong></td>
+        <td>Discovered prospect posts</td>
+        <td>id, campaignId, postId, postTitle, postBody, postUrl, intentScore, source, isQualified</td>
+      </tr>
+      <tr>
+        <td><strong>ai_responses</strong></td>
+        <td>AI-generated replies for each lead</td>
+        <td>id, leadId, responseText, model, reasoning</td>
+      </tr>
+      <tr>
+        <td><strong>response_feedback</strong></td>
+        <td>Owner feedback on AI responses</td>
+        <td>id, aiResponseId, feedbackType, createdAt</td>
+      </tr>
+      <tr>
+        <td><strong>conversations</strong></td>
+        <td>Telegram chat conversations (built-in chat module)</td>
+        <td>id, userId, title, createdAt</td>
+      </tr>
+      <tr>
+        <td><strong>messages</strong></td>
+        <td>Individual messages within conversations</td>
+        <td>id, conversationId, role, content, createdAt</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Storage Layer Pattern</h2>
+
+  <p>
+    All database operations go through typed TypeScript interfaces. No route handler touches the database directly — all calls go through the storage layer. This ensures consistent error handling, makes unit testing straightforward, and provides a clean boundary between business logic and persistence.
+  </p>
+
+  <div class="code-block">// Example: getting leads for a business
+const leads = await storage.getLeadsByBusinessId(businessId, {
+  qualified: true,
+  limit: 50,
+  offset: page * 50
+});</div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   10. SECURITY & ROBUSTNESS                  ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 10</div>
+  <h1><span class="num">10.</span> Security &amp; Robustness</h1>
+
+  <h2>Authentication &amp; Authorisation</h2>
+  <ul>
+    <li><strong>OIDC via Replit:</strong> Login is handled by Replit's OpenID Connect system. No passwords are stored in Gemin-Eye's database — authentication is fully delegated.</li>
+    <li><strong>Session storage:</strong> Sessions are persisted in PostgreSQL using <code>connect-pg-simple</code> — not in-memory, so sessions survive server restarts.</li>
+    <li><strong>Route protection:</strong> All API routes that access business or lead data are protected by an <code>isAuthenticated</code> middleware. Additionally, data access is scoped — users can only see data belonging to their own businesses unless they are admins.</li>
+  </ul>
+
+  <h2>AI Call Reliability</h2>
+  <ul>
+    <li><strong>Timeout protection:</strong> Every Gemini API call is wrapped in a timeout. If the AI takes too long to respond (network issues, model overload), the call fails gracefully rather than blocking the monitor indefinitely.</li>
+    <li><strong>Retry logic:</strong> Transient failures (e.g. rate limit responses) trigger automatic retries with exponential backoff via the batch processor module.</li>
+    <li><strong>Zod validation:</strong> All AI JSON responses are parsed through Zod schemas before being used. If the AI returns malformed JSON or missing fields, the error is caught and logged — the system does not crash.</li>
+    <li><strong>Fallback responses:</strong> If AI generation fails completely for a lead, the lead is still saved to the database and delivered to Telegram with a note that response generation failed — the owner still sees the lead and can write their own reply.</li>
+  </ul>
+
+  <h2>API Security</h2>
+  <ul>
+    <li><strong>Scan Tokens:</strong> Bookmarklets authenticate via unique, opaque scan tokens rather than session cookies. Each token is bound to a specific business and expires if not used.</li>
+    <li><strong>Input validation:</strong> All API request bodies are validated with Zod schemas before any processing occurs. Malformed or oversized inputs are rejected immediately.</li>
+    <li><strong>Rate limiting:</strong> The monitoring system is self-throttled to avoid overwhelming Reddit's RSS endpoints or hitting Gemini API quotas.</li>
+  </ul>
+
+  <h2>Secrets Management</h2>
+  <p>
+    All secrets (Telegram bot token, Slack webhook URLs, database URLs) are stored as environment secrets and never hardcoded in source code. The admin panel reads webhook URLs from the database rather than environment variables, so they can be updated at runtime without redeployment.
+  </p>
+</div>
+
+<!-- ╔══════════════════════════════════════════════╗ -->
+<!-- ║   11. TECH STACK SUMMARY                     ║ -->
+<!-- ╚══════════════════════════════════════════════╝ -->
+<div class="page chapter-break">
+  <div class="section-tag">Section 11</div>
+  <h1><span class="num">11.</span> Technology Stack Summary</h1>
+
+  <table>
+    <thead><tr><th>Category</th><th>Technology</th><th>Version / Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Language</td><td>TypeScript</td><td>Full-stack, shared types between frontend and backend</td></tr>
+      <tr><td>Frontend framework</td><td>React</td><td>v18, functional components, hooks throughout</td></tr>
+      <tr><td>Frontend build</td><td>Vite</td><td>Dev server + production bundler</td></tr>
+      <tr><td>Frontend routing</td><td>Wouter</td><td>Lightweight client-side router</td></tr>
+      <tr><td>State management</td><td>TanStack React Query</td><td>v5, server-state synchronisation</td></tr>
+      <tr><td>UI components</td><td>shadcn/ui + Radix UI</td><td>Accessible, composable primitives</td></tr>
+      <tr><td>Styling</td><td>Tailwind CSS</td><td>Utility-first; indigo/violet brand palette</td></tr>
+      <tr><td>Forms</td><td>React Hook Form + Zod</td><td>Controlled, validated forms</td></tr>
+      <tr><td>Backend framework</td><td>Express.js</td><td>REST API + static file serving</td></tr>
+      <tr><td>Backend build</td><td>esbuild</td><td>Fast TypeScript → CJS compilation</td></tr>
+      <tr><td>Database</td><td>PostgreSQL</td><td>Primary data store</td></tr>
+      <tr><td>ORM</td><td>Drizzle ORM</td><td>Type-safe queries; drizzle-zod for validation</td></tr>
+      <tr><td>AI — Scoring</td><td>Google Gemini 2.5 Flash</td><td>High-speed intent scoring</td></tr>
+      <tr><td>AI — Responses</td><td>Google Gemini 2.5 Pro</td><td>High-quality response generation</td></tr>
+      <tr><td>Authentication</td><td>Replit OIDC + Passport.js</td><td>OpenID Connect, no passwords stored</td></tr>
+      <tr><td>Session storage</td><td>connect-pg-simple</td><td>PostgreSQL-backed sessions</td></tr>
+      <tr><td>Lead delivery</td><td>Telegram Bot API</td><td>Primary notification channel</td></tr>
+      <tr><td>Team notifications</td><td>Slack Incoming Webhooks</td><td>Block Kit formatted messages</td></tr>
+      <tr><td>Deployment</td><td>Replit Autoscale</td><td>Always-on, auto-scaling hosting</td></tr>
+      <tr><td>Domain</td><td>gemin-eye.com</td><td>Production domain</td></tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top: 1.2cm;">
+    <div class="callout info">
+      <div class="callout-label">Open-source foundations</div>
+      Gemin-Eye is built entirely on open-source technologies with no proprietary third-party SaaS dependencies beyond Gemini AI, Telegram, and Slack — all of which have free tiers suitable for early-stage usage.
+    </div>
+  </div>
+
+  <footer>
+    Gemin-Eye — AI-Powered Customer Acquisition Platform &nbsp;·&nbsp; Confidential &nbsp;·&nbsp; April 2026
+  </footer>
+</div>
+
+</body>
+</html>

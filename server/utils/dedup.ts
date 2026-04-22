@@ -1,6 +1,49 @@
 import { db } from "../db";
 import { seenItems } from "@shared/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, lt, and, ne } from "drizzle-orm";
+
+const THIRTY_DAYS_MS  = 30 * 24 * 60 * 60 * 1000;
+const NINETY_DAYS_MS  = 90 * 24 * 60 * 60 * 1000;
+
+export async function pruneSeenItems(): Promise<void> {
+  const now = Date.now();
+  const thirtyDaysAgo = new Date(now - THIRTY_DAYS_MS);
+  const ninetyDaysAgo  = new Date(now - NINETY_DAYS_MS);
+
+  try {
+    const regularResult = await db
+      .delete(seenItems)
+      .where(
+        and(
+          ne(seenItems.source, "own_response"),
+          lt(seenItems.createdAt, thirtyDaysAgo),
+        ),
+      );
+
+    const responseResult = await db
+      .delete(seenItems)
+      .where(
+        and(
+          eq(seenItems.source, "own_response"),
+          lt(seenItems.createdAt, ninetyDaysAgo),
+        ),
+      );
+
+    console.log(
+      `seen_items pruned: ${(regularResult as any).rowCount ?? 0} post keys (>30d), ` +
+      `${(responseResult as any).rowCount ?? 0} response fingerprints (>90d)`,
+    );
+  } catch (err) {
+    console.error("seen_items pruning failed:", err);
+  }
+}
+
+export function startSeenItemsPruner(): void {
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  pruneSeenItems();
+  setInterval(pruneSeenItems, TWENTY_FOUR_HOURS);
+  console.log("seen_items pruner: scheduled (runs every 24 hours)");
+}
 
 export async function hasBeenSeen(dedupKey: string): Promise<boolean> {
   const existing = await db.select({ id: seenItems.id }).from(seenItems).where(eq(seenItems.dedupKey, dedupKey)).limit(1);

@@ -20,15 +20,39 @@ const scanRateLimit = createRateLimiter({
   keyFn: (req) => String(req.body?.chatId || req.ip || "unknown"),
 });
 
-function setCorsHeaders(_req: Request, res: Response, next: NextFunction) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+const ALLOWED_SCAN_ORIGINS = [
+  "https://www.facebook.com",
+  "https://m.facebook.com",
+  "https://www.linkedin.com",
+  "https://gemin-eye.com",
+  "https://www.gemin-eye.com",
+];
+
+function getScanCorsOrigin(req: Request): string | null {
+  const origin = req.headers.origin || "";
+  if (ALLOWED_SCAN_ORIGINS.some((o) => origin === o || origin.startsWith(o + "/"))) {
+    return origin;
+  }
+  return null;
+}
+
+function setCorsHeaders(req: Request, res: Response, next: NextFunction) {
+  const allowed = getScanCorsOrigin(req);
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", allowed);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   next();
 }
 
-function corsOptions(_req: Request, res: Response) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+function corsOptions(req: Request, res: Response) {
+  const allowed = getScanCorsOrigin(req);
+  if (allowed) {
+    res.setHeader("Access-Control-Allow-Origin", allowed);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.sendStatus(204);

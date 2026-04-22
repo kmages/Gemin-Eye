@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { sendTelegramMessage, sendTelegramMessageToChat, type TelegramMessageOptions } from "./telegram";
 import { isRedditConfigured } from "./reddit-poster";
 import { escapeHtml } from "./utils/html";
@@ -61,6 +62,10 @@ async function sendResultWithButtons(result: PostAnalysis, chatId?: string) {
   }
 }
 
+function makeWebhookSecret(token: string): string {
+  return createHash("sha256").update(`gemin-eye-webhook:${token}`).digest("hex");
+}
+
 export function registerTelegramWebhook(app: any) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -68,7 +73,15 @@ export function registerTelegramWebhook(app: any) {
     return;
   }
 
+  const webhookSecret = makeWebhookSecret(token);
+
   app.post(`/api/telegram/webhook/${token}`, webhookRateLimit, async (req: any, res: any) => {
+    const incomingSecret = req.headers["x-telegram-bot-api-secret-token"];
+    if (incomingSecret !== webhookSecret) {
+      console.warn(`Telegram webhook: rejected request with invalid secret from ${req.ip}`);
+      return res.sendStatus(403);
+    }
+
     try {
       res.sendStatus(200);
 
@@ -352,10 +365,10 @@ export function registerTelegramWebhook(app: any) {
     }
   });
 
-  registerWebhook(token).catch((e) => console.error("Failed to register Telegram webhook:", e));
+  registerWebhook(token, webhookSecret).catch((e) => console.error("Failed to register Telegram webhook:", e));
 }
 
-async function registerWebhook(token: string) {
+async function registerWebhook(token: string, secret: string) {
   const replitDomains = process.env.REPLIT_DOMAINS;
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
   const replSlug = process.env.REPL_SLUG;
@@ -378,7 +391,7 @@ async function registerWebhook(token: string) {
     const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify({ url: webhookUrl, secret_token: secret }),
     });
 
     const data = await res.json();

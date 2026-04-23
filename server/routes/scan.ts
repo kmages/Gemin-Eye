@@ -291,11 +291,9 @@ Return ONLY the response text, no quotes or formatting.`,
     msg += `<b>Posted:</b> ${escapeHtml(meta.postAge)}${needsAgo ? " ago" : ""}\n`;
   }
   msg += `<b>Why:</b> ${escapeHtml(match.reasoning || "")}\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(postText.slice(0, 200))}"</i>`;
-
-  if (meta.pageUrl) {
-    msg += `\n\nTap "Open ${platformLabel} Post" below, then paste the reply.`;
-  }
+  msg += `<b>Post:</b>\n<i>"${escapeHtml(postText.slice(0, 200))}"</i>\n\n`;
+  msg += `<b>💬 Suggested Response:</b>\n<code>${escapeHtml(responseText)}</code>\n\n`;
+  msg += `👆 Tap "Open ${platformLabel} Post" below, then paste the reply.`;
 
   const prefix = platform === "facebook" ? "fb" : "li";
   const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
@@ -312,7 +310,6 @@ Return ONLY the response text, no quotes or formatting.`,
   }
 
   await sendTelegramMessageToChat(chatId, msg, buttons.length > 0 ? { buttons } : undefined);
-  await sendTelegramMessageToChat(chatId, responseText);
 
   return { matched: true, score: match.intent_score, notified: true };
 }

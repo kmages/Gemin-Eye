@@ -328,6 +328,9 @@ async function runScan(): Promise<void> {
     await new Promise((r) => setTimeout(r, 5000));
   }
   console.log(`Reddit monitor: scan complete (${scannedCount}/${subMap.size} subreddits)`);
+
+  const { recordScan } = await import("./utils/monitor-health");
+  recordScan("reddit", targets.length);
 }
 
 export function startRedditMonitor(): void {

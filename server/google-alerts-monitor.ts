@@ -368,6 +368,9 @@ async function runScan(): Promise<void> {
     await scanFeedForTargets(feedTargets[0].feedUrl, feedTargets);
     await new Promise((r) => setTimeout(r, 3000));
   }
+
+  const { recordScan } = await import("./utils/monitor-health");
+  recordScan("googleAlerts", targets.length);
 }
 
 export function startGoogleAlertsMonitor(): void {

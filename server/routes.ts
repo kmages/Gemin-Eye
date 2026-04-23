@@ -12,8 +12,9 @@ import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySch
 import { createRateLimiter } from "./utils/rate-limit";
 import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
-import { registerAdminRoutes } from "./routes/admin";
+import { registerAdminRoutes, isMonitoringEnabled } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
+import { getMonitorHealth } from "./utils/monitor-health";
 
 const aiRateLimit = createRateLimiter({
   name: "ai-endpoints",
@@ -35,6 +36,10 @@ export async function registerRoutes(
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
+  });
+
+  app.get("/api/health/monitors", isAuthenticated, (_req, res) => {
+    res.json(getMonitorHealth(isMonitoringEnabled()));
   });
 
   app.get("/api/businesses", isAuthenticated, async (req: any, res) => {

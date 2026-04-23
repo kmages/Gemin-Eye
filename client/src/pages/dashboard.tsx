@@ -10,7 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
-  Search, Monitor, Check, Bookmark
+  Search, Monitor, Check, Bookmark, Activity
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -36,6 +36,73 @@ function StatCard({ title, value, icon: Icon, trend, color }: {
             <TrendingUp className="w-3 h-3" /> {trend}
           </span>
         )}
+      </div>
+    </Card>
+  );
+}
+
+interface MonitorStatus {
+  lastScan: string | null;
+  healthy: boolean;
+  disabled: boolean;
+  businessCount: number;
+}
+
+function formatTimeAgo(isoString: string): string {
+  const diffMin = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 min ago";
+  return `${diffMin} min ago`;
+}
+
+function MonitorDot({ healthy, disabled, lastScan }: { healthy: boolean; disabled: boolean; lastScan: string | null }) {
+  if (disabled) return <span className="w-2 h-2 rounded-full bg-muted-foreground/40 inline-block" />;
+  if (!lastScan)  return <span className="w-2 h-2 rounded-full bg-muted-foreground/40 inline-block" />;
+  if (healthy)    return <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse" />;
+  return <span className="w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" />;
+}
+
+function MonitorHealthPanel() {
+  const { data, isLoading } = useQuery<Record<string, MonitorStatus>>({
+    queryKey: ["/api/health/monitors"],
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading || !data) return null;
+
+  const monitors = [
+    { key: "reddit",       label: "Reddit",        interval: "every 5 min" },
+    { key: "googleAlerts", label: "Google Alerts",  interval: "every 2 min" },
+  ];
+
+  return (
+    <Card className="px-4 py-3" data-testid="panel-monitor-health">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+          <Activity className="w-3.5 h-3.5" />
+          <span>Monitor Status</span>
+        </div>
+        {monitors.map(({ key, label, interval }) => {
+          const m = data[key];
+          if (!m) return null;
+          const statusLabel = m.disabled ? "disabled" : m.lastScan ? (m.healthy ? "healthy" : "stalled") : "waiting…";
+          const statusColor  = m.disabled || !m.lastScan ? "text-muted-foreground" : m.healthy ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400";
+          return (
+            <div key={key} className="flex items-center gap-2" data-testid={`monitor-status-${key}`}>
+              <MonitorDot healthy={m.healthy} disabled={m.disabled} lastScan={m.lastScan} />
+              <span className="text-xs font-medium">{label}</span>
+              <span className={`text-xs ${statusColor}`}>
+                {statusLabel}
+                {m.lastScan && !m.disabled && ` · ${formatTimeAgo(m.lastScan)}`}
+              </span>
+              {m.businessCount > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {m.businessCount} {m.businessCount === 1 ? "business" : "businesses"}
+                </Badge>
+              )}
+            </div>
+          );
+        })}
       </div>
     </Card>
   );
@@ -375,6 +442,8 @@ export default function Dashboard() {
                 color="bg-chart-4/10 text-chart-4"
               />
             </div>
+
+            <MonitorHealthPanel />
 
             {bookmarklets && bookmarklets.length > 0 && (
               <SpyGlassSection bookmarklets={bookmarklets} />

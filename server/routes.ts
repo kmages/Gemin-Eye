@@ -212,7 +212,7 @@ CRITICAL RULES FOR GROUPS:
     try {
       const userId = req.user.claims.sub;
       const data = await storage.getDashboardData(userId);
-      res.json({ leads: data.leads, responses: data.responses });
+      res.json({ leads: data.leads, responses: data.responses, feedback: data.feedback });
     } catch (error) {
       console.error("Error fetching leads:", error);
       res.status(500).json({ error: "Failed to fetch leads" });

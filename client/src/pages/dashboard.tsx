@@ -16,7 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SiFacebook, SiLinkedin } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
-import type { Business, Campaign, Lead, AiResponse } from "@shared/schema";
+import type { Business, Campaign, Lead, AiResponse, ResponseFeedback } from "@shared/schema";
 
 function StatCard({ title, value, icon: Icon, trend, color }: {
   title: string; value: string | number; icon: any; trend?: string; color: string;
@@ -108,7 +108,25 @@ function MonitorHealthPanel() {
   );
 }
 
-function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
+const feedbackConfig: Record<string, { label: string; className: string }> = {
+  positive:     { label: "Used It",      className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  bad_match:    { label: "Bad Match",    className: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  too_salesy:   { label: "Too Salesy",   className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  wrong_client: { label: "Wrong Client", className: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+};
+
+function FeedbackBadge({ feedback }: { feedback?: ResponseFeedback }) {
+  if (!feedback) return null;
+  const cfg = feedbackConfig[feedback.feedback];
+  if (!cfg) return null;
+  return (
+    <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.className}`} data-testid={`badge-feedback-${feedback.responseId}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiResponse; feedback?: ResponseFeedback }) {
   const { toast } = useToast();
 
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
@@ -151,7 +169,7 @@ function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
             <p className="text-xs text-muted-foreground truncate">{lead.groupName} &middot; {lead.platform}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
           <Badge variant={config.variant} className="text-xs">
             <config.icon className="w-3 h-3 mr-1" />
             {config.label}
@@ -159,6 +177,7 @@ function LeadCard({ lead, response }: { lead: Lead; response?: AiResponse }) {
           <Badge variant="secondary" className="text-xs">
             {lead.intentScore}/10
           </Badge>
+          <FeedbackBadge feedback={feedback} />
         </div>
       </div>
 
@@ -330,7 +349,7 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[] }>({
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<{ leads: Lead[]; responses: AiResponse[]; feedback: ResponseFeedback[] }>({
     queryKey: ["/api/leads"],
     enabled: !!user,
   });
@@ -355,6 +374,7 @@ export default function Dashboard() {
 
   const leads = leadsData?.leads || [];
   const responses = leadsData?.responses || [];
+  const feedbackByResponseId = Object.fromEntries((leadsData?.feedback || []).map((f) => [f.responseId, f]));
   const hasBusiness = businesses && businesses.length > 0;
 
   return (
@@ -482,7 +502,8 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   {leads.map((lead) => {
                     const resp = responses.find((r) => r.leadId === lead.id);
-                    return <LeadCard key={lead.id} lead={lead} response={resp} />;
+                    const fb = resp ? feedbackByResponseId[resp.id] : undefined;
+                    return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} />;
                   })}
                 </div>
               )}

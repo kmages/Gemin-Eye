@@ -1,9 +1,10 @@
 import {
-  businesses, campaigns, leads, aiResponses, users,
+  businesses, campaigns, leads, aiResponses, users, responseFeedback,
   type Business, type InsertBusiness,
   type Campaign, type InsertCampaign,
   type Lead, type InsertLead,
   type AiResponse, type InsertAiResponse,
+  type ResponseFeedback,
   type User,
 } from "@shared/schema";
 import { db } from "./db";
@@ -14,6 +15,7 @@ export interface DashboardData {
   campaigns: Campaign[];
   leads: Lead[];
   responses: AiResponse[];
+  feedback: ResponseFeedback[];
 }
 
 export interface IStorage {
@@ -26,6 +28,7 @@ export interface IStorage {
   getLeadsByCampaigns(campaignIds: number[]): Promise<Lead[]>;
   createLead(data: InsertLead): Promise<Lead>;
   getResponsesByLeads(leadIds: number[]): Promise<AiResponse[]>;
+  getFeedbackByResponses(responseIds: number[]): Promise<ResponseFeedback[]>;
   createResponse(data: InsertAiResponse): Promise<AiResponse>;
   updateResponseStatus(id: number, status: string): Promise<AiResponse>;
   getAllBusinesses(): Promise<Business[]>;
@@ -85,6 +88,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
   }
 
+  async getFeedbackByResponses(responseIds: number[]): Promise<ResponseFeedback[]> {
+    if (responseIds.length === 0) return [];
+    return db.select().from(responseFeedback).where(inArray(responseFeedback.responseId, responseIds));
+  }
+
   async createResponse(data: InsertAiResponse): Promise<AiResponse> {
     const [resp] = await db.insert(aiResponses).values(data).returning();
     return resp;
@@ -124,20 +132,25 @@ export class DatabaseStorage implements IStorage {
 
   async getDashboardData(userId: string): Promise<DashboardData> {
     const userBiz = await db.select().from(businesses).where(eq(businesses.userId, userId)).orderBy(desc(businesses.createdAt));
-    if (userBiz.length === 0) return { businesses: userBiz, campaigns: [], leads: [], responses: [] };
+    if (userBiz.length === 0) return { businesses: userBiz, campaigns: [], leads: [], responses: [], feedback: [] };
 
     const bizIds = userBiz.map((b) => b.id);
     const userCamps = await db.select().from(campaigns).where(inArray(campaigns.businessId, bizIds)).orderBy(desc(campaigns.createdAt));
-    if (userCamps.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: [], responses: [] };
+    if (userCamps.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: [], responses: [], feedback: [] };
 
     const campIds = userCamps.map((c) => c.id);
     const userLeads = await db.select().from(leads).where(inArray(leads.campaignId, campIds)).orderBy(desc(leads.createdAt));
-    if (userLeads.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: [] };
+    if (userLeads.length === 0) return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: [], feedback: [] };
 
     const leadIds = userLeads.map((l) => l.id);
     const userResponses = await db.select().from(aiResponses).where(inArray(aiResponses.leadId, leadIds)).orderBy(desc(aiResponses.createdAt));
 
-    return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: userResponses };
+    const responseIds = userResponses.map((r) => r.id);
+    const userFeedback = responseIds.length > 0
+      ? await db.select().from(responseFeedback).where(inArray(responseFeedback.responseId, responseIds))
+      : [];
+
+    return { businesses: userBiz, campaigns: userCamps, leads: userLeads, responses: userResponses, feedback: userFeedback };
   }
 
   async getUserById(id: string): Promise<User | undefined> {

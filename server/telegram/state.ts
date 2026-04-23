@@ -32,13 +32,9 @@ export interface AdminSetupState {
 
 export const pendingContextRequests = new Map<string, PendingContextRequest>();
 export const pendingRedditPosts = new Map<number, { responseText: string; postUrl: string; timestamp: number }>();
-export const pendingClientSetups = new Map<string, AdminSetupState>();
-export const clientWizards = new Map<string, ClientWizardState>();
 
 export const REDDIT_POST_TTL = 30 * 60 * 1000;
 export const CONTEXT_TTL = 5 * 60 * 1000;
-const WIZARD_TTL = 60 * 60 * 1000;
-const ADMIN_SETUP_TTL = 60 * 60 * 1000;
 const CLEANUP_INTERVAL = 10 * 60 * 1000;
 
 export function cleanupStaleState(): void {
@@ -59,23 +55,13 @@ export function cleanupStaleState(): void {
     }
   });
 
-  clientWizards.forEach((val, key) => {
-    if (now - val.timestamp > WIZARD_TTL) {
-      clientWizards.delete(key);
-      cleaned++;
-    }
-  });
-
-  pendingClientSetups.forEach((val, key) => {
-    if (now - val.timestamp > ADMIN_SETUP_TTL) {
-      pendingClientSetups.delete(key);
-      cleaned++;
-    }
-  });
-
   if (cleaned > 0) {
-    console.log(`State cleanup: removed ${cleaned} stale entries`);
+    console.log(`State cleanup: removed ${cleaned} stale in-memory entries`);
   }
 }
 
 setInterval(cleanupStaleState, CLEANUP_INTERVAL).unref();
+
+import { pruneWizardSessions } from "../utils/wizard-db";
+const WIZARD_PRUNE_INTERVAL = 60 * 60 * 1000;
+setInterval(() => pruneWizardSessions().catch(console.error), WIZARD_PRUNE_INTERVAL).unref();

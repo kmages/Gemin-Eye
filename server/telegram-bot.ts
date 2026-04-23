@@ -12,7 +12,8 @@ import {
 import { handleClientWizard } from "./telegram/client-wizard";
 import { handleAdminCommand } from "./telegram/admin-commands";
 import { handleCallbackQuery } from "./telegram/callbacks";
-import { pendingContextRequests, pendingRedditPosts, clientWizards, CONTEXT_TTL } from "./telegram/state";
+import { pendingContextRequests, pendingRedditPosts, CONTEXT_TTL } from "./telegram/state";
+import { saveClientWizard } from "./utils/wizard-db";
 
 export { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode } from "./telegram/bookmarklets";
 
@@ -139,7 +140,7 @@ export function registerTelegramWebhook(app: any) {
       }
 
       if (messageText === "/start setup" || messageText === "/setup") {
-        clientWizards.set(chatId, { step: "name", chatId, timestamp: Date.now() });
+        await saveClientWizard(chatId, { step: "name", chatId, timestamp: Date.now() });
         await sendTelegramMessageToChat(chatId,
           `<b>Welcome to Gemin-Eye!</b>\n\n` +
           `I'm going to set up your business monitor in 5 quick steps.\n\n` +

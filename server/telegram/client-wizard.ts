@@ -2,14 +2,15 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "../telegram";
 import { storage } from "../storage";
 import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
-import { clientWizards, type ClientWizardState } from "./state";
+import { getClientWizard, saveClientWizard, deleteClientWizard } from "../utils/wizard-db";
+import type { ClientWizardState } from "./state";
 
 export async function handleClientWizard(chatId: string, text: string): Promise<boolean> {
-  const wizard = clientWizards.get(chatId);
+  const wizard = await getClientWizard(chatId);
   if (!wizard) return false;
 
   if (text.startsWith("/")) {
-    clientWizards.delete(chatId);
+    await deleteClientWizard(chatId);
     return false;
   }
 
@@ -24,6 +25,7 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
       }
       wizard.name = name;
       wizard.step = "offering";
+      await saveClientWizard(chatId, wizard);
       await sendTelegramMessageToChat(chatId,
         `Got it: <b>${escapeHtml(wizard.name)}</b>\n\nIn one sentence, what does ${escapeHtml(wizard.name)} do or sell?\n<i>(e.g., "Classic American diner with all-day breakfast and comfort food")</i>`
       );
@@ -38,6 +40,7 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
       }
       wizard.offering = offering;
       wizard.step = "contact";
+      await saveClientWizard(chatId, wizard);
       await sendTelegramMessageToChat(chatId,
         `Got it.\n\nNow I need your contact info. Please send your <b>email</b>, <b>phone</b>, and <b>website</b> (one per line):\n\n<i>Example:\njoe@mybusiness.com\n(312) 555-1234\nhttps://mybusiness.com</i>\n\n(If no website, just send email and phone on two lines)`
       );
@@ -58,6 +61,7 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
       wizard.contactPhone = phoneLine;
       wizard.website = websiteLine;
       wizard.step = "location";
+      await saveClientWizard(chatId, wizard);
       await sendTelegramMessageToChat(chatId,
         `Got it.\n\nWhat's the reach of ${escapeHtml(wizard.name!)}? This helps me find the right communities to monitor.\n<i>(e.g., "Chicago IL", "National", "Global / web-based")</i>`
       );
@@ -72,6 +76,7 @@ export async function handleClientWizard(chatId: string, text: string): Promise<
       }
       wizard.location = location;
       wizard.step = "keywords";
+      await saveClientWizard(chatId, wizard);
       await sendTelegramMessageToChat(chatId,
         `Perfect.\n\nNow give me 3-5 keywords to watch for, separated by commas.\n<i>(e.g., estate planning, trust attorney, wills and trusts, probate lawyer)</i>`
       );
@@ -163,7 +168,7 @@ RULES:
         keywords: wizard.keywords,
       });
 
-      clientWizards.delete(chatId);
+      await deleteClientWizard(chatId);
 
       await sendTelegramMessageToChat(chatId,
         `<b>Setup Complete!</b>\n\n` +

@@ -7,22 +7,23 @@ import { generateContent, safeParseJsonFromAI } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { buildGoogleAlertFeeds } from "../utils/keywords";
 import { postRedditSubmission, isRedditConfigured } from "../reddit-poster";
-import { pendingClientSetups, type AdminSetupState } from "./state";
+import type { AdminSetupState } from "./state";
+import { getAdminSetup, saveAdminSetup, deleteAdminSetup } from "../utils/wizard-db";
 import { getAllBusinessesWithCampaigns } from "./analysis";
 
 export async function handleAdminCommand(chatId: string, text: string): Promise<boolean> {
-  const pending = pendingClientSetups.get(chatId);
+  const pending = await getAdminSetup(chatId);
 
   if (pending && !text.startsWith("/")) {
     return await handleClientSetupFlow(chatId, text, pending);
   }
 
   if (pending && text.startsWith("/")) {
-    pendingClientSetups.delete(chatId);
+    await deleteAdminSetup(chatId);
   }
 
   if (text === "/newclient") {
-    pendingClientSetups.set(chatId, { step: "name", timestamp: Date.now() });
+    await saveAdminSetup(chatId, { step: "name", timestamp: Date.now() });
     await sendTelegramMessage("<b>New Client Setup</b>\n\nWhat's the business name?");
     return true;
   }
@@ -40,7 +41,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nOr type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "remove_select", timestamp: Date.now() });
+    await saveAdminSetup(chatId, { step: "remove_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -59,7 +60,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "keywords_select", timestamp: Date.now() });
+    await saveAdminSetup(chatId, { step: "keywords_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -78,13 +79,13 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `Or type /cancel to go back.`;
 
-    pendingClientSetups.set(chatId, { step: "groups_select", timestamp: Date.now() });
+    await saveAdminSetup(chatId, { step: "groups_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
 
   if (text === "/cancel") {
-    pendingClientSetups.delete(chatId);
+    await deleteAdminSetup(chatId);
     await sendTelegramMessage("Cancelled.");
     return true;
   }
@@ -102,7 +103,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     });
     msg += `\nReply with the number, or /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_select", timestamp: Date.now() });
+    await saveAdminSetup(chatId, { step: "alert_select", timestamp: Date.now() });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -166,7 +167,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
     }
     msg += `\nOr /cancel.`;
 
-    pendingClientSetups.set(chatId, { step: "alert_remove", timestamp: Date.now(), groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
+    await saveAdminSetup(chatId, { step: "alert_remove", timestamp: Date.now(), groups: feedIndex.map(fi => `${fi.campaignId}::${fi.feedUrl}`) });
     await sendTelegramMessage(msg);
     return true;
   }
@@ -227,7 +228,7 @@ export async function handleAdminCommand(chatId: string, text: string): Promise<
 
 export async function handleClientSetupFlow(chatId: string, text: string, pending: AdminSetupState): Promise<boolean> {
   if (text === "/cancel") {
-    pendingClientSetups.delete(chatId);
+    await deleteAdminSetup(chatId);
     await sendTelegramMessage("Client setup cancelled.");
     return true;
   }
@@ -238,24 +239,28 @@ export async function handleClientSetupFlow(chatId: string, text: string, pendin
     case "name":
       pending.name = text;
       pending.step = "type";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(`Got it: <b>${escapeHtml(text)}</b>\n\nWhat type of business is this?\n<i>(e.g., "Diner in Brookfield, IL", "AI productivity tool", "Bocce ball club")</i>`);
       break;
 
     case "type":
       pending.type = text;
       pending.step = "audience";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(`Business type: <b>${escapeHtml(text)}</b>\n\nWho is the target audience?\n<i>(e.g., "Families in the Western Suburbs looking for casual dining")</i>`);
       break;
 
     case "audience":
       pending.audience = text;
       pending.step = "offering";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(`Target audience set.\n\nDescribe what this business offers in 1-2 sentences:\n<i>(e.g., "Classic American diner serving hearty breakfasts and comfort food. Family-owned with generous portions.")</i>`);
       break;
 
     case "offering":
       pending.offering = text;
       pending.step = "tone";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(`Got the offering.\n\nWhat tone should AI responses use?\n\n<b>1.</b> Casual (friendly, approachable)\n<b>2.</b> Empathetic (warm, supportive)\n<b>3.</b> Professional (authoritative, informative)\n\nReply with 1, 2, or 3.`);
       break;
 
@@ -267,6 +272,7 @@ export async function handleClientSetupFlow(chatId: string, text: string, pendin
       else pending.tone = "casual";
 
       pending.step = "keywords";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(`Tone: <b>${pending.tone}</b>\n\nNow list the keywords to watch for, separated by commas:\n<i>(e.g., "restaurant recommendation, best pizza, where to eat, Brookfield food")</i>`);
       break;
     }
@@ -375,7 +381,7 @@ RULES:
         });
       }
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
 
       let msg = `<b>Client Created!</b>\n\n`;
       msg += `<b>Name:</b> ${escapeHtml(biz.name)}\n`;
@@ -411,7 +417,7 @@ RULES:
       }
       await db.delete(businesses).where(eq(businesses.id, bizToRemove.id));
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
       await sendTelegramMessage(`<b>${escapeHtml(bizToRemove.name)}</b> has been removed along with all its campaigns, leads, and responses.`);
       break;
     }
@@ -426,6 +432,7 @@ RULES:
 
       pending.name = allBiz[idx].name;
       pending.step = "keywords_update";
+      await saveAdminSetup(chatId, pending);
       const currentKws = allBiz[idx].campaigns.flatMap(c => c.keywords);
       await sendTelegramMessage(`<b>Updating keywords for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent keywords: ${currentKws.map(k => escapeHtml(k)).join(", ")}\n\nSend the new complete list of keywords, separated by commas:\n<i>(This will replace all current keywords)</i>`);
       break;
@@ -441,7 +448,7 @@ RULES:
         }
       }
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
       await sendTelegramMessage(`<b>Keywords updated for ${escapeHtml(pending.name!)}</b>\n\nNew keywords: ${newKeywords.map(k => escapeHtml(k)).join(", ")}`);
       break;
     }
@@ -456,6 +463,7 @@ RULES:
 
       pending.name = allBiz[idx].name;
       pending.step = "groups_update";
+      await saveAdminSetup(chatId, pending);
       const currentGroups = allBiz[idx].campaigns.flatMap(c => c.targetGroups);
       await sendTelegramMessage(`<b>Updating groups for ${escapeHtml(allBiz[idx].name)}</b>\n\nCurrent groups: ${currentGroups.map(g => escapeHtml(g)).join(", ")}\n\nSend the new complete list of groups/subreddits, separated by commas:\n<i>(This will replace all current groups)</i>`);
       break;
@@ -471,7 +479,7 @@ RULES:
         }
       }
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
       await sendTelegramMessage(`<b>Groups updated for ${escapeHtml(pending.name!)}</b>\n\nNew groups: ${newGroups.map(g => escapeHtml(g)).join(", ")}`);
       break;
     }
@@ -486,6 +494,7 @@ RULES:
 
       pending.name = allBiz[idx].name;
       pending.step = "alert_url";
+      await saveAdminSetup(chatId, pending);
       await sendTelegramMessage(
         `<b>Adding alert feed for ${escapeHtml(allBiz[idx].name)}</b>\n\n` +
         `Paste the Google Alert RSS feed URL:\n\n` +
@@ -509,7 +518,7 @@ RULES:
       const allBiz = await getAllBusinessesWithCampaigns();
       const biz = allBiz.find(b => b.name === pending.name);
       if (!biz) {
-        pendingClientSetups.delete(chatId);
+        await deleteAdminSetup(chatId);
         await sendTelegramMessage("Business not found. Try again with /addalert.");
         return true;
       }
@@ -520,7 +529,7 @@ RULES:
       if (alertCamp) {
         const existingFeeds = (alertCamp.targetGroups as string[]) || [];
         if (existingFeeds.includes(feedUrl)) {
-          pendingClientSetups.delete(chatId);
+          await deleteAdminSetup(chatId);
           await sendTelegramMessage("This feed URL is already added for this business.");
           return true;
         }
@@ -538,7 +547,7 @@ RULES:
         });
       }
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
       await sendTelegramMessage(
         `<b>Google Alert feed added!</b>\n\n` +
         `<b>Business:</b> ${escapeHtml(biz.name)}\n` +
@@ -573,7 +582,7 @@ RULES:
         }
       }
 
-      pendingClientSetups.delete(chatId);
+      await deleteAdminSetup(chatId);
       await sendTelegramMessage(`<b>Alert feed removed.</b>\n\nUse /alerts to see remaining feeds.`);
       break;
     }

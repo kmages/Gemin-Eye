@@ -147,6 +147,13 @@ export const seenItems = pgTable("seen_items", {
   index("idx_seen_items_created_at").on(table.createdAt),
 ]);
 
+export const wizardSessions = pgTable("wizard_sessions", {
+  chatId: text("chat_id").primaryKey(),
+  wizardType: text("wizard_type").notNull(),
+  state: jsonb("state").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const rateLimitBuckets = pgTable("rate_limit_buckets", {
   id: serial("id").primaryKey(),
   limiterName: text("limiter_name").notNull(),

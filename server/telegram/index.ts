@@ -3,4 +3,4 @@ export { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarklet
 export { handleClientWizard } from "./client-wizard";
 export { handleAdminCommand } from "./admin-commands";
 export { handleCallbackQuery } from "./callbacks";
-export { pendingContextRequests, pendingRedditPosts, clientWizards, CONTEXT_TTL, type PendingContextRequest } from "./state";
+export { pendingContextRequests, pendingRedditPosts, CONTEXT_TTL, type PendingContextRequest } from "./state";

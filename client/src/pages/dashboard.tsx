@@ -12,7 +12,7 @@ import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
   Search, Monitor, Check, Bookmark, Activity, Play, Pause, ChevronDown, ChevronUp,
-  X, Tag, Wifi, WifiOff, SlidersHorizontal,
+  X, Tag, Wifi, WifiOff, SlidersHorizontal, Loader2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SiFacebook, SiLinkedin } from "react-icons/si";
@@ -625,7 +625,11 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {!hasBusiness ? (
+        {bizLoading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : !hasBusiness ? (
           <div className="text-center py-20 space-y-6">
             <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
               <Eye className="w-8 h-8 text-primary" />

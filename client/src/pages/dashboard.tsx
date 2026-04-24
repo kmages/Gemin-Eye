@@ -151,6 +151,9 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
   };
 
   const config = statusConfig[lead.status] || statusConfig.new;
+  const [expanded, setExpanded] = useState(false);
+  const CHAR_LIMIT = 240;
+  const isLong = (lead.originalPost?.length ?? 0) > CHAR_LIMIT;
 
   const handleCopy = () => {
     if (response) {
@@ -202,9 +205,27 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
         </div>
       </div>
 
-      <p className="text-sm leading-relaxed bg-muted/50 p-3 rounded-md" data-testid={`text-lead-post-${lead.id}`}>
-        "{lead.originalPost}"
-      </p>
+      <div className="bg-muted/50 rounded-md overflow-hidden" data-testid={`text-lead-post-${lead.id}`}>
+        <div
+          className={`text-sm leading-relaxed p-3 ${expanded ? "max-h-52 overflow-y-auto" : "line-clamp-3"}`}
+        >
+          "{lead.originalPost}"
+        </div>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border-t border-border/50"
+            data-testid={`button-expand-${lead.id}`}
+          >
+            {expanded ? (
+              <><ChevronUp className="w-3 h-3" /> Less</>
+            ) : (
+              <><ChevronDown className="w-3 h-3" /> More</>
+            )}
+          </button>
+        )}
+      </div>
 
       {response && (
         <div className="space-y-2">

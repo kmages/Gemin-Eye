@@ -345,6 +345,24 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/businesses/:id/connect-link", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const bizList = await storage.getBusinessesByUser(userId);
+      const owned = bizList.find((b) => b.id === id);
+      if (!owned) return res.status(404).json({ error: "Business not found" });
+      const { generateConnectToken } = await import("./telegram/bookmarklets");
+      const token = generateConnectToken(id, userId);
+      const botUsername = process.env.TELEGRAM_BOT_USERNAME || "kmages_bot";
+      const deepLink = `https://t.me/${botUsername}?start=connect_${id}_${token}`;
+      res.json({ deepLink, token });
+    } catch (error) {
+      console.error("Error generating connect link:", error);
+      res.status(500).json({ error: "Failed to generate connect link" });
+    }
+  });
+
   app.patch("/api/businesses/:id", isAuthenticated, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);

@@ -422,6 +422,7 @@ const TONES = [
 
 function BusinessSettingsPanel({ business }: { business: Business }) {
   const { toast } = useToast();
+  const telegramLinked = !!business.telegramChatId;
 
   const updateTone = useMutation({
     mutationFn: (tone: string) => apiRequest("PATCH", `/api/businesses/${business.id}`, { preferredTone: tone }),
@@ -432,7 +433,16 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
     onError: () => toast({ title: "Failed to update tone", variant: "destructive" }),
   });
 
-  const telegramLinked = !!business.telegramChatId;
+  const { data: connectLinkData, isLoading: connectLinkLoading } = useQuery<{ deepLink: string }>({
+    queryKey: ["/api/businesses", business.id, "connect-link"],
+    queryFn: async () => {
+      const res = await fetch(`/api/businesses/${business.id}/connect-link`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch connect link");
+      return res.json();
+    },
+    enabled: !telegramLinked,
+    staleTime: 5 * 60 * 1000,
+  });
 
   return (
     <Card className="p-5 space-y-5" data-testid="panel-business-settings">
@@ -474,14 +484,24 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
               <span className="text-xs text-muted-foreground">(Chat {business.telegramChatId})</span>
             </div>
           ) : (
-            <div className="space-y-2" data-testid="status-telegram-disconnected">
+            <div className="space-y-3" data-testid="status-telegram-disconnected">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <WifiOff className="w-4 h-4" />
                 <span>Not connected</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Open Telegram, find your Gemin-Eye bot, and send <code className="bg-muted px-1 rounded">/setup</code> to link your account and start receiving lead alerts.
+                Click the button below to open Telegram and connect your account in one tap. You'll start receiving lead alerts instantly.
               </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={connectLinkLoading || !connectLinkData?.deepLink}
+                onClick={() => connectLinkData?.deepLink && window.open(connectLinkData.deepLink, "_blank")}
+                data-testid="button-connect-telegram"
+              >
+                <Send className="w-3.5 h-3.5 mr-2" />
+                {connectLinkLoading ? "Generating link…" : "Connect Telegram"}
+              </Button>
             </div>
           )}
         </div>

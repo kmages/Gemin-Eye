@@ -112,7 +112,13 @@ export function registerTelegramWebhook(app: any) {
         const biz = rows[0] || null;
         if (!biz) {
           await sendTelegramMessageToChat(chatId,
-            `Something went wrong — that business wasn't found. Please go back to the website and try again.`
+            `⚠️ <b>This link has expired or the business no longer exists.</b>\n\n` +
+            `To get a fresh connection link:\n` +
+            `1. Go to your <a href="https://gemin-eye.com/dashboard">Gemin-Eye dashboard</a>\n` +
+            `2. Find the <b>Settings</b> panel for your business\n` +
+            `3. Click <b>Connect Telegram</b> to get a new link\n\n` +
+            `Or send /setup here to set up a new business from scratch.`,
+            { disable_web_page_preview: false }
           );
           return;
         }

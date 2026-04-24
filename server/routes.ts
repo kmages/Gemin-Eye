@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { storage } from "./storage";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
-import { sendTelegramMessage, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
 import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
@@ -520,7 +520,14 @@ Return ONLY valid JSON with this structure:
         latestResponse?.content
       );
 
-      const telegramOk = await sendTelegramMessage(msg);
+      let telegramOk = false;
+      const bizChatId = business?.telegramChatId;
+      if (bizChatId) {
+        telegramOk = await sendTelegramMessageToChat(bizChatId, msg);
+      } else {
+        // Fall back to global env var chat if the business has no chat ID connected
+        telegramOk = await sendTelegramMessage(msg);
+      }
 
       let slackOk = false;
       const slackUrl = getSlackWebhook(business?.slackWebhookUrl || null);
@@ -531,6 +538,10 @@ Return ONLY valid JSON with this structure:
           latestResponse?.content,
           lead.postUrl
         );
+      }
+
+      if (!telegramOk && !slackOk) {
+        return res.status(400).json({ error: "No Telegram or Slack destination configured for this business. Connect Telegram in your settings." });
       }
 
       res.json({ success: telegramOk || slackOk, telegram: telegramOk, slack: slackOk });

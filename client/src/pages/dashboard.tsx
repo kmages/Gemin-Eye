@@ -165,13 +165,16 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
   const sendToTelegram = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/telegram/notify-lead", { leadId: lead.id });
-      return res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send");
+      return data;
     },
-    onSuccess: () => {
-      toast({ title: "Sent to Telegram", description: "Lead notification sent to your Telegram." });
+    onSuccess: (data) => {
+      const dest = [data.telegram && "Telegram", data.slack && "Slack"].filter(Boolean).join(" & ");
+      toast({ title: "Sent!", description: `Lead notification sent to ${dest}.` });
     },
-    onError: () => {
-      toast({ title: "Failed", description: "Could not send to Telegram.", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: "Could not send", description: err.message, variant: "destructive" });
     },
   });
 
@@ -608,8 +611,15 @@ export default function Dashboard() {
   const hasBusiness = businesses && businesses.length > 0;
 
   const PLATFORM_FILTERS = ["All", "Reddit", "Facebook", "LinkedIn", "Google Alerts"];
+  const PLATFORM_DB_VALUES: Record<string, string[]> = {
+    "Reddit":        ["reddit"],
+    "Facebook":      ["facebook"],
+    "LinkedIn":      ["linkedin"],
+    "Google Alerts": ["google_alerts", "google alerts"],
+  };
   const filteredLeads = leads.filter((l) => {
-    const platformMatch = !platformFilter || l.platform?.toLowerCase().includes(platformFilter.toLowerCase());
+    const dbPlatform = (l.platform ?? "").toLowerCase();
+    const platformMatch = !platformFilter || (PLATFORM_DB_VALUES[platformFilter] ?? [platformFilter.toLowerCase()]).some(v => dbPlatform === v || dbPlatform.includes(v));
     const intentMatch = !highIntentOnly || l.intentScore >= 7;
     return platformMatch && intentMatch;
   });

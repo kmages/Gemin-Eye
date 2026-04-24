@@ -181,14 +181,13 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{lead.authorName}</p>
-            <p className="text-xs text-muted-foreground truncate">
-              {lead.groupName} &middot; {lead.platform}
-              {lead.createdAt && (
-                <span className="ml-2 opacity-60" title={new Date(lead.createdAt).toLocaleString()} data-testid={`text-lead-date-${lead.id}`}>
-                  · {timeAgo(lead.createdAt)}
-                </span>
-              )}
-            </p>
+            <p className="text-xs text-muted-foreground truncate">{lead.groupName} &middot; {lead.platform}</p>
+            {lead.createdAt && (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5" title={new Date(lead.createdAt as unknown as string).toLocaleString()} data-testid={`text-lead-date-${lead.id}`}>
+                <Clock className="w-3 h-3 flex-shrink-0" />
+                {timeAgo(lead.createdAt as unknown as string)}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">

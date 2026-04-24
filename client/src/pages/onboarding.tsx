@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm, useController } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,12 +19,107 @@ import {
 } from "@/components/ui/select";
 import {
   Eye, ArrowRight, ArrowLeft, Loader2, Sparkles, Target,
-  CheckCircle, Bot, Zap, MapPin, MessageCircle, Copy, ExternalLink
+  CheckCircle, Bot, Zap, MapPin, MessageCircle, Copy, ExternalLink, ChevronDown
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
-import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import PhoneInput, { isValidPhoneNumber, getCountries, getCountryCallingCode } from "react-phone-number-input";
+import type { Country } from "react-phone-number-input";
 import "react-phone-number-input/style.css";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+const flagEmoji = (code: string) => {
+  const c = code.toUpperCase();
+  return String.fromCodePoint(c.charCodeAt(0) + 127397, c.charCodeAt(1) + 127397);
+};
+
+const DISPLAY_NAMES = new Intl.DisplayNames(["en"], { type: "region" });
+
+const ALL_COUNTRIES = getCountries()
+  .map(code => ({
+    code,
+    name: DISPLAY_NAMES.of(code) ?? code,
+    dialCode: `+${getCountryCallingCode(code as Country)}`,
+    flag: flagEmoji(code),
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+function DarkCountrySelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options?: unknown[];
+  iconComponent?: unknown;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const selected = ALL_COUNTRIES.find(c => c.code === value);
+  const filtered = ALL_COUNTRIES.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.dialCode.includes(search) ||
+    c.code.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => { setOpen(true); setTimeout(() => searchRef.current?.focus(), 80); }}
+        className="flex items-center gap-1.5 px-3 h-10 border-r border-border bg-muted/40 hover:bg-muted/60 transition-colors text-sm flex-shrink-0 rounded-l-[calc(var(--radius)-2px)]"
+      >
+        <span className="text-base leading-none">{selected?.flag ?? "🌐"}</span>
+        <span className="text-muted-foreground text-xs tabular-nums">{selected?.dialCode ?? "+1"}</span>
+        <ChevronDown className="w-3 h-3 text-muted-foreground" />
+      </button>
+
+      <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSearch(""); }}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden gap-0">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b border-border">
+            <DialogTitle className="text-base">Select Country</DialogTitle>
+          </DialogHeader>
+          <div className="px-3 py-2 border-b border-border">
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search countries or dial codes…"
+              className="w-full px-3 py-2 text-sm bg-muted/30 border border-border rounded-md outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/60 text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="overflow-y-auto max-h-72 py-1 px-1">
+            {filtered.length === 0 ? (
+              <p className="text-center text-muted-foreground text-sm py-6">No countries found</p>
+            ) : filtered.map(c => (
+              <button
+                key={c.code}
+                type="button"
+                onClick={() => { onChange(c.code); setOpen(false); setSearch(""); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-left hover:bg-muted/50 transition-colors",
+                  value === c.code && "bg-primary/10 text-primary font-medium"
+                )}
+              >
+                <span className="text-base w-6 text-center flex-shrink-0">{c.flag}</span>
+                <span className="flex-1 min-w-0 truncate">{c.name}</span>
+                <span className="text-muted-foreground text-xs flex-shrink-0 tabular-nums">{c.dialCode}</span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
@@ -239,6 +334,7 @@ export default function OnboardingPage() {
                             <PhoneInput
                               international
                               defaultCountry="US"
+                              countrySelectComponent={DarkCountrySelect}
                               value={field.value}
                               onChange={(val) => field.onChange(val ?? "")}
                               onBlur={field.onBlur}

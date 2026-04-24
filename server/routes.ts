@@ -345,6 +345,50 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.patch("/api/businesses/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const bizList = await storage.getBusinessesByUser(userId);
+      const owned = bizList.find((b) => b.id === id);
+      if (!owned) return res.status(404).json({ error: "Business not found" });
+
+      const schema = z.object({
+        preferredTone: z.enum(["casual", "empathetic", "professional"]).optional(),
+        telegramChatId: z.string().nullable().optional(),
+        slackWebhookUrl: z.string().nullable().optional(),
+      });
+      const data = schema.parse(req.body);
+      const updated = await storage.updateBusiness(id, data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating business:", error);
+      res.status(500).json({ error: "Failed to update business" });
+    }
+  });
+
+  app.patch("/api/campaigns/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.user.claims.sub;
+      const camps = await storage.getCampaignsByUser(userId);
+      const owned = camps.find((c) => c.id === id);
+      if (!owned) return res.status(404).json({ error: "Campaign not found" });
+
+      const schema = z.object({
+        status: z.enum(["active", "inactive"]).optional(),
+        keywords: z.array(z.string()).optional(),
+        targetGroups: z.array(z.string()).optional(),
+      });
+      const data = schema.parse(req.body);
+      const updated = await storage.updateCampaign(id, data);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating campaign:", error);
+      res.status(500).json({ error: "Failed to update campaign" });
+    }
+  });
+
   app.get("/api/my-bookmarklets", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub;

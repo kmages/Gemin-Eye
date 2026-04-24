@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
-  Search, Monitor, Check, Bookmark, Activity
+  Search, Monitor, Check, Bookmark, Activity, Play, Pause, ChevronDown, ChevronUp,
+  X, Tag, Wifi, WifiOff, SlidersHorizontal,
 } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SiFacebook, SiLinkedin } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import type { Business, Campaign, Lead, AiResponse, ResponseFeedback } from "@shared/schema";
@@ -222,32 +223,122 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
 }
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [newKeyword, setNewKeyword] = useState("");
+  const [localKeywords, setLocalKeywords] = useState<string[]>((campaign.keywords as string[]) || []);
+  const isActive = campaign.status === "active";
+
+  const toggleStatus = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/campaigns/${campaign.id}`, { status: isActive ? "inactive" : "active" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({ title: isActive ? "Campaign paused" : "Campaign activated" });
+    },
+    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+  });
+
+  const saveKeywords = useMutation({
+    mutationFn: (keywords: string[]) => apiRequest("PATCH", `/api/campaigns/${campaign.id}`, { keywords }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({ title: "Keywords saved" });
+    },
+    onError: () => toast({ title: "Failed to save keywords", variant: "destructive" }),
+  });
+
+  const addKeyword = () => {
+    const kw = newKeyword.trim();
+    if (!kw || localKeywords.includes(kw)) return;
+    const updated = [...localKeywords, kw];
+    setLocalKeywords(updated);
+    setNewKeyword("");
+    saveKeywords.mutate(updated);
+  };
+
+  const removeKeyword = (kw: string) => {
+    const updated = localKeywords.filter((k) => k !== kw);
+    setLocalKeywords(updated);
+    saveKeywords.mutate(updated);
+  };
+
   return (
-    <Card className="p-5 space-y-3 hover-elevate" data-testid={`card-campaign-${campaign.id}`}>
+    <Card className="p-5 space-y-3" data-testid={`card-campaign-${campaign.id}`}>
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-semibold truncate">{campaign.name}</h3>
-        <Badge variant={campaign.status === "active" ? "default" : "secondary"} className="text-xs flex-shrink-0">
-          {campaign.status}
-        </Badge>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
+            {isActive ? "active" : "paused"}
+          </Badge>
+          <Button
+            variant="ghost" size="icon" className="w-7 h-7"
+            onClick={() => toggleStatus.mutate()}
+            disabled={toggleStatus.isPending}
+            data-testid={`button-toggle-campaign-${campaign.id}`}
+            title={isActive ? "Pause campaign" : "Activate campaign"}
+          >
+            {isActive ? <Pause className="w-3.5 h-3.5 text-muted-foreground" /> : <Play className="w-3.5 h-3.5 text-primary" />}
+          </Button>
+        </div>
       </div>
+
       <div className="flex items-center gap-3">
         <Badge variant="secondary" className="text-xs">{campaign.platform}</Badge>
         <span className="text-xs text-muted-foreground">
           {(campaign.targetGroups as string[])?.length || 0} groups
         </span>
       </div>
-      {campaign.keywords && (campaign.keywords as string[]).length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {(campaign.keywords as string[]).slice(0, 4).map((kw, i) => (
-            <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded-md text-muted-foreground">
-              {kw}
-            </span>
-          ))}
-          {(campaign.keywords as string[]).length > 4 && (
-            <span className="text-xs text-muted-foreground">+{(campaign.keywords as string[]).length - 4} more</span>
-          )}
-        </div>
-      )}
+
+      <div className="space-y-2">
+        <button
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setExpanded(!expanded)}
+          data-testid={`button-expand-keywords-${campaign.id}`}
+        >
+          <Tag className="w-3 h-3" />
+          <span>{localKeywords.length} keyword{localKeywords.length !== 1 ? "s" : ""}</span>
+          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
+
+        {!expanded && localKeywords.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {localKeywords.slice(0, 4).map((kw, i) => (
+              <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded-md text-muted-foreground">{kw}</span>
+            ))}
+            {localKeywords.length > 4 && (
+              <span className="text-xs text-muted-foreground">+{localKeywords.length - 4} more</span>
+            )}
+          </div>
+        )}
+
+        {expanded && (
+          <div className="space-y-2 pt-1">
+            <div className="flex flex-wrap gap-1.5">
+              {localKeywords.map((kw) => (
+                <span key={kw} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                  {kw}
+                  <button onClick={() => removeKeyword(kw)} className="hover:text-destructive transition-colors" data-testid={`button-remove-kw-${campaign.id}-${kw}`}>
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                className="flex-1 text-xs bg-muted border border-border rounded-md px-2.5 py-1.5 outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Add keyword…"
+                value={newKeyword}
+                onChange={(e) => setNewKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addKeyword()}
+                data-testid={`input-new-keyword-${campaign.id}`}
+              />
+              <Button size="sm" variant="outline" onClick={addKeyword} disabled={!newKeyword.trim()} data-testid={`button-add-keyword-${campaign.id}`}>
+                <Plus className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
@@ -323,10 +414,88 @@ function SpyGlassSection({ bookmarklets }: { bookmarklets: BookmarkletInfo[] }) 
   );
 }
 
+const TONES = [
+  { value: "casual",      label: "Casual",       desc: "Friendly & approachable" },
+  { value: "empathetic",  label: "Empathetic",    desc: "Warm & supportive" },
+  { value: "professional",label: "Professional",  desc: "Authoritative & informative" },
+];
+
+function BusinessSettingsPanel({ business }: { business: Business }) {
+  const { toast } = useToast();
+
+  const updateTone = useMutation({
+    mutationFn: (tone: string) => apiRequest("PATCH", `/api/businesses/${business.id}`, { preferredTone: tone }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+      toast({ title: "Tone updated" });
+    },
+    onError: () => toast({ title: "Failed to update tone", variant: "destructive" }),
+  });
+
+  const telegramLinked = !!business.telegramChatId;
+
+  return (
+    <Card className="p-5 space-y-5" data-testid="panel-business-settings">
+      <div className="flex items-center gap-2">
+        <Settings className="w-4 h-4 text-primary" />
+        <h2 className="font-semibold">Settings — {business.name}</h2>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Response Tone</p>
+          <p className="text-xs text-muted-foreground">Controls how AI crafts replies on your behalf.</p>
+          <Select
+            value={business.preferredTone}
+            onValueChange={(val) => updateTone.mutate(val)}
+            disabled={updateTone.isPending}
+          >
+            <SelectTrigger className="w-full" data-testid="select-tone">
+              <SelectValue placeholder="Choose tone" />
+            </SelectTrigger>
+            <SelectContent>
+              {TONES.map((t) => (
+                <SelectItem key={t.value} value={t.value} data-testid={`option-tone-${t.value}`}>
+                  <span className="font-medium">{t.label}</span>
+                  <span className="text-muted-foreground ml-1 text-xs">— {t.desc}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Telegram Alerts</p>
+          <p className="text-xs text-muted-foreground">Receive lead notifications and give feedback via Telegram.</p>
+          {telegramLinked ? (
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400" data-testid="status-telegram-connected">
+              <Wifi className="w-4 h-4" />
+              <span>Connected</span>
+              <span className="text-xs text-muted-foreground">(Chat {business.telegramChatId})</span>
+            </div>
+          ) : (
+            <div className="space-y-2" data-testid="status-telegram-disconnected">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <WifiOff className="w-4 h-4" />
+                <span>Not connected</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Open Telegram, find your Gemin-Eye bot, and send <code className="bg-muted px-1 rounded">/setup</code> to link your account and start receiving lead alerts.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [platformFilter, setPlatformFilter] = useState("");
+  const [highIntentOnly, setHighIntentOnly] = useState(false);
 
   const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
@@ -376,6 +545,13 @@ export default function Dashboard() {
   const responses = leadsData?.responses || [];
   const feedbackByResponseId = Object.fromEntries((leadsData?.feedback || []).map((f) => [f.responseId, f]));
   const hasBusiness = businesses && businesses.length > 0;
+
+  const PLATFORM_FILTERS = ["All", "Reddit", "Facebook", "LinkedIn", "Google Alerts"];
+  const filteredLeads = leads.filter((l) => {
+    const platformMatch = !platformFilter || l.platform?.toLowerCase().includes(platformFilter.toLowerCase());
+    const intentMatch = !highIntentOnly || l.intentScore >= 7;
+    return platformMatch && intentMatch;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -471,7 +647,7 @@ export default function Dashboard() {
 
             {campaigns && campaigns.length > 0 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold" data-testid="text-campaigns-title">Active Campaigns</h2>
+                <h2 className="text-lg font-semibold" data-testid="text-campaigns-title">Campaigns</h2>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {campaigns.map((c) => (
                     <CampaignCard key={c.id} campaign={c} />
@@ -480,12 +656,45 @@ export default function Dashboard() {
               </div>
             )}
 
+            {businesses && businesses.map((biz) => (
+              <BusinessSettingsPanel key={biz.id} business={biz} />
+            ))}
+
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
                 <h2 className="text-lg font-semibold" data-testid="text-leads-title">Recent Leads</h2>
-                {leads.length > 0 && (
-                  <Badge variant="secondary" className="text-xs">{leads.length} total</Badge>
-                )}
+                <div className="flex items-center gap-2 flex-wrap" data-testid="filter-bar">
+                  <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+                  {PLATFORM_FILTERS.map((p) => {
+                    const val = p === "All" ? "" : p;
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setPlatformFilter(val)}
+                        className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                          platformFilter === val
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                        }`}
+                        data-testid={`filter-platform-${p.replace(/\s+/g, "-").toLowerCase()}`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setHighIntentOnly(!highIntentOnly)}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      highIntentOnly
+                        ? "bg-amber-500 text-white border-amber-500"
+                        : "bg-background text-muted-foreground border-border hover:border-amber-400 hover:text-foreground"
+                    }`}
+                    data-testid="filter-high-intent"
+                  >
+                    {highIntentOnly ? "✓ High intent (7+)" : "High intent (7+)"}
+                  </button>
+                  <Badge variant="secondary" className="text-xs">{filteredLeads.length} shown</Badge>
+                </div>
               </div>
               {leadsLoading ? (
                 <div className="space-y-4">
@@ -493,14 +702,18 @@ export default function Dashboard() {
                     <Skeleton key={i} className="h-40 w-full rounded-md" />
                   ))}
                 </div>
-              ) : leads.length === 0 ? (
+              ) : filteredLeads.length === 0 ? (
                 <Card className="p-8 text-center space-y-3">
                   <Target className="w-8 h-8 mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No leads yet. Your AI agent is monitoring target groups.</p>
+                  <p className="text-sm text-muted-foreground">
+                    {leads.length === 0
+                      ? "No leads yet. Your AI agent is monitoring target groups."
+                      : "No leads match the current filters. Try adjusting the filter options above."}
+                  </p>
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {leads.map((lead) => {
+                  {filteredLeads.map((lead) => {
                     const resp = responses.find((r) => r.leadId === lead.id);
                     const fb = resp ? feedbackByResponseId[resp.id] : undefined;
                     return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} />;

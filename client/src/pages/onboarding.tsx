@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useController } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,13 +23,30 @@ import {
 } from "lucide-react";
 import { SiFacebook, SiReddit } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
+import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
+import "react-phone-number-input/style.css";
 
 const businessFormSchema = z.object({
   name: z.string().min(1, "Business name is required"),
   type: z.string().min(1, "Business type is required"),
-  contactEmail: z.string().email("Please enter a valid email address"),
-  contactPhone: z.string().min(1, "Phone number is required"),
-  website: z.string().optional().default(""),
+  contactEmail: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
+  contactPhone: z
+    .string()
+    .min(1, "Phone number is required")
+    .refine((val) => {
+      try { return isValidPhoneNumber(val); } catch { return false; }
+    }, "Please enter a valid phone number"),
+  website: z
+    .string()
+    .optional()
+    .default("")
+    .refine(
+      (val) => !val || /^https?:\/\/.+/.test(val),
+      "Website must start with https:// or http://"
+    ),
   location: z.string().optional().default(""),
   targetAudience: z.string().min(1, "Target audience is required"),
   coreOffering: z.string().min(10, "Please describe your core offering in more detail"),
@@ -218,7 +235,15 @@ export default function OnboardingPage() {
                       <FormItem>
                         <FormLabel>Phone Number</FormLabel>
                         <FormControl>
-                          <Input type="tel" placeholder="e.g., (312) 555-1234" {...field} data-testid="input-phone" />
+                          <div className="phone-input-wrapper" data-testid="input-phone">
+                            <PhoneInput
+                              international
+                              defaultCountry="US"
+                              value={field.value}
+                              onChange={(val) => field.onChange(val ?? "")}
+                              onBlur={field.onBlur}
+                            />
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>

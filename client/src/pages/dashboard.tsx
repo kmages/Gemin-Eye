@@ -127,6 +127,20 @@ function FeedbackBadge({ feedback }: { feedback?: ResponseFeedback }) {
   );
 }
 
+function timeAgo(date: string | Date | null | undefined): string {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  const diffMs = Date.now() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiResponse; feedback?: ResponseFeedback }) {
   const { toast } = useToast();
 
@@ -167,7 +181,14 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{lead.authorName}</p>
-            <p className="text-xs text-muted-foreground truncate">{lead.groupName} &middot; {lead.platform}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {lead.groupName} &middot; {lead.platform}
+              {lead.createdAt && (
+                <span className="ml-2 opacity-60" title={new Date(lead.createdAt).toLocaleString()} data-testid={`text-lead-date-${lead.id}`}>
+                  · {timeAgo(lead.createdAt)}
+                </span>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">

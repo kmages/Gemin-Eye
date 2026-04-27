@@ -152,8 +152,13 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
 
   const config = statusConfig[lead.status] || statusConfig.new;
   const [expanded, setExpanded] = useState(false);
-  const CHAR_LIMIT = 240;
-  const isLong = (lead.originalPost?.length ?? 0) > CHAR_LIMIT;
+
+  const rawPost = lead.originalPost ?? "";
+  const newlineIdx = rawPost.indexOf("\n");
+  const postTitle = newlineIdx > 0 ? rawPost.slice(0, newlineIdx).trim() : "";
+  const postBody  = newlineIdx > 0 ? rawPost.slice(newlineIdx + 1).trim() : rawPost;
+  const CHAR_LIMIT = 200;
+  const isLong = postBody.length > CHAR_LIMIT;
 
   const handleCopy = () => {
     if (response) {
@@ -209,10 +214,15 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
       </div>
 
       <div className="bg-muted/50 rounded-md overflow-hidden" data-testid={`text-lead-post-${lead.id}`}>
-        <div
-          className={`text-sm leading-relaxed p-3 ${expanded ? "max-h-52 overflow-y-auto" : "line-clamp-3"}`}
-        >
-          "{lead.originalPost}"
+        <div className="px-3 pt-3 pb-2 space-y-1.5">
+          {postTitle && (
+            <p className="text-sm font-semibold leading-snug text-foreground">
+              {postTitle}
+            </p>
+          )}
+          <div className={`text-sm leading-relaxed text-muted-foreground ${expanded ? "max-h-52 overflow-y-auto" : "line-clamp-3"}`}>
+            {postBody}
+          </div>
         </div>
         {isLong && (
           <button

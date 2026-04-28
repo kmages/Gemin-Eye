@@ -1,0 +1,37 @@
+todo:
+Preferred tone editing post-creation	⚠️ Needs improvement
+Intent threshold configurability	⚠️ Needs improvement
+Wrong Client re-routing	⚠️ Needs improvement
+Reddit auto-posting (REDDIT_CLIENT_ID/SECRET)	❌ Missing env vars
+/tone update command	❌ Missing
+
+1	1.3 + 1.4 — CORS + webhook security	2 hours total, real security gaps
+2	1.2 — seen_items TTL	1 day, prevents long-term slowdown
+3	3.5 — Single Telegram message	Hours, daily UX improvement
+4	2.1 — Monitor health panel on dashboard	Low effort, high operational value
+5	2.3 — Feedback badges on lead cards	Low effort, makes dashboard useful
+6	1.1 — Persist wizard state	1–2 days, prevents real data loss
+7	3.8 — Stripe billing	Unlocks revenue
+8	3.3 — Client self-service dashboard	Transforms it into a true SaaS product
+
+
+
+1.1 — Persist wizard state to database is the most important fix on the list. Right now if the server restarts while an admin is halfway through /newclient, they get no response and no explanation. With 771 leads and growing activity, this will bite you.
+
+1.2 — TTL pruning for seen_items is already overdue. You have 15,449 own_response rows and 9,853 Reddit rows with no expiry. This will slow down deduplication checks over time.
+
+3.3 — Client self-service dashboard is the biggest strategic gap. Clients currently can't log in and manage anything — they're fully dependent on you for every keyword change or campaign tweak. Until this exists, Gemin-Eye is a managed service, not a SaaS product.
+
+3.5 — Combine alert + response in one Telegram message — this one is already partially true. The report is correct that Facebook/LinkedIn scan results sometimes split across two messages. Easy fix, high daily annoyance for operators.
+
+1.3 & 1.4 — CORS restriction and Telegram webhook signature are both low effort with real security value. No reason not to do them.
+Where I'd Adjust the Priority
+
+3.8 — Stripe billing is marked LOW priority in the report, but I'd argue it should move to Phase 2 alongside the self-service dashboard. You already have real businesses on the platform. Every day without billing is revenue left on the table.
+
+3.2 — Chrome extension is marked HIGH priority but is a 1–2 week build. The bookmarklets work fine and the operations manual is already written around them. I'd keep this in Phase 3 and not rush it.
+
+2.9 — Social proof on landing page — the report suggests anonymised projections. I'd skip that until you have real numbers. Fake case studies are a liability if clients or journalists look closely.
+One Thing the Report Got Wrong
+
+3.6 — Website scraping during onboarding — the report says the wizard "currently asks for manual text input" and this feature is missing. That's actually already built. The web onboarding wizard scrapes the client's website to derive the business type, offering, and audience — it's in replit.md and the codebase. The gap is only in the Telegram /newclient wizard, which doesn't do the scrape yet.

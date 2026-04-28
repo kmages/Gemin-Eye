@@ -178,6 +178,7 @@ export function registerTelegramWebhook(app: any) {
               `- Screenshot a post and send the image\n\n` +
               `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for all tools including Spy Glass scanners.\n\n` +
               `<b>Commands:</b>\n` +
+              `/tone - Change how your AI responses sound\n` +
               `/setup - Add another business\n` +
               `/help - Full usage guide`
             );
@@ -204,6 +205,7 @@ export function registerTelegramWebhook(app: any) {
           `- Or screenshot a post and send the image\n\n` +
           `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for Spy Glass tools to scan Facebook and LinkedIn.\n\n` +
           `<b>Commands:</b>\n` +
+          `/tone - Change how your AI responses sound\n` +
           `/setup - Add a new business\n` +
           `/help - This guide`
         );
@@ -226,6 +228,38 @@ export function registerTelegramWebhook(app: any) {
       const send = isAdmin
         ? (text: string, opts?: TelegramMessageOptions) => sendTelegramMessage(text, opts)
         : (text: string, opts?: TelegramMessageOptions) => sendTelegramMessageToChat(chatId, text, opts);
+
+      if (messageText === "/tone") {
+        const clientBusinesses = isAdmin
+          ? await storage.getAllBusinesses()
+          : await storage.getBusinessesByTelegramChatId(chatId);
+
+        if (clientBusinesses.length === 0) {
+          await send("No business found. Use /setup to connect one.");
+          return;
+        }
+
+        const TONE_SHORT: Record<string, string> = { casual: "Casual", empathetic: "Empathetic", professional: "Professional" };
+
+        if (clientBusinesses.length === 1) {
+          const biz = clientBusinesses[0];
+          const current = biz.preferredTone || "empathetic";
+          await send(
+            `<b>Response Tone for ${escapeHtml(biz.name)}</b>\n\nCurrent: <b>${TONE_SHORT[current] || current}</b>\n\nChoose a new tone:`,
+            {
+              buttons: [[
+                { text: "😊 Casual", callback_data: `tone_casual_${biz.id}` },
+                { text: "💛 Empathetic", callback_data: `tone_empathetic_${biz.id}` },
+                { text: "💼 Professional", callback_data: `tone_professional_${biz.id}` },
+              ]],
+            }
+          );
+        } else {
+          const buttons = clientBusinesses.map(b => [{ text: b.name, callback_data: `tone_biz_${b.id}` }]);
+          await send(`<b>Change Response Tone</b>\n\nWhich business do you want to update?`, { buttons });
+        }
+        return;
+      }
 
       if (message.photo && message.photo.length > 0) {
         pendingContextRequests.delete(chatId);

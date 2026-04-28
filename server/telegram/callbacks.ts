@@ -1,9 +1,22 @@
 import { db } from "../db";
-import { aiResponses, responseFeedback } from "@shared/schema";
+import { aiResponses, responseFeedback, businesses } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sendTelegramMessage, answerCallbackQuery, editMessageReplyMarkup } from "../telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "../telegram";
 import { postRedditComment, isRedditConfigured } from "../reddit-poster";
 import { pendingRedditPosts, REDDIT_POST_TTL } from "./state";
+import { escapeHtml } from "../utils/html";
+
+const TONE_LABELS: Record<string, string> = {
+  casual: "😊 Casual — Friendly & approachable",
+  empathetic: "💛 Empathetic — Warm & supportive",
+  professional: "💼 Professional — Authoritative & informative",
+};
+
+const TONE_SHORT: Record<string, string> = {
+  casual: "Casual",
+  empathetic: "Empathetic",
+  professional: "Professional",
+};
 
 export async function handleCallbackQuery(cbq: any): Promise<void> {
   const data = cbq.data as string;
@@ -13,10 +26,64 @@ export async function handleCallbackQuery(cbq: any): Promise<void> {
     await handleFeedbackCallback(cbq, data, cbqChatId);
   } else if (data.startsWith("reddit_post_")) {
     await handleRedditPostCallback(cbq, data, cbqChatId);
+  } else if (data.startsWith("tone_biz_")) {
+    await handleToneBizCallback(cbq, data, cbqChatId);
+  } else if (data.startsWith("tone_")) {
+    await handleToneSetCallback(cbq, data, cbqChatId);
   } else if (data === "noop") {
     await answerCallbackQuery(cbq.id, "Feedback already recorded.");
   } else {
     await answerCallbackQuery(cbq.id);
+  }
+}
+
+async function handleToneBizCallback(cbq: any, data: string, cbqChatId: string): Promise<void> {
+  const bizId = parseInt(data.replace("tone_biz_", ""));
+  if (isNaN(bizId)) { await answerCallbackQuery(cbq.id); return; }
+
+  const rows = await db.select().from(businesses).where(eq(businesses.id, bizId)).limit(1);
+  const biz = rows[0];
+  if (!biz) { await answerCallbackQuery(cbq.id, "Business not found."); return; }
+
+  await answerCallbackQuery(cbq.id);
+  const current = biz.preferredTone || "empathetic";
+  await sendTelegramMessageToChat(
+    cbqChatId,
+    `<b>Response Tone for ${escapeHtml(biz.name)}</b>\n\nCurrent: <b>${TONE_SHORT[current] || current}</b>\n\nChoose a new tone:`,
+    {
+      buttons: [[
+        { text: "😊 Casual", callback_data: `tone_casual_${bizId}` },
+        { text: "💛 Empathetic", callback_data: `tone_empathetic_${bizId}` },
+        { text: "💼 Professional", callback_data: `tone_professional_${bizId}` },
+      ]],
+    }
+  );
+}
+
+async function handleToneSetCallback(cbq: any, data: string, cbqChatId: string): Promise<void> {
+  const parts = data.split("_");
+  const tone = parts[1];
+  const bizId = parseInt(parts[2]);
+
+  if (!["casual", "empathetic", "professional"].includes(tone) || isNaN(bizId)) {
+    await answerCallbackQuery(cbq.id);
+    return;
+  }
+
+  try {
+    await db.update(businesses).set({ preferredTone: tone }).where(eq(businesses.id, bizId));
+  } catch (err) {
+    console.error("Error updating tone:", err);
+    await answerCallbackQuery(cbq.id, "Failed to update tone. Please try again.");
+    return;
+  }
+
+  await answerCallbackQuery(cbq.id, `Tone set to ${TONE_SHORT[tone]}!`);
+
+  if (cbq.message?.message_id && cbqChatId) {
+    await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, {
+      inline_keyboard: [[{ text: `✓ ${TONE_LABELS[tone]}`, callback_data: "noop" }]],
+    });
   }
 }
 

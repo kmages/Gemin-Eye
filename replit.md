@@ -60,6 +60,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Telegram Bot**: Facilitates client onboarding, lead alerts, feedback, and admin commands.
 - **Slack Integration**: Sends lead notifications to Slack channels via incoming webhooks, configured per-business alongside Telegram.
 - **Robustness**: Includes AI call timeout protection, rate limiting, Zod validation for AI JSON parsing, and modularized code.
+- **Security**: CORS middleware restricts `/api/*` to `gemin-eye.com` and Replit preview domains only (403 for all other origins). Telegram webhook is exempt from CORS (uses SHA-256 signature verification instead).
 - **Performance**: Optimized dashboard data fetching and modularized Telegram bot for better maintainability and scalability.
 
 ## External Dependencies

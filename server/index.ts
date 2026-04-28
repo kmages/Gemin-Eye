@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -21,6 +22,54 @@ for (const envVar of optionalEnvVars) {
 
 const app = express();
 const httpServer = createServer(app);
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
+// Allow the production domain + Replit preview domains in dev.
+// The Telegram webhook path is excluded — it's a server-to-server call with
+// its own SHA-256 signature verification and has no need for CORS handling.
+const PRODUCTION_ORIGINS = [
+  "https://gemin-eye.com",
+  "https://www.gemin-eye.com",
+];
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // same-origin requests have no Origin header
+  if (PRODUCTION_ORIGINS.includes(origin)) return true;
+  if (process.env.NODE_ENV !== "production") {
+    // Allow any Replit preview domain and localhost during development
+    if (
+      origin.endsWith(".replit.dev") ||
+      origin.endsWith(".repl.co") ||
+      origin.startsWith("http://localhost") ||
+      origin.startsWith("http://127.0.0.1")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const corsMiddleware = cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS: blocked request from origin "${origin}"`);
+      const err = Object.assign(new Error("Not allowed by CORS"), { status: 403 });
+      callback(err);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+});
+
+// Apply CORS to all /api routes except the Telegram webhook (server-to-server)
+app.use("/api", (req, res, next) => {
+  if (req.path.startsWith("/telegram/webhook")) return next();
+  corsMiddleware(req, res, next);
+});
+// ──────────────────────────────────────────────────────────────────────────────
 
 declare module "http" {
   interface IncomingMessage {

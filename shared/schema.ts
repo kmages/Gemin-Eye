@@ -19,6 +19,7 @@ export const businesses = pgTable("businesses", {
   targetAudience: text("target_audience").notNull(),
   coreOffering: text("core_offering").notNull(),
   preferredTone: text("preferred_tone").notNull().default("empathetic"),
+  intentThreshold: integer("intent_threshold").notNull().default(5),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_businesses_user_id").on(table.userId),

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
@@ -477,6 +478,7 @@ const TONES = [
 function BusinessSettingsPanel({ business }: { business: Business }) {
   const { toast } = useToast();
   const telegramLinked = !!business.telegramChatId;
+  const [sliderValue, setSliderValue] = useState(business.intentThreshold ?? 5);
 
   const updateTone = useMutation({
     mutationFn: (tone: string) => apiRequest("PATCH", `/api/businesses/${business.id}`, { preferredTone: tone }),
@@ -485,6 +487,15 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
       toast({ title: "Tone updated" });
     },
     onError: () => toast({ title: "Failed to update tone", variant: "destructive" }),
+  });
+
+  const updateThreshold = useMutation({
+    mutationFn: (threshold: number) => apiRequest("PATCH", `/api/businesses/${business.id}`, { intentThreshold: threshold }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+      toast({ title: "Intent threshold updated" });
+    },
+    onError: () => toast({ title: "Failed to update threshold", variant: "destructive" }),
   });
 
   const { data: connectLinkData, isLoading: connectLinkLoading } = useQuery<{ deepLink: string }>({
@@ -526,6 +537,29 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Intent Threshold</p>
+            <span className="text-sm font-semibold text-primary tabular-nums" data-testid="text-intent-threshold">{sliderValue}/10</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Minimum score a post must reach to be reported as a lead. Lower = more leads, higher = fewer but stronger signals.</p>
+          <Slider
+            min={1}
+            max={10}
+            step={1}
+            value={[sliderValue]}
+            onValueChange={([v]) => setSliderValue(v)}
+            onValueCommit={([v]) => updateThreshold.mutate(v)}
+            disabled={updateThreshold.isPending}
+            className="py-1"
+            data-testid="slider-intent-threshold"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>1 — More leads</span>
+            <span>10 — Fewer, stronger</span>
+          </div>
         </div>
 
         <div className="space-y-2">

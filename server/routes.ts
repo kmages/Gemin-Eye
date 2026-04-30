@@ -373,6 +373,7 @@ Return ONLY valid JSON with this structure:
 
       const schema = z.object({
         preferredTone: z.enum(["casual", "empathetic", "professional"]).optional(),
+        intentThreshold: z.number().int().min(1).max(10).optional(),
         telegramChatId: z.string().nullable().optional(),
         slackWebhookUrl: z.string().nullable().optional(),
       });

@@ -29,6 +29,7 @@ interface AlertTarget {
   businessType: string;
   coreOffering: string;
   preferredTone: string;
+  intentThreshold: number;
   campaignId: number;
   keywords: string[];
   ownerUserId: string;
@@ -63,6 +64,7 @@ async function getAlertTargets(): Promise<AlertTarget[]> {
           businessType: biz.type,
           coreOffering: biz.coreOffering,
           preferredTone: biz.preferredTone,
+          intentThreshold: biz.intentThreshold ?? 5,
           campaignId: camp.id,
           keywords,
           ownerUserId: biz.userId,
@@ -133,7 +135,7 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
 
   if (!match) return;
 
-  if (!match.is_lead || match.intent_score < MIN_MONITOR_INTENT_SCORE) return;
+  if (!match.is_lead || match.intent_score < target.intentThreshold) return;
 
   const feedbackGuidance = await getFeedbackGuidance(target.businessId);
 

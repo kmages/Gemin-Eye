@@ -52,6 +52,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 ### Core Features
 - **AI-Powered Monitoring**: Scans platforms like Reddit, Facebook groups, and Google Alerts for high-intent questions.
 - **Smart Keyword Matching**: Utilizes a sophisticated keyword matching algorithm that includes multi-word and stop-word filtering for more accurate lead detection.
+- **Per-Business Intent Threshold**: Each business has a configurable intent score threshold (1–10, default 5) stored in the DB. Clients can adjust it via a dashboard slider; both Reddit and Google Alerts monitors respect the business-specific value instead of a global constant.
 - **AI-Generated Responses**: Crafts helpful, community-compliant responses tailored to the platform (e.g., Reddit responses exclude promotional content).
 - **Lead Scoring**: Employs Gemini Flash for unbiased lead scoring across various monitoring channels.
 - **Client Onboarding**: Multi-step wizard (web or Telegram-based) for business description and AI-generated monitoring strategy. Automatically creates Google Alerts campaigns for every new business.

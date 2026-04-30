@@ -1001,11 +1001,8 @@ export default function AdminPage() {
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Eye className="w-8 h-8 text-primary animate-pulse" />
-      </div>
-    );
+    window.location.href = "/";
+    return null;
   }
 
   if (!adminCheck) {

@@ -87,33 +87,19 @@ export function formatLeadNotification(lead: {
   originalPost: string;
   intentScore: number;
 }, businessName: string, aiResponse?: string): string {
-  const scoreBar = "█".repeat(lead.intentScore) + "░".repeat(10 - lead.intentScore);
+  const scoreBar = "★".repeat(lead.intentScore) + "☆".repeat(10 - lead.intentScore);
+  const postSnippet = truncate(lead.originalPost, 400);
 
-  let msg = `<b>New Lead Found</b>\n`;
+  let msg = `<b>🔔 ${escapeHtml(lead.platform)} Lead</b>\n\n`;
   msg += `<b>Business:</b> ${escapeHtml(businessName)}\n`;
-  msg += `<b>Platform:</b> ${escapeHtml(lead.platform)} / ${escapeHtml(lead.groupName)}\n`;
+  msg += `<b>Group:</b> ${escapeHtml(lead.groupName)}\n`;
   msg += `<b>Author:</b> ${escapeHtml(lead.authorName)}\n`;
   msg += `<b>Intent:</b> ${scoreBar} ${lead.intentScore}/10\n\n`;
-  msg += `<b>Post:</b>\n<i>"${escapeHtml(lead.originalPost)}"</i>\n`;
+  msg += `<b>📰 Post:</b>\n<i>"${escapeHtml(postSnippet)}"</i>\n`;
 
   if (aiResponse) {
-    msg += `\n<b>Suggested Response (copy & paste):</b>\n<code>${escapeHtml(aiResponse)}</code>`;
+    msg += `\n<b>💬 Suggested Response:</b>\n<code>${escapeHtml(aiResponse)}</code>`;
   }
-
-  return msg;
-}
-
-export function formatResponseNotification(lead: {
-  authorName: string;
-  groupName: string;
-  platform: string;
-  originalPost: string;
-}, businessName: string, aiResponse: string): string {
-  let msg = `<b>AI Response Ready</b>\n`;
-  msg += `<b>Business:</b> ${escapeHtml(businessName)}\n`;
-  msg += `<b>For:</b> ${escapeHtml(lead.authorName)} in ${escapeHtml(lead.groupName)}\n\n`;
-  msg += `<b>Original post:</b>\n<i>"${escapeHtml(truncate(lead.originalPost, 200))}"</i>\n\n`;
-  msg += `<b>Copy & paste this response:</b>\n<code>${escapeHtml(aiResponse)}</code>`;
 
   return msg;
 }

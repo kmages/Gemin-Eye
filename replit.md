@@ -63,6 +63,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Robustness**: Includes AI call timeout protection, rate limiting, Zod validation for AI JSON parsing, and modularized code.
 - **Security**: CORS middleware restricts `/api/*` to `gemin-eye.com` and Replit preview domains only (403 for all other origins). Telegram webhook is exempt from CORS (uses SHA-256 signature verification instead).
 - **Performance**: Optimized dashboard data fetching and modularized Telegram bot for better maintainability and scalability.
+- **Single Telegram Notification**: Each lead produces exactly one Telegram message containing the lead context + suggested AI response. The dashboard "Generate Response" action no longer pushes a duplicate "AI Response Ready" message — the user already sees the response in the UI. All notification surfaces (Reddit/Google Alerts monitors, Facebook/LinkedIn scans, dashboard "Send to Telegram") share the same unified format (★/☆ intent bar, 🔔 header, 💬 response block).
 
 ## External Dependencies
 

@@ -4,7 +4,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { storage } from "./storage";
 import { z } from "zod";
 import { insertBusinessSchema } from "@shared/schema";
-import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification, formatResponseNotification } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification } from "./telegram";
 import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
@@ -271,10 +271,6 @@ Return ONLY the response text, no quotes or formatting.`;
         content: responseText.trim(),
         status: "pending",
       });
-
-      sendTelegramMessage(formatResponseNotification(
-        lead, business.name, responseText.trim()
-      )).catch((e) => console.error("Telegram notification failed:", e));
 
       res.json(aiResp);
     } catch (error) {

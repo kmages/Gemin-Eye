@@ -406,6 +406,12 @@ export function registerTelegramWebhook(app: any) {
     }
   });
 
+  const isProd = process.env.NODE_ENV === "production";
+  const forceDevWebhook = process.env.TELEGRAM_FORCE_DEV_WEBHOOK === "1";
+  if (!isProd && !forceDevWebhook) {
+    console.log("Telegram webhook auto-registration skipped (NODE_ENV != production). Set TELEGRAM_FORCE_DEV_WEBHOOK=1 to override.");
+    return;
+  }
   registerWebhook(token, webhookSecret).catch((e) => console.error("Failed to register Telegram webhook:", e));
 }
 

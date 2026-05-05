@@ -64,6 +64,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Security**: CORS middleware restricts `/api/*` to `gemin-eye.com` and Replit preview domains only (403 for all other origins). Telegram webhook is exempt from CORS (uses SHA-256 signature verification instead).
 - **Performance**: Optimized dashboard data fetching and modularized Telegram bot for better maintainability and scalability.
 - **Single Telegram Notification**: Each lead produces exactly one Telegram message containing the lead context + suggested AI response. The dashboard "Generate Response" action no longer pushes a duplicate "AI Response Ready" message — the user already sees the response in the UI. All notification surfaces (Reddit/Google Alerts monitors, Facebook/LinkedIn scans, dashboard "Send to Telegram") share the same unified format (★/☆ intent bar, 🔔 header, 💬 response block).
+- **Telegram Webhook Routing**: Auto-registration of the bot webhook only runs in production (`NODE_ENV=production`). Development workspaces no longer clobber the production webhook URL on restart. To opt-in for local dev testing, set `TELEGRAM_FORCE_DEV_WEBHOOK=1`. If the webhook ever drifts, run a one-shot `setWebhook` POST against the Telegram Bot API pointing at `https://gemin-eye.com/api/telegram/webhook/<TOKEN>` with the SHA-256 secret.
 
 ## External Dependencies
 

@@ -65,6 +65,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Performance**: Optimized dashboard data fetching and modularized Telegram bot for better maintainability and scalability.
 - **Single Telegram Notification**: Each lead produces exactly one Telegram message containing the lead context + suggested AI response. The dashboard "Generate Response" action no longer pushes a duplicate "AI Response Ready" message — the user already sees the response in the UI. All notification surfaces (Reddit/Google Alerts monitors, Facebook/LinkedIn scans, dashboard "Send to Telegram") share the same unified format (★/☆ intent bar, 🔔 header, 💬 response block).
 - **Telegram Webhook Routing**: Auto-registration of the bot webhook only runs in production (`NODE_ENV=production`). Development workspaces no longer clobber the production webhook URL on restart. To opt-in for local dev testing, set `TELEGRAM_FORCE_DEV_WEBHOOK=1`. If the webhook ever drifts, run a one-shot `setWebhook` POST against the Telegram Bot API pointing at `https://gemin-eye.com/api/telegram/webhook/<TOKEN>` with the SHA-256 secret.
+- **Daily Spy Glass Reminder**: `server/daily-reminders.ts` sends a once-per-day Telegram nudge (14:00 UTC ≈ 9am EST) to every business that has a connected Telegram chat AND at least one active Facebook or LinkedIn campaign. Reminds the client to run their bookmarklet scans. Tracks last-sent date in memory keyed by business id (resets on server restart, but the date check prevents same-day duplicates).
 
 ## External Dependencies
 

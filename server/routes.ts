@@ -8,6 +8,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat, formatLeadNotification 
 import { registerTelegramWebhook } from "./telegram-bot";
 import { startRedditMonitor } from "./reddit-monitor";
 import { startGoogleAlertsMonitor } from "./google-alerts-monitor";
+import { startDailyReminders } from "./daily-reminders";
 import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySchema, TONE_MAP, getMentalHealthGuidance } from "./utils/ai";
 import { createRateLimiter } from "./utils/rate-limit";
 import { buildGoogleAlertFeeds } from "./utils/keywords";
@@ -474,6 +475,7 @@ Return ONLY valid JSON with this structure:
   registerTelegramWebhook(app);
   startRedditMonitor();
   startGoogleAlertsMonitor();
+  startDailyReminders();
 
   app.post("/api/telegram/test", isAuthenticated, async (_req: any, res) => {
     try {

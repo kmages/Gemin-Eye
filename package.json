@@ -68,7 +68,7 @@
     "react-phone-number-input": "^3.4.16",
     "rss-parser": "^3.13.0",
     "snoowrap": "^1.23.0",
-    "stripe": "^22.1.0",
+    "stripe": "^20.0.0",
     "stripe-replit-sync": "^1.0.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

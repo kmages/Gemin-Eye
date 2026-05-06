@@ -85,6 +85,12 @@ async function validateScanRequest(req: Request): Promise<
     return { valid: false, error: { matched: false, reason: "business_not_found" } };
   }
 
+  // FB/LinkedIn scan via bookmarklet is a Pro-tier feature.
+  const { hasProTier } = await import("../utils/subscription");
+  if (!(await hasProTier(biz[0].userId))) {
+    return { valid: false, error: { matched: false, reason: "subscription_required" } };
+  }
+
   const allBizCampaigns = await db.select().from(campaignsTable).where(eq(campaignsTable.businessId, businessId));
   const bizCampaigns = allBizCampaigns.filter(c => c.status === "active");
   if (bizCampaigns.length === 0) {

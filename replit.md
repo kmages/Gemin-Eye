@@ -41,13 +41,14 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **ORM**: Drizzle ORM with `drizzle-zod`
 - **Schema**: `shared/schema.ts`
 - **Migration**: Drizzle Kit
-- **Key tables**: `users`, `sessions`, `businesses`, `campaigns`, `response_feedback`, `leads`, `ai_responses`, `conversations`, `messages`
+- **Key tables**: `users` (with `stripe_customer_id` / `stripe_subscription_id`), `sessions`, `businesses`, `campaigns`, `response_feedback`, `leads`, `ai_responses`, `conversations`, `messages`. The `stripe.*` schema (products, prices, customers, subscriptions, etc.) is created and synced automatically by `stripe-replit-sync` — never write to it directly.
 
 ### Storage Layer
 - **Pattern**: Interface-based storage (`IStorage`, `IAuthStorage`, `IChatStorage`)
 
 ### Replit Integrations
 - Pre-built modules for OIDC authentication, batch processing (rate limiting, retries), chat functionality (CRUD), and image generation.
+- **Stripe** (via Replit Stripe integration + `stripe-replit-sync`): subscription billing for two tiers — Starter $49/mo (Reddit + Google Alerts) and Pro $149/mo (everything + FB/LinkedIn Spy Glass bookmarklets). Schema is `stripe.*`, managed by `stripe-replit-sync`. Tier is encoded in `stripe.products.metadata.tier` (set by `scripts/seed-products.ts`). Webhook endpoint `/api/stripe/webhook` is registered with `express.raw` BEFORE `express.json()` and CORS-exempt.
 
 ### Core Features
 - **AI-Powered Monitoring**: Scans platforms like Reddit, Facebook groups, and Google Alerts for high-intent questions.
@@ -66,6 +67,7 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Single Telegram Notification**: Each lead produces exactly one Telegram message containing the lead context + suggested AI response. The dashboard "Generate Response" action no longer pushes a duplicate "AI Response Ready" message — the user already sees the response in the UI. All notification surfaces (Reddit/Google Alerts monitors, Facebook/LinkedIn scans, dashboard "Send to Telegram") share the same unified format (★/☆ intent bar, 🔔 header, 💬 response block).
 - **Telegram Webhook Routing**: Auto-registration of the bot webhook only runs in production (`NODE_ENV=production`). Development workspaces no longer clobber the production webhook URL on restart. To opt-in for local dev testing, set `TELEGRAM_FORCE_DEV_WEBHOOK=1`. If the webhook ever drifts, run a one-shot `setWebhook` POST against the Telegram Bot API pointing at `https://gemin-eye.com/api/telegram/webhook/<TOKEN>` with the SHA-256 secret.
 - **Daily Spy Glass Reminder**: `server/daily-reminders.ts` sends a once-per-day Telegram nudge (14:00 UTC ≈ 9am EST) to every business with a connected Telegram chat. Message always covers both Facebook and LinkedIn and includes three inline buttons: Open Facebook, Open LinkedIn, Open Dashboard. Cross-restart dedup is enforced by writing a `daily_reminder:{businessId}:{YYYY-MM-DD}` key into the `seen_items` table — restarts during the 14:00 UTC hour can no longer produce duplicate sends.
+- **Subscription Billing (Stripe)**: Two tiers gated by `server/utils/subscription.ts` (60s in-memory cache; reads `product.metadata.tier`). Starter unlocks Reddit + Google Alerts Telegram delivery (gated in `reddit-monitor.ts` + `google-alerts-monitor.ts`). Pro additionally unlocks Facebook + LinkedIn Spy Glass bookmarklet generation (`/api/my-bookmarklets`, `/api/bookmarklets/...`) and FB/LinkedIn `/api/fb-scan` + `/api/li-scan` endpoints. Frontend pricing page at `/billing` (`client/src/pages/billing.tsx`) uses Stripe Checkout + Billing Portal. Seed products with `npx tsx scripts/seed-products.ts` after connecting Stripe. In dev, if Stripe isn't connected, gating fails-open (treats users as Pro) so the app remains usable; in production it fails-closed.
 
 ## External Dependencies
 

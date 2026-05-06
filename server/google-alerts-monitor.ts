@@ -281,6 +281,13 @@ Return ONLY the response text, no quotes or formatting.`;
     ]);
   }
 
+  // Subscription gate: Google Alerts notifications require an active Starter or Pro plan.
+  const { hasActiveSubscription } = await import("./utils/subscription");
+  if (!(await hasActiveSubscription(target.ownerUserId))) {
+    console.log(`Skipping Google Alerts Telegram alert for ${target.businessName} — no active subscription.`);
+    return;
+  }
+
   if (target.telegramChatId) {
     await sendTelegramMessageToChat(target.telegramChatId, telegramMsg, buttons.length > 0 ? { buttons } : undefined);
   } else {

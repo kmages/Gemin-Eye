@@ -64,9 +64,11 @@ const corsMiddleware = cors({
   allowedHeaders: ["Content-Type", "Authorization"],
 });
 
-// Apply CORS to all /api routes except the Telegram webhook (server-to-server)
+// Apply CORS to all /api routes except the Telegram + Stripe webhooks
+// (both are server-to-server with their own signature verification).
 app.use("/api", (req, res, next) => {
   if (req.path.startsWith("/telegram/webhook")) return next();
+  if (req.path.startsWith("/stripe/webhook")) return next();
   corsMiddleware(req, res, next);
 });
 // ──────────────────────────────────────────────────────────────────────────────
@@ -76,6 +78,29 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// Stripe webhook MUST be registered with raw body BEFORE express.json().
+// stripe-replit-sync needs the raw Buffer to verify the signature.
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.headers["stripe-signature"];
+    if (!signature) {
+      return res.status(400).json({ error: "Missing stripe-signature header" });
+    }
+
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      const { WebhookHandlers } = await import("./webhookHandlers");
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      console.error("Stripe webhook error:", err.message);
+      res.status(400).json({ error: "Webhook processing failed" });
+    }
+  },
+);
 
 app.use(
   express.json({
@@ -125,8 +150,41 @@ app.use((req, res, next) => {
   next();
 });
 
+async function initStripe() {
+  try {
+    const { isStripeConnected, getStripeSync } = await import("./stripeClient");
+    if (!(await isStripeConnected())) {
+      console.warn("Stripe integration not connected — billing routes will return 503 until you connect Stripe via the Integrations tab.");
+      return;
+    }
+
+    const { runMigrations } = await import("stripe-replit-sync");
+    const databaseUrl = process.env.DATABASE_URL!;
+
+    console.log("Stripe: running migrations...");
+    await runMigrations({ databaseUrl });
+
+    const stripeSync = await getStripeSync();
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    if (domain) {
+      const url = `https://${domain}/api/stripe/webhook`;
+      console.log(`Stripe: configuring managed webhook → ${url}`);
+      await stripeSync.findOrCreateManagedWebhook(url);
+    }
+
+    console.log("Stripe: starting backfill...");
+    stripeSync.syncBackfill()
+      .then(() => console.log("Stripe: backfill complete"))
+      .catch((e) => console.error("Stripe: backfill error:", e));
+  } catch (err) {
+    console.error("Stripe init failed (continuing without Stripe):", err);
+  }
+}
+
 (async () => {
   await registerRoutes(httpServer, app);
+
+  await initStripe();
 
   const { seedDatabase } = await import("./seed");
   await seedDatabase().catch((e) => console.error("Seed error:", e));

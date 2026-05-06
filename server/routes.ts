@@ -15,6 +15,8 @@ import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { registerAdminRoutes, isMonitoringEnabled } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
+import { registerBillingRoutes } from "./routes/billing";
+import { hasProTier } from "./utils/subscription";
 import { getMonitorHealth } from "./utils/monitor-health";
 
 const aiRateLimit = createRateLimiter({
@@ -410,6 +412,15 @@ Return ONLY valid JSON with this structure:
       const userId = (req.user as any)?.claims?.sub;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+      // Bookmarklets (Facebook + LinkedIn Spy Glass) are a Pro-tier feature.
+      if (!(await hasProTier(userId))) {
+        return res.status(402).json({
+          error: "subscription_required",
+          message: "Facebook & LinkedIn bookmarklets require the Pro plan.",
+          upgradeUrl: "/billing",
+        });
+      }
+
       const businesses = await storage.getBusinessesByUser(userId);
       const { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode, getAppBaseUrl } = await import("./telegram/bookmarklets");
       const baseUrl = getAppBaseUrl();
@@ -454,6 +465,15 @@ Return ONLY valid JSON with this structure:
         return res.status(404).json({ error: "Business not found" });
       }
 
+      // Gate by subscription tier of the business owner.
+      if (!(await hasProTier(business.userId))) {
+        return res.status(402).json({
+          error: "subscription_required",
+          message: "Facebook & LinkedIn bookmarklets require the Pro plan.",
+          upgradeUrl: "/billing",
+        });
+      }
+
       const baseUrl = getAppBaseUrl();
       const facebookCode = generateBookmarkletCode(baseUrl, chatId, bizId, token);
       const linkedinCode = generateLinkedInBookmarkletCode(baseUrl, chatId, bizId, token);
@@ -471,6 +491,7 @@ Return ONLY valid JSON with this structure:
 
   registerAdminRoutes(app);
   registerScanRoutes(app);
+  registerBillingRoutes(app);
 
   registerTelegramWebhook(app);
   startRedditMonitor();

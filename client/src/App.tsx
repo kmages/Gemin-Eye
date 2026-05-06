@@ -11,6 +11,7 @@ import NotFound from "@/pages/not-found";
 import ClientGuidePage from "@/pages/client-guide";
 import AdminPage from "@/pages/admin";
 import BookmarkletsPage from "@/pages/bookmarklets";
+import BillingPage from "@/pages/billing";
 
 function AuthRouter() {
   return (
@@ -21,6 +22,7 @@ function AuthRouter() {
       <Route path="/guide" component={ClientGuidePage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/bookmarklets/:businessId/:chatId/:token" component={BookmarkletsPage} />
+      <Route path="/billing" component={BillingPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -174,7 +174,16 @@ async function initStripe() {
 
     console.log("Stripe: starting backfill...");
     stripeSync.syncBackfill()
-      .then(() => console.log("Stripe: backfill complete"))
+      .then(async () => {
+        console.log("Stripe: backfill complete");
+        try {
+          await stripeSync.syncProducts();
+          await stripeSync.syncPrices();
+          console.log("Stripe: products + prices re-synced");
+        } catch (e) {
+          console.error("Stripe: product/price re-sync error:", e);
+        }
+      })
       .catch((e) => console.error("Stripe: backfill error:", e));
   } catch (err) {
     console.error("Stripe init failed (continuing without Stripe):", err);

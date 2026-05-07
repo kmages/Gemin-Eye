@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
@@ -158,8 +158,25 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
   const newlineIdx = rawPost.indexOf("\n");
   const postTitle = newlineIdx > 0 ? rawPost.slice(0, newlineIdx).trim() : "";
   const postBody  = newlineIdx > 0 ? rawPost.slice(newlineIdx + 1).trim() : rawPost;
-  const CHAR_LIMIT = 200;
-  const isLong = postBody.length > CHAR_LIMIT;
+
+  // Detect real overflow on the line-clamped element so the More/Less toggle
+  // only appears when the text actually gets clipped at 3 lines.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [isLong, setIsLong] = useState(false);
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => {
+      // While expanded the element is scrollable so we can't measure clipping;
+      // assume still-long until next collapse.
+      if (expanded) return;
+      setIsLong(el.scrollHeight - el.clientHeight > 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [postBody, expanded]);
 
   const handleCopy = () => {
     if (response) {
@@ -221,7 +238,7 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
               {postTitle}
             </p>
           )}
-          <div className={`text-sm leading-relaxed text-muted-foreground ${expanded ? "max-h-52 overflow-y-auto" : "line-clamp-3"}`}>
+          <div ref={bodyRef} className={`text-sm leading-relaxed text-muted-foreground ${expanded ? "max-h-52 overflow-y-auto" : "line-clamp-3"}`}>
             {postBody}
           </div>
         </div>

@@ -24,9 +24,17 @@ async function sendDailyReminders(): Promise<void> {
 
     const today = todayKey();
 
+    // Dedup per Telegram chat as well as per business — multiple business
+    // records can point at the same chat (e.g. duplicate signups), and we
+    // never want a single chat to receive the same reminder twice in a day.
     for (const biz of eligible) {
       const dedupKey = `${REMINDER_SOURCE}:${biz.id}:${today}`;
+      const chatDedupKey = `${REMINDER_SOURCE}:chat:${biz.telegramChatId}:${today}`;
       if (await hasBeenSeen(dedupKey)) continue;
+      if (await hasBeenSeen(chatDedupKey)) {
+        await markSeen(dedupKey, REMINDER_SOURCE);
+        continue;
+      }
 
       let msg = `<b>👀 Daily Spy Glass Reminder</b>\n\n`;
       msg += `Time to scan <b>Facebook</b> and <b>LinkedIn</b> for <b>${escapeHtml(biz.name)}</b>.\n\n`;
@@ -49,6 +57,7 @@ async function sendDailyReminders(): Promise<void> {
       try {
         await sendTelegramMessageToChat(biz.telegramChatId!, msg, { buttons });
         await markSeen(dedupKey, REMINDER_SOURCE);
+        await markSeen(chatDedupKey, REMINDER_SOURCE);
         console.log(`Daily reminder sent for business ${biz.id} (${biz.name})`);
       } catch (err) {
         console.error(`Daily reminder failed for business ${biz.id}:`, err);

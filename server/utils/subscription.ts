@@ -34,12 +34,39 @@ async function fetchTierFromStripe(userId: string): Promise<Tier> {
   }
 
   const user = await storage.getUserById(userId);
-  if (!user?.stripeCustomerId) return null;
+  if (!user) return null;
+
+  let stripeCustomerId = user.stripeCustomerId;
 
   try {
     const stripe = await getUncachableStripeClient();
+
+    // Auto-heal: if we have no local customer link, look the customer up by
+    // metadata.user_id (set when an admin manually creates a comp customer
+    // outside the normal Checkout flow) and persist the link locally so this
+    // search only happens once per user.
+    if (!stripeCustomerId) {
+      try {
+        const search = await stripe.customers.search({
+          query: `metadata['user_id']:'${userId}'`,
+          limit: 1,
+        });
+        const found = search.data[0];
+        if (found) {
+          stripeCustomerId = found.id;
+          await storage.updateUserStripeInfo(userId, {
+            stripeCustomerId: found.id,
+          });
+        }
+      } catch (err) {
+        console.error("getUserTier customer search error:", err);
+      }
+    }
+
+    if (!stripeCustomerId) return null;
+
     const subs = await stripe.subscriptions.list({
-      customer: user.stripeCustomerId,
+      customer: stripeCustomerId,
       status: "all",
       limit: 5,
       expand: ["data.items.data.price.product"],

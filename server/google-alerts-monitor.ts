@@ -6,7 +6,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE, getMentalHealthGuidance } from "./utils/ai";
-import { escapeHtml, stripHtml, canonicalizeUrl } from "./utils/html";
+import { escapeHtml, stripHtml, canonicalizeUrl, cleanRedditRssArtifacts } from "./utils/html";
 import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
@@ -325,7 +325,7 @@ async function scanFeedForTargets(feedUrl: string, targets: AlertTarget[]): Prom
     const feed = await parser.parseString(xml);
     const items = feed.items.slice(0, 8).map((item) => ({
       title: item.title ? stripHtml(item.title) : "",
-      content: stripHtml(item.contentSnippet || item.content || item.summary || ""),
+      content: cleanRedditRssArtifacts(stripHtml(item.contentSnippet || item.content || item.summary || "")),
       link: item.link || "",
       source: item.link ? extractSourceName(item.link) : "Web",
     }));

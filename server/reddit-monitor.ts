@@ -6,7 +6,7 @@ import { sendTelegramMessage, sendTelegramMessageToChat } from "./telegram";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import { isRedditConfigured } from "./reddit-poster";
 import { generateContent, parseAIJsonWithRetry, leadScoreSchema, TONE_MAP, MIN_MONITOR_INTENT_SCORE, getMentalHealthGuidance } from "./utils/ai";
-import { escapeHtml } from "./utils/html";
+import { escapeHtml, stripHtml, cleanRedditRssArtifacts } from "./utils/html";
 import { hasBeenSeen, markSeen, markOwnResponse, isOwnResponse } from "./utils/dedup";
 import { getFeedbackGuidance } from "./utils/feedback";
 import { keywordMatch } from "./utils/keywords";
@@ -275,7 +275,7 @@ async function scanSubredditForTargets(subreddit: string, targets: SubredditTarg
     const feed = await parser.parseString(xml);
     const posts = feed.items.slice(0, 5).map((item) => ({
       title: item.title || "",
-      content: item.contentSnippet || item.content || "",
+      content: cleanRedditRssArtifacts(stripHtml(item.contentSnippet || item.content || "")),
       link: item.link || "",
     }));
 

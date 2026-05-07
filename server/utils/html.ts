@@ -20,6 +20,17 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+// Strips Reddit RSS feed boilerplate that appears at the end of every post:
+//   "submitted by /u/<username> [link] [comments]"
+// and Atom-style "submitted by <a href=...>/u/x</a>" variants.
+export function cleanRedditRssArtifacts(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\s*submitted by\s+\/u\/[A-Za-z0-9_\-]+(?:\s*\[link\])?(?:\s*\[comments\])?\s*$/i, "")
+    .replace(/\s*\[link\]\s*\[comments\]\s*$/i, "")
+    .trim();
+}
+
 export function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max) + "...";

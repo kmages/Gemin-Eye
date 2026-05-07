@@ -15,7 +15,10 @@ const ThemeContext = createContext<ThemeContextType>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("gemin-eye-theme") as Theme) || "light";
+      // v2 key so we reset every browser to the new light default once;
+      // old "gemin-eye-theme" preferences are intentionally ignored.
+      try { localStorage.removeItem("gemin-eye-theme"); } catch {}
+      return (localStorage.getItem("gemin-eye-theme-v2") as Theme) || "light";
     }
     return "light";
   });
@@ -24,7 +27,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(theme);
-    localStorage.setItem("gemin-eye-theme", theme);
+    localStorage.setItem("gemin-eye-theme-v2", theme);
   }, [theme]);
 
   const toggleTheme = () => {

@@ -19,6 +19,7 @@ export interface InlineButton {
 export interface TelegramMessageOptions {
   buttons?: InlineButton[][];
   disable_web_page_preview?: boolean;
+  reply_to_message_id?: number;
 }
 
 export async function sendTelegramMessageToChat(
@@ -45,6 +46,11 @@ export async function sendTelegramMessageToChat(
       body.reply_markup = {
         inline_keyboard: options.buttons,
       };
+    }
+
+    if (options?.reply_to_message_id) {
+      body.reply_to_message_id = options.reply_to_message_id;
+      body.allow_sending_without_reply = true;
     }
 
     const res = await fetch(`${TELEGRAM_API}${token}/sendMessage`, {

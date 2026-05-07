@@ -166,6 +166,7 @@ Return ONLY the response text, no quotes or formatting.`,
   await markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
+  let savedLeadId: number | null = null;
   try {
     const [savedLead] = await db
       .insert(leads)
@@ -182,6 +183,7 @@ Return ONLY the response text, no quotes or formatting.`,
       .returning();
 
     if (savedLead) {
+      savedLeadId = savedLead.id;
       const [savedResponse] = await db
         .insert(aiResponses)
         .values({
@@ -213,9 +215,12 @@ Return ONLY the response text, no quotes or formatting.`,
   telegramMsg += `<b>💬 Suggested Response:</b>\n<code>${escapeHtml(responseText)}</code>\n\n`;
   telegramMsg += `👆 Tap "Open Post" below, then paste the reply.`;
 
-  const buttons = [];
+  const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
   if (post.link) {
     buttons.push([{ text: "Open Post", url: post.link }]);
+  }
+  if (savedLeadId && content.length > contentSnippet.length) {
+    buttons.push([{ text: "📄 Show Full Post", callback_data: `show_full_${savedLeadId}` }]);
   }
   if (savedResponseId && post.link && isRedditConfigured()) {
     buttons.push([{ text: "Post to Reddit", callback_data: `reddit_post_${savedResponseId}` }]);

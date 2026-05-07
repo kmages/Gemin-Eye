@@ -215,6 +215,7 @@ Return ONLY the response text, no quotes or formatting.`;
   await markOwnResponse(responseText);
 
   let savedResponseId: number | null = null;
+  let savedLeadId: number | null = null;
   try {
     const [savedLead] = await db
       .insert(leads)
@@ -231,6 +232,7 @@ Return ONLY the response text, no quotes or formatting.`;
       .returning();
 
     if (savedLead) {
+      savedLeadId = savedLead.id;
       const [savedResponse] = await db
         .insert(aiResponses)
         .values({
@@ -267,6 +269,9 @@ Return ONLY the response text, no quotes or formatting.`;
   const buttons: Array<Array<{ text: string; url?: string; callback_data?: string }>> = [];
   if (item.link) {
     buttons.push([{ text: "Open Page", url: item.link }]);
+  }
+  if (savedLeadId && item.content.length > contentSnippet.length) {
+    buttons.push([{ text: "📄 Show Full Content", callback_data: `show_full_${savedLeadId}` }]);
   }
   const isRedditSource = item.link && /reddit\.com\/r\/\w+\/comments\//i.test(item.link);
   if (savedResponseId && isRedditSource && isRedditConfigured()) {

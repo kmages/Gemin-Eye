@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { aiResponses, responseFeedback, businesses } from "@shared/schema";
+import { aiResponses, responseFeedback, businesses, leads } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sendTelegramMessage, sendTelegramMessageToChat, answerCallbackQuery, editMessageReplyMarkup } from "../telegram";
 import { postRedditComment, isRedditConfigured } from "../reddit-poster";
@@ -30,6 +30,8 @@ export async function handleCallbackQuery(cbq: any): Promise<void> {
     await handleToneBizCallback(cbq, data, cbqChatId);
   } else if (data.startsWith("tone_")) {
     await handleToneSetCallback(cbq, data, cbqChatId);
+  } else if (data.startsWith("show_full_")) {
+    await handleShowFullPostCallback(cbq, data, cbqChatId);
   } else if (data === "noop") {
     await answerCallbackQuery(cbq.id, "Feedback already recorded.");
   } else {
@@ -140,6 +142,56 @@ async function handleFeedbackCallback(cbq: any, data: string, cbqChatId: string)
     const selectedLabel = feedbackType === "good" ? "Used It" : feedbackType === "salesy" ? "Too Salesy" : feedbackType === "wrong" ? "Wrong Client" : "Bad Match";
     const confirmRow = [{ text: `[${selectedLabel}]`, callback_data: "noop" }];
     const newKeyboard = [...urlButtons, confirmRow];
+    await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
+  }
+}
+
+async function handleShowFullPostCallback(cbq: any, data: string, cbqChatId: string): Promise<void> {
+  const leadId = parseInt(data.replace("show_full_", ""));
+  if (isNaN(leadId) || !cbqChatId) {
+    await answerCallbackQuery(cbq.id);
+    return;
+  }
+
+  const rows = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  const lead = rows[0];
+  if (!lead || !lead.originalPost) {
+    await answerCallbackQuery(cbq.id, "Post content unavailable.");
+    return;
+  }
+
+  await answerCallbackQuery(cbq.id);
+
+  const TG_LIMIT = 3800; // leave headroom under Telegram's 4096 limit for HTML wrapper
+  const fullText = lead.originalPost;
+  const replyToId = cbq.message?.message_id;
+
+  // Split into chunks if needed; preserve line breaks where possible.
+  const chunks: string[] = [];
+  let remaining = fullText;
+  while (remaining.length > TG_LIMIT) {
+    let cut = remaining.lastIndexOf("\n", TG_LIMIT);
+    if (cut < TG_LIMIT * 0.5) cut = TG_LIMIT;
+    chunks.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trimStart();
+  }
+  if (remaining.length) chunks.push(remaining);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const header = i === 0 ? `<b>📄 Full Post</b>${chunks.length > 1 ? ` (1/${chunks.length})` : ""}\n\n` : `<b>📄 Full Post</b> (${i + 1}/${chunks.length})\n\n`;
+    await sendTelegramMessageToChat(cbqChatId, header + escapeHtml(chunks[i]), {
+      reply_to_message_id: i === 0 ? replyToId : undefined,
+    });
+  }
+
+  // Disable the button so it can't be tapped again on this message.
+  if (cbq.message?.message_id) {
+    const existingButtons = cbq.message?.reply_markup?.inline_keyboard || [];
+    const newKeyboard = existingButtons.map((row: any[]) =>
+      row.map((b: any) =>
+        b.callback_data === data ? { text: "✓ Full Post Sent", callback_data: "noop" } : b
+      )
+    );
     await editMessageReplyMarkup(cbqChatId, cbq.message.message_id, { inline_keyboard: newKeyboard });
   }
 }

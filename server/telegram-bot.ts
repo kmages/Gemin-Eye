@@ -16,6 +16,7 @@ import { pendingContextRequests, pendingRedditPosts, CONTEXT_TTL } from "./teleg
 import { saveClientWizard } from "./utils/wizard-db";
 
 export { generateScanToken, generateBookmarkletCode, generateLinkedInBookmarkletCode } from "./telegram/bookmarklets";
+import { getAppBaseUrl } from "./telegram/bookmarklets";
 
 const webhookRateLimit = createRateLimiter({
   name: "telegram-webhook",
@@ -114,7 +115,7 @@ export function registerTelegramWebhook(app: any) {
           await sendTelegramMessageToChat(chatId,
             `⚠️ <b>This link has expired or the business no longer exists.</b>\n\n` +
             `To get a fresh connection link:\n` +
-            `1. Go to your <a href="https://gemin-eye.com/dashboard">Gemin-Eye dashboard</a>\n` +
+            `1. Go to your <a href="${getAppBaseUrl()}/dashboard">Gemin-Eye dashboard</a>\n` +
             `2. Find the <b>Settings</b> panel for your business\n` +
             `3. Click <b>Connect Telegram</b> to get a new link\n\n` +
             `Or send /setup here to set up a new business from scratch.`,
@@ -138,7 +139,7 @@ export function registerTelegramWebhook(app: any) {
             `- Reddit is being scanned for leads every 5 minutes\n` +
             `- When a lead is found, you'll get a message with an AI-written response\n` +
             `- You can rate responses to teach the AI your style\n\n` +
-            `Head to your <a href="https://gemin-eye.com/dashboard">dashboard</a> to access all your tools.`,
+            `Head to your <a href="${getAppBaseUrl()}/dashboard">dashboard</a> to access all your tools.`,
             { disable_web_page_preview: true }
           );
         }
@@ -176,7 +177,7 @@ export function registerTelegramWebhook(app: any) {
               `<b>What you can do:</b>\n` +
               `- Send me a post URL + text to analyze\n` +
               `- Screenshot a post and send the image\n\n` +
-              `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for all tools including Spy Glass scanners.\n\n` +
+              `Visit your <a href="${getAppBaseUrl()}/dashboard">dashboard</a> for all tools including Spy Glass scanners.\n\n` +
               `<b>Commands:</b>\n` +
               `/tone - Change how your AI responses sound\n` +
               `/setup - Add another business\n` +
@@ -186,7 +187,7 @@ export function registerTelegramWebhook(app: any) {
             await sendTelegramMessageToChat(chatId,
               `<b>Welcome to Gemin-Eye!</b>\n\n` +
               `To get started, set up your business on our website first. It takes about 2 minutes:\n\n` +
-              `<a href="https://gemin-eye.com/onboarding">gemin-eye.com/onboarding</a>\n\n` +
+              `<a href="${getAppBaseUrl()}/onboarding">${getAppBaseUrl().replace(/^https?:\/\//, "")}/onboarding</a>\n\n` +
               `Once your business is set up, you'll get a link to connect Telegram — and leads will start flowing right here.`
             );
           }
@@ -203,7 +204,7 @@ export function registerTelegramWebhook(app: any) {
           `<b>Manual scanning:</b>\n` +
           `- Send me any post text + URL and I'll analyze it\n` +
           `- Or screenshot a post and send the image\n\n` +
-          `Visit your <a href="https://gemin-eye.com/dashboard">dashboard</a> for Spy Glass tools to scan Facebook and LinkedIn.\n\n` +
+          `Visit your <a href="${getAppBaseUrl()}/dashboard">dashboard</a> for Spy Glass tools to scan Facebook and LinkedIn.\n\n` +
           `<b>Commands:</b>\n` +
           `/tone - Change how your AI responses sound\n` +
           `/setup - Add a new business\n` +
@@ -219,7 +220,7 @@ export function registerTelegramWebhook(app: any) {
         if (messageText && !messageText.startsWith("/")) {
           await sendTelegramMessageToChat(chatId,
             `You don't have a business connected yet.\n\n` +
-            `Set up your business at <a href="https://gemin-eye.com/onboarding">gemin-eye.com/onboarding</a> — you'll get a link to connect Telegram at the end.`
+            `Set up your business at <a href="${getAppBaseUrl()}/onboarding">${getAppBaseUrl().replace(/^https?:\/\//, "")}/onboarding</a> — you'll get a link to connect Telegram at the end.`
           );
         }
         return;

@@ -2,6 +2,7 @@ import { db } from "./db";
 import { businesses } from "@shared/schema";
 import { sendTelegramMessageToChat } from "./telegram";
 import { hasBeenSeen, markSeen } from "./utils/dedup";
+import { getAppBaseUrl } from "./telegram/bookmarklets";
 
 const REMINDER_HOUR_UTC = 14;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
@@ -41,7 +42,7 @@ async function sendDailyReminders(): Promise<void> {
           { text: "Open LinkedIn", url: "https://linkedin.com" },
         ],
         [
-          { text: "Open Dashboard", url: "https://gemin-eye.com/dashboard" },
+          { text: "Open Dashboard", url: `${getAppBaseUrl()}/dashboard` },
         ],
       ];
 

@@ -136,5 +136,10 @@ export function generateBookmarkletCode(baseUrl: string, chatId: string, busines
 }
 
 export function getAppBaseUrl(): string {
+  if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL.replace(/\/$/, "");
+  const isProduction = process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1";
+  if (isProduction) return "https://gemin-eye.com";
+  const devDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+  if (devDomain) return `https://${devDomain}`;
   return "https://gemin-eye.com";
 }

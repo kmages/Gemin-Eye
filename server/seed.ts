@@ -3,6 +3,15 @@ import { businesses, campaigns, leads, aiResponses } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export async function seedDatabase() {
+  // Demo seed only runs in dev (or when explicitly requested) so a fresh
+  // production deploy never auto-creates "Doro Mind" / "Tony's" / etc.
+  const isProduction = process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT === "1";
+  const seedExplicitlyEnabled = process.env.SEED_DEMO_DATA === "1";
+  if (isProduction && !seedExplicitlyEnabled) {
+    console.log("Demo seed skipped (production). Set SEED_DEMO_DATA=1 to override.");
+    return;
+  }
+
   const existing = await db.select().from(businesses);
   if (existing.length > 0) return;
 

@@ -122,7 +122,7 @@ function FeedbackBadge({ feedback }: { feedback?: ResponseFeedback }) {
   const cfg = feedbackConfig[feedback.feedback];
   if (!cfg) return null;
   return (
-    <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${cfg.className}`} data-testid={`badge-feedback-${feedback.responseId}`}>
+    <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cfg.className}`} data-testid={`badge-feedback-${feedback.responseId}`}>
       {cfg.label}
     </span>
   );
@@ -387,7 +387,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
           <div className="space-y-2 pt-1">
             <div className="flex flex-wrap gap-1.5">
               {localKeywords.map((kw) => (
-                <span key={kw} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-md">
+                <span key={kw} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                   {kw}
                   <button onClick={() => removeKeyword(kw)} className="hover:text-destructive transition-colors" data-testid={`button-remove-kw-${campaign.id}-${kw}`}>
                     <X className="w-2.5 h-2.5" />
@@ -807,7 +807,7 @@ export default function Dashboard() {
                       <button
                         key={p}
                         onClick={() => setPlatformFilter(val)}
-                        className={`text-xs px-3 py-1 rounded-md border transition-colors ${
+                        className={`text-xs px-3 py-1 rounded-full border transition-colors ${
                           platformFilter === val
                             ? "bg-primary text-primary-foreground border-primary"
                             : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
@@ -820,7 +820,7 @@ export default function Dashboard() {
                   })}
                   <button
                     onClick={() => setHighIntentOnly(!highIntentOnly)}
-                    className={`text-xs px-3 py-1 rounded-md border transition-colors ${
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
                       highIntentOnly
                         ? "bg-amber-500 text-white border-amber-500"
                         : "bg-background text-muted-foreground border-border hover:border-amber-400 hover:text-foreground"

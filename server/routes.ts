@@ -377,7 +377,30 @@ Return ONLY valid JSON with this structure:
         slackWebhookUrl: z.string().nullable().optional(),
       });
       const data = schema.parse(req.body);
+
+      const disconnectedChatId =
+        data.telegramChatId === null && owned.telegramChatId
+          ? owned.telegramChatId
+          : null;
+
       const updated = await storage.updateBusiness(id, data);
+
+      if (disconnectedChatId) {
+        try {
+          const { sendTelegramMessageToChat } = await import("./telegram");
+          const { escapeHtml } = await import("./utils/html");
+          const { getAppBaseUrl } = await import("./telegram/bookmarklets");
+          await sendTelegramMessageToChat(
+            disconnectedChatId,
+            `<b>Telegram disconnected from the dashboard.</b>\n\n` +
+            `You'll no longer receive lead alerts on this chat for <b>${escapeHtml(owned.name)}</b>.\n\n` +
+            `To reconnect, open your <a href="${getAppBaseUrl()}/dashboard">dashboard</a> and tap <b>Connect Telegram</b>.`
+          );
+        } catch (e) {
+          console.error("Failed to notify Telegram of disconnect:", e);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error updating business:", error);

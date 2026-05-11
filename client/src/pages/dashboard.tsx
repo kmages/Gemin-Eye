@@ -671,6 +671,8 @@ export default function Dashboard() {
   const { data: businesses, isLoading: bizLoading } = useQuery<Business[]>({
     queryKey: ["/api/businesses"],
     enabled: !!user,
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: campaigns, isLoading: campLoading } = useQuery<Campaign[]>({

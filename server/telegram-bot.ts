@@ -208,8 +208,33 @@ export function registerTelegramWebhook(app: any) {
           `<b>Commands:</b>\n` +
           `/tone - Change how your AI responses sound\n` +
           `/setup - Add a new business\n` +
+          `/disconnect - Stop receiving alerts on this chat\n` +
           `/help - This guide`
         );
+        return;
+      }
+
+      if (
+        messageText === "/disconnect" ||
+        messageText === "/unsubscribe" ||
+        messageText === "/stop"
+      ) {
+        const linkedBusinesses = await storage.getBusinessesByTelegramChatId(chatId);
+        if (linkedBusinesses.length === 0) {
+          await sendTelegramMessageToChat(chatId,
+            `This chat isn't connected to any business. Nothing to disconnect.`
+          );
+        } else {
+          for (const biz of linkedBusinesses) {
+            await storage.updateBusiness(biz.id, { telegramChatId: null });
+          }
+          const names = linkedBusinesses.map((b) => b.name).join(", ");
+          await sendTelegramMessageToChat(chatId,
+            `<b>Disconnected.</b>\n\n` +
+            `You'll no longer receive lead alerts on this chat for: <b>${escapeHtml(names)}</b>.\n\n` +
+            `To reconnect, open your <a href="${getAppBaseUrl()}/dashboard">dashboard</a> and tap <b>Connect Telegram</b>.`
+          );
+        }
         return;
       }
 

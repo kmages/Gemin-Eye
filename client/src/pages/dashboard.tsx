@@ -509,6 +509,15 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
     onError: () => toast({ title: "Failed to update tone", variant: "destructive" }),
   });
 
+  const disconnectTelegram = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/businesses/${business.id}`, { telegramChatId: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/businesses"] });
+      toast({ title: "Telegram disconnected", description: "You won't receive lead alerts here until you reconnect." });
+    },
+    onError: () => toast({ title: "Failed to disconnect Telegram", variant: "destructive" }),
+  });
+
   const updateThreshold = useMutation({
     mutationFn: (threshold: number) => apiRequest("PATCH", `/api/businesses/${business.id}`, { intentThreshold: threshold }),
     onSuccess: () => {
@@ -586,10 +595,25 @@ function BusinessSettingsPanel({ business }: { business: Business }) {
           <p className="text-sm font-medium">Telegram Alerts</p>
           <p className="text-xs text-muted-foreground">Receive lead notifications and give feedback via Telegram.</p>
           {telegramLinked ? (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400" data-testid="status-telegram-connected">
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 flex-wrap" data-testid="status-telegram-connected">
               <Wifi className="w-4 h-4" />
               <span>Connected</span>
               <span className="text-xs text-muted-foreground">(Chat {business.telegramChatId})</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto h-7 text-xs"
+                disabled={disconnectTelegram.isPending}
+                onClick={() => {
+                  if (confirm("Disconnect Telegram? You'll stop receiving lead alerts until you reconnect.")) {
+                    disconnectTelegram.mutate();
+                  }
+                }}
+                data-testid="button-disconnect-telegram"
+              >
+                <WifiOff className="w-3.5 h-3.5 mr-1.5" />
+                {disconnectTelegram.isPending ? "Disconnecting…" : "Disconnect"}
+              </Button>
             </div>
           ) : (
             <div className="space-y-3" data-testid="status-telegram-disconnected">

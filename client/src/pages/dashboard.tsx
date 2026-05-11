@@ -142,7 +142,7 @@ function timeAgo(date: string | Date | null | undefined): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiResponse; feedback?: ResponseFeedback }) {
+function LeadCard({ lead, response, feedback, isNew }: { lead: Lead; response?: AiResponse; feedback?: ResponseFeedback; isNew?: boolean }) {
   const { toast } = useToast();
 
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; icon: any }> = {
@@ -151,7 +151,8 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
     pending: { label: "Pending", variant: "secondary", icon: Clock },
   };
 
-  const config = statusConfig[lead.status] || statusConfig.new;
+  const effectiveStatus = lead.status === "new" && !isNew ? "seen" : lead.status;
+  const config = statusConfig[effectiveStatus];
   const [expanded, setExpanded] = useState(false);
 
   const rawPost = lead.originalPost ?? "";
@@ -220,10 +221,12 @@ function LeadCard({ lead, response, feedback }: { lead: Lead; response?: AiRespo
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-          <Badge variant={config.variant} className="text-xs">
-            <config.icon className="w-3 h-3 mr-1" />
-            {config.label}
-          </Badge>
+          {config && (
+            <Badge variant={config.variant} className="text-xs">
+              <config.icon className="w-3 h-3 mr-1" />
+              {config.label}
+            </Badge>
+          )}
           <Badge variant="secondary" className="text-xs">
             {lead.intentScore}/10
           </Badge>
@@ -849,11 +852,22 @@ export default function Dashboard() {
                 </Card>
               ) : (
                 <div className="space-y-4">
-                  {filteredLeads.map((lead) => {
-                    const resp = responses.find((r) => r.leadId === lead.id);
-                    const fb = resp ? feedbackByResponseId[resp.id] : undefined;
-                    return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} />;
-                  })}
+                  {(() => {
+                    // Only the 10 most recently created leads keep the "New"
+                    // badge — older ones drop it so the indicator stays useful.
+                    const NEW_BADGE_LIMIT = 10;
+                    const recentIds = new Set(
+                      [...leads]
+                        .sort((a, b) => new Date(b.createdAt as unknown as string).getTime() - new Date(a.createdAt as unknown as string).getTime())
+                        .slice(0, NEW_BADGE_LIMIT)
+                        .map((l) => l.id),
+                    );
+                    return filteredLeads.map((lead) => {
+                      const resp = responses.find((r) => r.leadId === lead.id);
+                      const fb = resp ? feedbackByResponseId[resp.id] : undefined;
+                      return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} isNew={recentIds.has(lead.id)} />;
+                    });
+                  })()}
                 </div>
               )}
             </div>

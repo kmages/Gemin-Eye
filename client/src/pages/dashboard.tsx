@@ -151,7 +151,7 @@ function LeadCard({ lead, response, feedback, isNew }: { lead: Lead; response?: 
     pending: { label: "Pending", variant: "secondary", icon: Clock },
   };
 
-  const effectiveStatus = lead.status === "new" && !isNew ? "seen" : lead.status;
+  const effectiveStatus = isNew ? "new" : lead.status;
   const config = statusConfig[effectiveStatus];
   const [expanded, setExpanded] = useState(false);
 

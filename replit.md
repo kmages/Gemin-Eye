@@ -71,6 +71,14 @@ Business data (type, core_offering, target_audience) must accurately reflect wha
 - **Demo Seed Gating**: `server/seed.ts` no longer auto-creates the "Doro Mind" / "Tony's" / "Chicago Bocce" / "LMAITFY.ai" demo businesses on production boots. Seed only runs when `NODE_ENV=development` (or `SEED_DEMO_DATA=1` is set), preventing demo data from polluting fresh production deployments.
 - **Subscription Billing (Stripe)**: Two tiers gated by `server/utils/subscription.ts` (60s in-memory cache; reads `product.metadata.tier`). Starter unlocks Reddit + Google Alerts Telegram delivery (gated in `reddit-monitor.ts` + `google-alerts-monitor.ts`). Pro additionally unlocks Facebook + LinkedIn Spy Glass bookmarklet generation (`/api/my-bookmarklets`, `/api/bookmarklets/...`) and FB/LinkedIn `/api/fb-scan` + `/api/li-scan` endpoints. Frontend pricing page at `/billing` (`client/src/pages/billing.tsx`) uses Stripe Checkout + Billing Portal. Seed products with `npx tsx scripts/seed-products.ts` after connecting Stripe. In dev, if Stripe isn't connected, gating fails-open (treats users as Pro) so the app remains usable; in production it fails-closed.
 
+## Testing
+
+Vitest is set up for unit tests. Run with:
+```
+SESSION_SECRET=test npx vitest run
+```
+Tests live under `tests/` mirroring the source layout (e.g. `tests/utils/html.test.ts` → `server/utils/html.ts`). Current coverage is a starter suite focused on pure utilities (`html.ts`, `keywords.ts`, `telegram/bookmarklets.ts` token HMAC). Most other modules — storage, monitors, routes, AI calls, React components — are untested. Add new `*.test.ts` files alongside the same folder structure when adding features.
+
 ## External Dependencies
 
 - **PostgreSQL**: Primary database.

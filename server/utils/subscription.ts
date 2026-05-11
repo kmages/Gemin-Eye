@@ -65,11 +65,13 @@ async function fetchTierFromStripe(userId: string): Promise<Tier> {
 
     if (!stripeCustomerId) return null;
 
+    // NOTE: Stripe rejects expand paths > 4 levels deep, so we expand to
+    // `price` (data.items.data.price = 4) and fetch the product separately.
     const subs = await stripe.subscriptions.list({
       customer: stripeCustomerId,
       status: "all",
       limit: 5,
-      expand: ["data.items.data.price.product"],
+      expand: ["data.items.data.price"],
     });
 
     const active = subs.data.find(
@@ -78,7 +80,12 @@ async function fetchTierFromStripe(userId: string): Promise<Tier> {
     if (!active) return null;
 
     const item = active.items.data[0];
-    const product = item?.price?.product as Stripe.Product | undefined;
+    const price = item?.price as Stripe.Price | undefined;
+    const productId =
+      typeof price?.product === "string" ? price.product : price?.product?.id;
+    if (!productId) return null;
+
+    const product = await stripe.products.retrieve(productId);
     const tier = (product?.metadata?.tier as Tier) || null;
     return tier;
   } catch (err) {

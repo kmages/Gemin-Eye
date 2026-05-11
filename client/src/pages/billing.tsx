@@ -232,20 +232,26 @@ export default function BillingPage() {
                         Manage subscription
                       </Button>
                     ) : monthly ? (
-                      <Button
-                        className="w-full"
-                        variant={isPro ? "default" : "outline"}
-                        onClick={() => checkoutMutation.mutate(monthly.id)}
-                        disabled={checkoutMutation.isPending || !stripeConnected}
-                        data-testid={`button-subscribe-${tier}`}
-                      >
-                        {checkoutMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                        )}
-                        Subscribe — {formatPrice(monthly)}
-                      </Button>
+                      (() => {
+                        const isThisLoading =
+                          checkoutMutation.isPending && checkoutMutation.variables === monthly.id;
+                        return (
+                          <Button
+                            className="w-full"
+                            variant={isPro ? "default" : "outline"}
+                            onClick={() => checkoutMutation.mutate(monthly.id)}
+                            disabled={checkoutMutation.isPending || !stripeConnected}
+                            data-testid={`button-subscribe-${tier}`}
+                          >
+                            {isThisLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                            )}
+                            Subscribe — {formatPrice(monthly)}
+                          </Button>
+                        );
+                      })()
                     ) : (
                       <Button className="w-full" disabled>No price configured</Button>
                     )}

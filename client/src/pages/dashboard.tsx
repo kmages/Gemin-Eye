@@ -624,6 +624,8 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [platformFilter, setPlatformFilter] = useState("");
   const [highIntentOnly, setHighIntentOnly] = useState(false);
+  const PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const { data: adminCheck } = useQuery<{ isAdmin: boolean }>({
     queryKey: ["/api/admin/check"],
@@ -687,6 +689,11 @@ export default function Dashboard() {
     const intentMatch = !highIntentOnly || l.intentScore >= 7;
     return platformMatch && intentMatch;
   });
+
+  // Reset pagination whenever filters change so users don't see a stale window.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [platformFilter, highIntentOnly]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -862,11 +869,27 @@ export default function Dashboard() {
                         .slice(0, NEW_BADGE_LIMIT)
                         .map((l) => l.id),
                     );
-                    return filteredLeads.map((lead) => {
-                      const resp = responses.find((r) => r.leadId === lead.id);
-                      const fb = resp ? feedbackByResponseId[resp.id] : undefined;
-                      return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} isNew={recentIds.has(lead.id)} />;
-                    });
+                    const visibleLeads = filteredLeads.slice(0, visibleCount);
+                    return (
+                      <>
+                        {visibleLeads.map((lead) => {
+                          const resp = responses.find((r) => r.leadId === lead.id);
+                          const fb = resp ? feedbackByResponseId[resp.id] : undefined;
+                          return <LeadCard key={lead.id} lead={lead} response={resp} feedback={fb} isNew={recentIds.has(lead.id)} />;
+                        })}
+                        {filteredLeads.length > visibleCount && (
+                          <div className="flex justify-center pt-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                              data-testid="button-load-more-leads"
+                            >
+                              Load more ({filteredLeads.length - visibleCount} remaining)
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    );
                   })()}
                 </div>
               )}

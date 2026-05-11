@@ -638,6 +638,12 @@ export default function Dashboard() {
     }
   }, [authLoading, user]);
 
+  // Reset pagination whenever filters change so users don't see a stale window.
+  // MUST live above any early `return` to keep hook order stable across renders.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [platformFilter, highIntentOnly]);
+
   const { data: businesses, isLoading: bizLoading } = useQuery<Business[]>({
     queryKey: ["/api/businesses"],
     enabled: !!user,
@@ -689,11 +695,6 @@ export default function Dashboard() {
     const intentMatch = !highIntentOnly || l.intentScore >= 7;
     return platformMatch && intentMatch;
   });
-
-  // Reset pagination whenever filters change so users don't see a stale window.
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [platformFilter, highIntentOnly]);
 
   return (
     <div className="min-h-screen bg-background">

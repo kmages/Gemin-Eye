@@ -92,8 +92,13 @@ async function triggerScan(platform, hostMatch) {
   chrome.tabs.sendMessage(
     tab.id,
     { type: "GE_START_SCAN", platform, business },
-    () => {
-      if (chrome.runtime.lastError) {
+    (response) => {
+      const err = chrome.runtime.lastError;
+      if (response && response.ok) {
+        $("status").textContent = `Scanning ${platform} for ${business.businessName}…`;
+        $("status").className = "ok";
+        setTimeout(() => window.close(), 600);
+      } else if (err) {
         $("status").textContent =
           "Reload the page once after installing, then try again.";
         $("status").className = "err";

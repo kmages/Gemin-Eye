@@ -213,9 +213,10 @@
     }, 1500);
   }
 
-  chrome.runtime.onMessage.addListener((msg) => {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "GE_START_SCAN" && msg.platform === "facebook") {
       if (msg.business) startScan(msg.business);
+      sendResponse({ ok: true });
     }
   });
 })();

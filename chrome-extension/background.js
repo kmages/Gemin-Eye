@@ -15,9 +15,12 @@ async function getActiveBusiness() {
   return picked || null;
 }
 
+const LOG = (...a) => console.log("%c[Gemin-Eye SW]", "color:#7c3aed;font-weight:bold", ...a);
+
 async function postScan(platform, body) {
   const biz = await getActiveBusiness();
   if (!biz) {
+    LOG("no active business — extension not configured");
     return { matched: false, reason: "extension_not_configured" };
   }
   const url = `${biz.baseUrl.replace(/\/$/, "")}/api/${platform === "facebook" ? "fb-scan" : "li-scan"}`;
@@ -27,14 +30,18 @@ async function postScan(platform, body) {
     token: biz.token,
     ...body,
   };
+  LOG(`POST ${url} (${body.postText?.length || 0} chars)`);
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return await res.json();
+    const data = await res.json();
+    LOG(`← ${res.status}`, data);
+    return data;
   } catch (err) {
+    LOG("✗ fetch failed:", err);
     return { matched: false, reason: "network_error", error: String(err) };
   }
 }

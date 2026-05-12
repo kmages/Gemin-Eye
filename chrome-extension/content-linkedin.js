@@ -1,9 +1,15 @@
 // Gemin-Eye Spy Glass – LinkedIn content script
 (function () {
-  if (window.__geminEyeLiActive) return;
+  const LOG = (...a) => console.log("%c[Gemin-Eye LI]", "color:#0077B5;font-weight:bold", ...a);
+  LOG("content script loaded on", location.href);
+  if (window.__geminEyeLiActive) {
+    LOG("already active, skipping init");
+    return;
+  }
 
   function startScan(business) {
-    if (window.__geminEyeLiActive) return;
+    LOG("startScan() called for business:", business?.businessName);
+    if (window.__geminEyeLiActive) { LOG("scan already running"); return; }
     window.__geminEyeLiActive = true;
 
     const seenPosts = {};
@@ -12,7 +18,9 @@
       pendingCount = 0,
       failCount = 0,
       autoScrolling = true,
-      scrollsDone = 0;
+      scrollsDone = 0,
+      lastFoundCount = 0,
+      tickCount = 0;
     const maxScrolls = 150;
 
     const banner = document.createElement("div");
@@ -24,7 +32,7 @@
     counter.textContent = "0 scanned";
 
     function updateCounter() {
-      let t = `${scannedCount} scanned, ${sentCount} leads`;
+      let t = `${scannedCount} scanned, ${sentCount} leads · DOM:${lastFoundCount} · ticks:${tickCount}`;
       if (failCount > 0) t += `, ${failCount} failed`;
       if (pendingCount > 0) t += ` (${pendingCount} checking…)`;
       if (!autoScrolling && scrollsDone >= maxScrolls) t += " — Done";
@@ -59,16 +67,36 @@
     banner.appendChild(closeBtn);
     document.body.appendChild(banner);
 
+    const SELECTORS = [
+      ".feed-shared-update-v2__description",
+      ".feed-shared-inline-show-more-text",
+      ".feed-shared-text",
+      ".update-components-text",
+      ".update-components-update-v2__commentary",
+      "div.feed-shared-update-v2 span.break-words",
+      "div[data-id^='urn:li:activity'] span.break-words",
+      "div.update-components-text span[dir='ltr']",
+      "article span.break-words",
+    ];
     function extractPosts() {
       const found = [];
-      const els = document.querySelectorAll(
-        ".feed-shared-update-v2__description,.feed-shared-inline-show-more-text,.feed-shared-text,.update-components-text,span.break-words",
-      );
+      const sel = SELECTORS.join(",");
+      const els = document.querySelectorAll(sel);
+      lastFoundCount = els.length;
+      let skippedShort = 0, skippedLong = 0, skippedSeen = 0;
       els.forEach((el) => {
         const t = (el.innerText || "").trim();
-        if (t.length < 25 || t.length > 5000 || seenPosts[t]) return;
+        if (t.length < 25) { skippedShort++; return; }
+        if (t.length > 5000) { skippedLong++; return; }
+        if (seenPosts[t]) { skippedSeen++; return; }
         found.push({ text: t, element: el });
       });
+      LOG(`extractPosts: ${els.length} matched DOM, ${found.length} new (short:${skippedShort} long:${skippedLong} seen:${skippedSeen})`);
+      if (els.length === 0) {
+        LOG("⚠ No DOM matches. Selectors tried:", SELECTORS);
+        const fallback = document.querySelectorAll("article, div[role='article']");
+        LOG(`fallback <article> count:`, fallback.length);
+      }
       return found;
     }
 
@@ -87,6 +115,7 @@
           if (nameEl) authorName = nameEl.innerText || "";
         }
       } catch {}
+      LOG(`→ sending to backend (${text.length} chars):`, text.slice(0, 80) + "…");
       chrome.runtime.sendMessage(
         {
           type: "GE_SCAN",
@@ -99,13 +128,23 @@
         },
         (d) => {
           pendingCount--;
-          if (d && d.matched) {
+          if (chrome.runtime.lastError) {
+            LOG("✗ runtime error:", chrome.runtime.lastError.message);
+            failCount++;
+          } else if (d && d.matched) {
+            LOG("✓ MATCHED lead, score:", d.score ?? "?", "reason:", d.reason ?? "");
             sentCount++;
             el.style.outline = "3px solid #0077B5";
             el.style.outlineOffset = "4px";
             el.style.borderRadius = "4px";
-          } else if (!d || d.reason === "network_error") {
+          } else if (!d) {
+            LOG("✗ no response from background");
             failCount++;
+          } else if (d.reason === "network_error") {
+            LOG("✗ network error:", d.error);
+            failCount++;
+          } else {
+            LOG("• not a match. response:", d);
           }
           updateCounter();
         },
@@ -113,16 +152,18 @@
     }
 
     function scan() {
-      if (document.hidden) return;
+      tickCount++;
+      if (document.hidden) { LOG("tab hidden, skipping tick"); updateCounter(); return; }
       const posts = extractPosts();
       posts.forEach((p) => {
         if (scannedCount >= 500) return;
         sendPost(p.text, p.element);
       });
       if (scannedCount >= 500) {
+        LOG("hit 500 cap, stopping");
         autoScrolling = false;
-        updateCounter();
       }
+      updateCounter();
     }
 
     document.addEventListener("visibilitychange", () => {

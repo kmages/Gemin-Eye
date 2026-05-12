@@ -3,10 +3,13 @@
 // extension's background worker (no popup relay, works in N tabs at once).
 
 (function () {
-  if (window.__geminEyeFbActive) return;
+  const LOG = (...a) => console.log("%c[Gemin-Eye FB]", "color:#6d28d9;font-weight:bold", ...a);
+  LOG("content script loaded on", location.href);
+  if (window.__geminEyeFbActive) { LOG("already active, skipping init"); return; }
 
   function startScan(business) {
-    if (window.__geminEyeFbActive) return;
+    LOG("startScan() called for business:", business?.businessName);
+    if (window.__geminEyeFbActive) { LOG("scan already running"); return; }
     window.__geminEyeFbActive = true;
 
     const seenPosts = {};
@@ -67,13 +70,16 @@
     function extractPosts() {
       const found = [];
       const els = document.querySelectorAll('div[dir="auto"]');
+      let skippedShort = 0, skippedSeen = 0, skippedLink = 0;
       els.forEach((el) => {
         const t = (el.innerText || "").trim();
-        if (t.length < 25 || t.length > 5000 || seenPosts[t]) return;
+        if (t.length < 25 || t.length > 5000) { skippedShort++; return; }
+        if (seenPosts[t]) { skippedSeen++; return; }
         const a = el.closest("a");
-        if (a && a.href && a.href.indexOf("/comment") === -1) return;
+        if (a && a.href && a.href.indexOf("/comment") === -1) { skippedLink++; return; }
         found.push({ text: t, element: el });
       });
+      LOG(`extractPosts: ${els.length} dir=auto, ${found.length} new (short/long:${skippedShort} seen:${skippedSeen} link:${skippedLink})`);
       return found;
     }
 

@@ -439,7 +439,8 @@ Return ONLY valid JSON with this structure:
       }
       const path = await import("node:path");
       const fs = await import("node:fs");
-      const archiver = (await import("archiver")).default;
+      const archiverMod: any = await import("archiver");
+      const archiver = archiverMod.default || archiverMod;
       const extDir = path.resolve(process.cwd(), "chrome-extension");
       if (!fs.existsSync(extDir)) {
         return res.status(404).json({ error: "Extension folder not found" });

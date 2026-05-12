@@ -449,6 +449,45 @@ function SpyGlassCopyButton({ code, label, icon: Icon, testId }: { code: string;
   );
 }
 
+function ChromeExtensionCard() {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const copyConfig = async () => {
+    try {
+      const res = await fetch("/api/extension/config", { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const config = await res.json();
+      await navigator.clipboard.writeText(JSON.stringify(config));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Config copied", description: "Paste it into the Chrome extension popup." });
+    } catch (e: any) {
+      toast({ title: "Failed to copy config", description: e?.message || "Try again", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="p-5 space-y-3 border-primary/40" data-testid="card-chrome-extension">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h3 className="font-medium">Chrome Extension</h3>
+        <Badge className="text-xs">Recommended</Badge>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Works across multiple Facebook / LinkedIn tabs at once — no popup relay window required. Replaces the bookmarklets below.
+      </p>
+      <ol className="text-sm space-y-1 list-decimal pl-5 text-muted-foreground">
+        <li>Open <code className="text-xs bg-muted px-1 rounded">chrome://extensions</code>, enable <strong>Developer mode</strong>, and load the <code className="text-xs bg-muted px-1 rounded">chrome-extension/</code> folder.</li>
+        <li>Click <strong>Copy config</strong> below.</li>
+        <li>Click the extension icon, paste the config, save.</li>
+      </ol>
+      <Button onClick={copyConfig} data-testid="button-copy-extension-config">
+        {copied ? "Copied!" : "Copy config"}
+      </Button>
+    </Card>
+  );
+}
+
 function SpyGlassSection({ bookmarklets }: { bookmarklets: BookmarkletInfo[] }) {
   return (
     <div className="space-y-4">
@@ -457,8 +496,9 @@ function SpyGlassSection({ bookmarklets }: { bookmarklets: BookmarkletInfo[] }) 
         <Badge variant="secondary" className="text-xs">Desktop</Badge>
       </div>
       <p className="text-sm text-muted-foreground">
-        Scan Facebook groups and LinkedIn from your desktop browser. Copy a bookmarklet code, save it as a browser bookmark, then click it while on Facebook or LinkedIn to scan for leads.
+        Scan Facebook groups and LinkedIn from your desktop browser. The Chrome extension is recommended; bookmarklets are a fallback.
       </p>
+      <ChromeExtensionCard />
       <div className="grid gap-4">
         {bookmarklets.map((bm) => (
           <Card key={bm.businessId} className="p-5 space-y-4" data-testid={`card-spyglass-${bm.businessId}`}>

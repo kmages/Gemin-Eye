@@ -430,6 +430,42 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/extension/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      if (!(await hasProTier(userId))) {
+        return res.status(402).json({
+          error: "subscription_required",
+          message: "The Spy Glass Chrome extension requires the Pro plan.",
+          upgradeUrl: "/billing",
+        });
+      }
+
+      const businesses = await storage.getBusinessesByUser(userId);
+      const { generateScanToken, getAppBaseUrl } = await import("./telegram/bookmarklets");
+      const baseUrl = getAppBaseUrl();
+      const ADMIN_CHAT_ID = "8491725368";
+
+      const config = businesses.map((b) => {
+        const chatId = b.telegramChatId || ADMIN_CHAT_ID;
+        return {
+          businessId: b.id,
+          businessName: b.name,
+          chatId,
+          token: generateScanToken(chatId, b.id),
+          baseUrl,
+        };
+      });
+
+      res.json(config);
+    } catch (error) {
+      console.error("Error generating extension config:", error);
+      res.status(500).json({ error: "Failed to generate extension config" });
+    }
+  });
+
   app.get("/api/my-bookmarklets", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub;

@@ -30,6 +30,9 @@ const ALLOWED_SCAN_ORIGINS = [
 
 function getScanCorsOrigin(req: Request): string | null {
   const origin = req.headers.origin || "";
+  // Allow any chrome-extension:// origin — the request is still authenticated
+  // by the per-business HMAC scan token, so the origin isn't load-bearing here.
+  if (origin.startsWith("chrome-extension://")) return origin;
   if (ALLOWED_SCAN_ORIGINS.some((o) => origin === o || origin.startsWith(o + "/"))) {
     return origin;
   }

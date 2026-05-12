@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gemin-Eye Spy Glass</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        width: 340px;
+        margin: 0;
+        padding: 14px;
+        font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+        font-size: 13px;
+        background: #0b0b14;
+        color: #e8e8f0;
+      }
+      h1 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
+      h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: #6d28d9; }
+      .muted { color: #8a8aa0; font-size: 11px; }
+      .row { margin: 8px 0; }
+      select, button, textarea {
+        width: 100%;
+        box-sizing: border-box;
+        background: #1a1a2a;
+        color: #e8e8f0;
+        border: 1px solid #2c2c40;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        background: #6d28d9;
+        border-color: #6d28d9;
+        font-weight: 600;
+      }
+      button:hover { background: #7c3aed; }
+      button.secondary { background: #1a1a2a; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      textarea { font-family: ui-monospace, monospace; font-size: 11px; min-height: 70px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .ok { color: #34d399; }
+      .err { color: #f87171; }
+      .section { border-top: 1px solid #2c2c40; padding-top: 10px; margin-top: 10px; }
+      a { color: #a78bfa; }
+    </style>
+  </head>
+  <body>
+    <h1><span class="dot"></span>Gemin-Eye Spy Glass</h1>
+
+    <div id="setup" style="display: none">
+      <p class="muted">
+        First time? Open your dashboard, copy the Chrome Extension config, and paste it below.
+      </p>
+      <div class="row">
+        <textarea id="config-input" placeholder="Paste config here…"></textarea>
+      </div>
+      <button id="save-config">Save config</button>
+      <p id="save-status" class="muted"></p>
+    </div>
+
+    <div id="ready" style="display: none">
+      <div class="row">
+        <label class="muted">Business</label>
+        <select id="business-select"></select>
+      </div>
+      <div class="row grid">
+        <button id="scan-fb">Scan Facebook</button>
+        <button id="scan-li">Scan LinkedIn</button>
+      </div>
+      <p id="status" class="muted"></p>
+      <div class="section">
+        <button class="secondary" id="reset">Reset config</button>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -67,35 +67,48 @@
     banner.appendChild(closeBtn);
     document.body.appendChild(banner);
 
-    const SELECTORS = [
-      ".feed-shared-update-v2__description",
-      ".feed-shared-inline-show-more-text",
-      ".feed-shared-text",
-      ".update-components-text",
-      ".update-components-update-v2__commentary",
-      "div.feed-shared-update-v2 span.break-words",
-      "div[data-id^='urn:li:activity'] span.break-words",
-      "div.update-components-text span[dir='ltr']",
-      "article span.break-words",
+    // Anchor on stable LinkedIn data attributes for post containers.
+    // The text-bearing inner elements have changed names many times, so we
+    // walk the whole post container and pull its innerText.
+    const POST_CONTAINERS = [
+      "div[data-urn^='urn:li:activity']",
+      "div[data-id^='urn:li:activity']",
+      "div[data-urn^='urn:li:share']",
+      "div.feed-shared-update-v2",
+      "div.fie-impression-container",
     ];
     function extractPosts() {
       const found = [];
-      const sel = SELECTORS.join(",");
-      const els = document.querySelectorAll(sel);
-      lastFoundCount = els.length;
+      const containerSel = POST_CONTAINERS.join(",");
+      const containers = document.querySelectorAll(containerSel);
+      lastFoundCount = containers.length;
       let skippedShort = 0, skippedLong = 0, skippedSeen = 0;
-      els.forEach((el) => {
-        const t = (el.innerText || "").trim();
-        if (t.length < 25) { skippedShort++; return; }
-        if (t.length > 5000) { skippedLong++; return; }
-        if (seenPosts[t]) { skippedSeen++; return; }
-        found.push({ text: t, element: el });
+      containers.forEach((container) => {
+        // Strip nav/buttons/comments by cloning and removing button/nav children
+        const text = (container.innerText || "")
+          .split("\n")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !/^(Like|Comment|Repost|Send|Follow|Reply|See more|See translation|\d+ (Like|Comment|Repost|reaction|comment|share))/i.test(s))
+          .join(" ")
+          .slice(0, 5000);
+        if (text.length < 25) { skippedShort++; return; }
+        if (text.length > 5000) { skippedLong++; return; }
+        if (seenPosts[text]) { skippedSeen++; return; }
+        found.push({ text, element: container });
       });
-      LOG(`extractPosts: ${els.length} matched DOM, ${found.length} new (short:${skippedShort} long:${skippedLong} seen:${skippedSeen})`);
-      if (els.length === 0) {
-        LOG("⚠ No DOM matches. Selectors tried:", SELECTORS);
-        const fallback = document.querySelectorAll("article, div[role='article']");
-        LOG(`fallback <article> count:`, fallback.length);
+      LOG(`extractPosts: ${containers.length} containers, ${found.length} new (short:${skippedShort} long:${skippedLong} seen:${skippedSeen})`);
+      if (containers.length === 0) {
+        LOG("⚠ No post containers. Selectors tried:", POST_CONTAINERS);
+        // Sample what IS on the page for diagnosis
+        const sample = {
+          urn: document.querySelectorAll("[data-urn]").length,
+          dataId: document.querySelectorAll("[data-id]").length,
+          articles: document.querySelectorAll("article").length,
+          mainExists: !!document.querySelector("main"),
+        };
+        LOG("page sample:", sample);
+        const anyUrn = document.querySelector("[data-urn]");
+        if (anyUrn) LOG("first [data-urn] value:", anyUrn.getAttribute("data-urn"));
       }
       return found;
     }

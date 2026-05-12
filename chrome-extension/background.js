@@ -39,13 +39,22 @@ async function postScan(platform, body) {
   }
 }
 
+function safeRespond(promise, sendResponse, fallback) {
+  promise
+    .then((v) => sendResponse(v))
+    .catch((err) => sendResponse({ ...fallback, error: String(err) }));
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "GE_SCAN") {
-    postScan(msg.platform, msg.body).then(sendResponse);
+    safeRespond(postScan(msg.platform, msg.body), sendResponse, {
+      matched: false,
+      reason: "background_error",
+    });
     return true; // async response
   }
   if (msg?.type === "GE_GET_ACTIVE_BUSINESS") {
-    getActiveBusiness().then(sendResponse);
+    safeRespond(getActiveBusiness(), sendResponse, null);
     return true;
   }
 });

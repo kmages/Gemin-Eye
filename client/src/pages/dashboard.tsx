@@ -456,6 +456,15 @@ function ChromeExtensionCard() {
   const copyConfig = async () => {
     try {
       const res = await fetch("/api/extension/config", { credentials: "include" });
+      if (res.status === 402) {
+        toast({
+          title: "Pro plan required",
+          description: "The Chrome extension is a Pro feature. Redirecting to billing…",
+          variant: "destructive",
+        });
+        setTimeout(() => { window.location.href = "/billing"; }, 1200);
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const config = await res.json();
       await navigator.clipboard.writeText(JSON.stringify(config));

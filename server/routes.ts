@@ -13,9 +13,10 @@ import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySch
 import { createRateLimiter } from "./utils/rate-limit";
 import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
-import archiver from "archiver";
 import path from "node:path";
 import fs from "node:fs";
+import { createRequire } from "node:module";
+const archiver: any = createRequire(import.meta.url)("archiver");
 import { registerAdminRoutes, isMonitoringEnabled } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 import { registerBillingRoutes } from "./routes/billing";

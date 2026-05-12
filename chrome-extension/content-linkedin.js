@@ -243,17 +243,66 @@
       }
     });
 
+    // Find the actual scrolling element. LinkedIn nests the feed in a custom
+    // scroll container, so window.scrollBy may do nothing. We test which
+    // candidate actually has scrollHeight > clientHeight and overflow.
+    function findScroller() {
+      const candidates = [
+        document.scrollingElement,
+        document.documentElement,
+        document.body,
+        document.querySelector("main"),
+        ...document.querySelectorAll("div"),
+      ].filter(Boolean);
+      for (const el of candidates) {
+        if (!el || !el.scrollHeight) continue;
+        if (el.scrollHeight - el.clientHeight > 200) {
+          const style = el === document.scrollingElement ? null : getComputedStyle(el);
+          if (!style || /(auto|scroll)/.test(style.overflowY)) {
+            return el;
+          }
+        }
+      }
+      return document.scrollingElement || document.documentElement;
+    }
+    const scroller = findScroller();
+    LOG("scroll target:", scroller?.tagName, scroller?.className?.slice?.(0, 40), "scrollHeight:", scroller?.scrollHeight);
+
     scan();
     const si = setInterval(scan, 2000);
+    let lastScrollTop = scroller.scrollTop;
+    let stuckCount = 0;
     const scrollInterval = setInterval(() => {
       if (!autoScrolling || document.hidden) return;
       scrollsDone++;
       if (scrollsDone >= maxScrolls) {
         autoScrolling = false;
+        LOG(`reached maxScrolls=${maxScrolls}, stopping auto-scroll`);
         updateCounter();
         return;
       }
-      window.scrollBy({ top: 600, behavior: "smooth" });
+      const before = scroller.scrollTop;
+      // Try multiple scroll methods — whichever works
+      try { scroller.scrollBy({ top: 800, behavior: "smooth" }); } catch {}
+      try { window.scrollBy({ top: 800, behavior: "smooth" }); } catch {}
+      try { scroller.scrollTop = before + 800; } catch {}
+      // Verify after a short delay that the page actually moved
+      setTimeout(() => {
+        const after = scroller.scrollTop;
+        if (after === lastScrollTop) {
+          stuckCount++;
+          if (stuckCount === 3) LOG(`⚠ scroll appears stuck at ${after}px (3 consecutive non-moves)`);
+          if (stuckCount >= 6) {
+            LOG(`⚠ giving up auto-scroll after 6 stuck attempts. Manual scroll still works.`);
+            autoScrolling = false;
+            updateCounter();
+          }
+        } else {
+          if (stuckCount > 0) LOG(`scroll resumed at ${after}px`);
+          stuckCount = 0;
+        }
+        lastScrollTop = after;
+      }, 600);
     }, 1500);
   }
 

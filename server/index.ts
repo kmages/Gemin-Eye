@@ -23,6 +23,18 @@ for (const envVar of optionalEnvVars) {
 const app = express();
 const httpServer = createServer(app);
 
+// ── SEO: explicitly allow indexing on the production domain ──────────────────
+// Replit dev preview hosts auto-inject X-Robots-Tag: noindex (correct for dev).
+// In production, force the opposite so Lighthouse / crawlers see index,follow.
+app.use((req, res, next) => {
+  const host = req.headers.host || "";
+  const isProdHost = host.endsWith("gemin-eye.com");
+  if (isProdHost && !req.path.startsWith("/api/")) {
+    res.setHeader("X-Robots-Tag", "index, follow");
+  }
+  next();
+});
+
 // ── CORS ──────────────────────────────────────────────────────────────────────
 // Allow the production domain + Replit preview domains in dev.
 // The Telegram webhook path is excluded — it's a server-to-server call with

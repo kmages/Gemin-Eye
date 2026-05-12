@@ -15,8 +15,7 @@ import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
 import path from "node:path";
 import fs from "node:fs";
-import { createRequire } from "node:module";
-const archiver: any = createRequire(import.meta.url)("archiver");
+import { ZipArchive } from "archiver";
 import { registerAdminRoutes, isMonitoringEnabled } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 import { registerBillingRoutes } from "./routes/billing";
@@ -447,7 +446,7 @@ Return ONLY valid JSON with this structure:
       }
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", 'attachment; filename="gemin-eye-chrome-extension.zip"');
-      const archive = archiver("zip", { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
       archive.on("error", (err) => { console.error("zip error:", err); try { res.end(); } catch {} });
       archive.pipe(res);
       archive.directory(extDir, "chrome-extension");

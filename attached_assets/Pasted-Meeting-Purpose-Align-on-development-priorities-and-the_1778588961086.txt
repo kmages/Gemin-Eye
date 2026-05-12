@@ -1,0 +1,63 @@
+Meeting Purpose
+
+Align on development priorities and the go-to-market strategy.
+Key Takeaways
+
+    Top Priority: Build a Chrome extension for LinkedIn/Facebook scraping. This is the critical next step, as the current bookmarklet method fails with multiple windows open.
+
+    Pivot to a "Proof of Concept" (PoC) model. The immediate goal is to prove the platform generates high-quality leads for a single vertical (e.g., roofing), not to sell subscriptions.
+
+    Use the platform internally as a "roofing service" to generate leads. This will validate the full lead-gen workflow (find → notify → contact) before approaching external clients.
+
+    Leads must be delivered in real-time via Telegram. This enables immediate contact with prospects, which is essential for capturing time-sensitive jobs (e.g., a leaking roof).
+
+Topics
+Development Priorities
+
+    LinkedIn & Facebook Scraping:
+
+        Problem: The current bookmarklet method fails when multiple windows are open.
+
+        Solution: Build a Chrome extension. This is the top priority and is expected to take ~2 days.
+
+    Feature Testing:
+
+        Most features are working, but LinkedIn/Facebook scraping remains untested.
+
+        Ken requires a screen video of the entire workflow once testing is complete.
+
+    UI & Subscription Plans:
+
+        The UI is incomplete, requiring direct URL navigation.
+
+        Subscription plans are a low priority; the focus is on proving lead generation first.
+
+Go-to-Market Strategy: Proof of Concept (PoC)
+
+    Goal: Prove the platform generates high-quality leads before selling subscriptions.
+
+    Method: Use the platform internally as a "roofing service" to generate leads.
+
+        Jack will register a new company profile (e.g., "i3 Inc.") and remove existing test clients (e.g., Doromind).
+
+        The platform will monitor Reddit and Facebook for posts from people needing roof repairs.
+
+    Lead Delivery:
+
+        Requirement: Real-time notifications (e.g., Telegram) for immediate contact.
+
+        Rationale: This speed is critical for securing time-sensitive jobs (e.g., a leaking roof).
+
+        Decision: Telegram is sufficient; Slack is not required.
+
+Next Steps
+
+    Jack:
+
+        Build a Chrome extension for LinkedIn/Facebook scraping (~2 days).
+
+        Register a new company profile (e.g., "i3 Inc.") and remove existing test clients.
+
+        Create a screen video of the full workflow after testing.
+
+        Schedule the next meeting with Ken once the extension is ready.

@@ -80,6 +80,12 @@
         found.push({ text: t, element: el });
       });
       LOG(`extractPosts: ${els.length} dir=auto, ${found.length} new (short/long:${skippedShort} seen:${skippedSeen} link:${skippedLink})`);
+      found.forEach((p, i) => {
+        console.groupCollapsed(`%c[Gemin-Eye FB] candidate #${scannedCount + i + 1} (${p.text.length} chars)`, "color:#6d28d9;font-weight:bold");
+        console.log("FULL TEXT:\n" + p.text);
+        console.log("Element:", p.element);
+        console.groupEnd();
+      });
       return found;
     }
 

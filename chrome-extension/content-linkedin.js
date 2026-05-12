@@ -185,7 +185,14 @@
           if (nameEl) authorName = nameEl.innerText || "";
         }
       } catch {}
-      LOG(`→ sending to backend (${text.length} chars):`, text.slice(0, 80) + "…");
+      const postNum = scannedCount;
+      console.groupCollapsed(
+        `%c[Gemin-Eye LI] POST #${postNum} (${text.length} chars) → ${authorName || "?"}`,
+        "color:#0077B5;font-weight:bold",
+      );
+      console.log("FULL TEXT:\n" + text);
+      console.log("Element:", el);
+      console.groupEnd();
       chrome.runtime.sendMessage(
         {
           type: "GE_SCAN",
@@ -202,19 +209,19 @@
             LOG("✗ runtime error:", chrome.runtime.lastError.message);
             failCount++;
           } else if (d && d.matched) {
-            LOG("✓ MATCHED lead, score:", d.score ?? "?", "reason:", d.reason ?? "");
+            LOG(`✓ POST #${postNum} MATCHED LEAD, score:`, d.score ?? "?", "reason:", d.reason ?? "");
             sentCount++;
             el.style.outline = "3px solid #0077B5";
             el.style.outlineOffset = "4px";
             el.style.borderRadius = "4px";
           } else if (!d) {
-            LOG("✗ no response from background");
+            LOG(`✗ POST #${postNum} no response from background`);
             failCount++;
           } else if (d.reason === "network_error") {
-            LOG("✗ network error:", d.error);
+            LOG(`✗ POST #${postNum} network error:`, d.error);
             failCount++;
           } else {
-            LOG("• not a match. response:", d);
+            LOG(`• POST #${postNum} not a match. reason:`, d.reason || "low_score", "score:", d.score ?? "?");
           }
           updateCounter();
         },

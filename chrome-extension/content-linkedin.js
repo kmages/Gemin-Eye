@@ -67,48 +67,105 @@
     banner.appendChild(closeBtn);
     document.body.appendChild(banner);
 
-    // Anchor on stable LinkedIn data attributes for post containers.
-    // The text-bearing inner elements have changed names many times, so we
-    // walk the whole post container and pull its innerText.
-    const POST_CONTAINERS = [
-      "div[data-urn^='urn:li:activity']",
-      "div[data-id^='urn:li:activity']",
-      "div[data-urn^='urn:li:share']",
-      "div.feed-shared-update-v2",
-      "div.fie-impression-container",
+    // LinkedIn obfuscates class names and dropped data-urn/article. Anchor on
+    // (1) stable data-testid attributes when present, (2) the "expandable-text-
+    // button" testid that lives inside every post, (3) a brute-force text walk
+    // of <main> as last resort.
+    const TESTID_SELECTORS = [
+      "[data-testid='feed-update']",
+      "[data-testid='post-content']",
+      "[data-testid='update-text']",
+      "[data-testid='main-feed-activity-card']",
     ];
+
+    function cleanText(raw) {
+      return (raw || "")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(
+          (s) =>
+            s.length > 0 &&
+            !/^(Like|Comment|Repost|Send|Follow|Reply|See more|See translation|Promoted|\d+\s*(Like|Comment|Repost|reaction|comment|share|impression))/i.test(
+              s,
+            ),
+        )
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .slice(0, 5000);
+    }
+
+    function pushIfNew(found, container, text, skippedRef) {
+      if (text.length < 25) { skippedRef.short++; return; }
+      if (text.length > 5000) { skippedRef.long++; return; }
+      if (seenPosts[text]) { skippedRef.seen++; return; }
+      found.push({ text, element: container });
+    }
+
     function extractPosts() {
       const found = [];
-      const containerSel = POST_CONTAINERS.join(",");
-      const containers = document.querySelectorAll(containerSel);
-      lastFoundCount = containers.length;
-      let skippedShort = 0, skippedLong = 0, skippedSeen = 0;
-      containers.forEach((container) => {
-        // Strip nav/buttons/comments by cloning and removing button/nav children
-        const text = (container.innerText || "")
-          .split("\n")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0 && !/^(Like|Comment|Repost|Send|Follow|Reply|See more|See translation|\d+ (Like|Comment|Repost|reaction|comment|share))/i.test(s))
-          .join(" ")
-          .slice(0, 5000);
-        if (text.length < 25) { skippedShort++; return; }
-        if (text.length > 5000) { skippedLong++; return; }
-        if (seenPosts[text]) { skippedSeen++; return; }
-        found.push({ text, element: container });
-      });
-      LOG(`extractPosts: ${containers.length} containers, ${found.length} new (short:${skippedShort} long:${skippedLong} seen:${skippedSeen})`);
-      if (containers.length === 0) {
-        LOG("⚠ No post containers. Selectors tried:", POST_CONTAINERS);
-        // Sample what IS on the page for diagnosis
+      const skipped = { short: 0, long: 0, seen: 0 };
+      let strategy = "none";
+
+      // Strategy 1: explicit testids
+      let containers = document.querySelectorAll(TESTID_SELECTORS.join(","));
+      if (containers.length > 0) {
+        strategy = "testid";
+        containers.forEach((c) => pushIfNew(found, c, cleanText(c.innerText), skipped));
+      }
+
+      // Strategy 2: walk up from "expandable-text-button" testids (every post has one)
+      if (found.length === 0) {
+        const buttons = document.querySelectorAll("button[data-testid='expandable-text-button']");
+        if (buttons.length > 0) {
+          strategy = "expandable-button";
+          containers = new Set();
+          buttons.forEach((btn) => {
+            // Walk up until we find a sizeable container (parent with > 10 child elements)
+            let node = btn.parentElement;
+            for (let i = 0; i < 12 && node; i++) {
+              if (node.querySelectorAll("button, a").length > 3) {
+                containers.add(node);
+                break;
+              }
+              node = node.parentElement;
+            }
+          });
+          containers.forEach((c) => pushIfNew(found, c, cleanText(c.innerText), skipped));
+        }
+      }
+
+      // Strategy 3: brute-force walk of <main>, grab divs whose direct text is substantial
+      if (found.length === 0) {
+        const main = document.querySelector("main") || document.body;
+        const all = main.querySelectorAll("div");
+        strategy = "main-walk";
+        const seenLocal = new Set();
+        all.forEach((div) => {
+          // Only consider leaves-ish: no nested div with text > 100 chars
+          const txt = (div.innerText || "").trim();
+          if (txt.length < 80 || txt.length > 5000) return;
+          // Avoid containers — only take if text isn't already covered by a child
+          if (Array.from(div.children).some((ch) => (ch.innerText || "").trim().length > 80)) return;
+          if (seenLocal.has(txt)) return;
+          seenLocal.add(txt);
+          pushIfNew(found, div, cleanText(txt), skipped);
+        });
+      }
+
+      lastFoundCount = found.length;
+      LOG(`extractPosts[${strategy}]: ${found.length} new (short:${skipped.short} long:${skipped.long} seen:${skipped.seen})`);
+
+      if (found.length === 0) {
+        const testidNodes = document.querySelectorAll("[data-testid]");
+        const ids = new Set();
+        testidNodes.forEach((n) => ids.add(n.getAttribute("data-testid")));
         const sample = {
-          urn: document.querySelectorAll("[data-urn]").length,
-          dataId: document.querySelectorAll("[data-id]").length,
-          articles: document.querySelectorAll("article").length,
+          totalTestids: testidNodes.length,
+          uniqueTestids: Array.from(ids).slice(0, 30),
           mainExists: !!document.querySelector("main"),
+          mainChildren: document.querySelector("main")?.children.length || 0,
         };
         LOG("page sample:", sample);
-        const anyUrn = document.querySelector("[data-urn]");
-        if (anyUrn) LOG("first [data-urn] value:", anyUrn.getAttribute("data-urn"));
       }
       return found;
     }

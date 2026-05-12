@@ -13,6 +13,9 @@ import { generateContent, safeParseJsonFromAI, parseAIJsonWithRetry, strategySch
 import { createRateLimiter } from "./utils/rate-limit";
 import { buildGoogleAlertFeeds } from "./utils/keywords";
 import { sendSlackMessage, getSlackWebhook } from "./utils/slack";
+import archiver from "archiver";
+import path from "node:path";
+import fs from "node:fs";
 import { registerAdminRoutes, isMonitoringEnabled } from "./routes/admin";
 import { registerScanRoutes } from "./routes/scan";
 import { registerBillingRoutes } from "./routes/billing";
@@ -437,10 +440,6 @@ Return ONLY valid JSON with this structure:
       if (!(await hasProTier(userId))) {
         return res.status(402).json({ error: "subscription_required", upgradeUrl: "/billing" });
       }
-      const path = await import("node:path");
-      const fs = await import("node:fs");
-      const archiverMod: any = await import("archiver");
-      const archiver = archiverMod.default || archiverMod;
       const extDir = path.resolve(process.cwd(), "chrome-extension");
       if (!fs.existsSync(extDir)) {
         return res.status(404).json({ error: "Extension folder not found" });

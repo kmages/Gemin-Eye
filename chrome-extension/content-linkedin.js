@@ -275,6 +275,16 @@
     const scroller = findScroller();
     LOG("scroll target:", scroller?.tagName, scroller?.className?.slice?.(0, 40), "scrollHeight:", scroller?.scrollHeight);
 
+    // Track the most-recently-extracted post element so we can scrollIntoView
+    // on it — this forces LinkedIn's virtualization to load more.
+    let lastPostEl = null;
+    const _origExtract = extractPosts;
+    extractPosts = function () {
+      const r = _origExtract();
+      if (r.length) lastPostEl = r[r.length - 1].element;
+      return r;
+    };
+
     scan();
     const si = setInterval(scan, 2000);
     let lastScrollTop = scroller.scrollTop;
@@ -289,27 +299,57 @@
         return;
       }
       const before = scroller.scrollTop;
-      // Try multiple scroll methods — whichever works
-      try { scroller.scrollBy({ top: 800, behavior: "smooth" }); } catch {}
-      try { window.scrollBy({ top: 800, behavior: "smooth" }); } catch {}
-      try { scroller.scrollTop = before + 800; } catch {}
-      // Verify after a short delay that the page actually moved
+      // Blur any focused element (Read more button traps focus → blocks scroll)
+      try {
+        const a = document.activeElement;
+        if (a && a !== document.body && typeof a.blur === "function") {
+          LOG(`blurring focused element to free scroll: ${a.tagName}.${(a.className || "").slice(0, 30)}`);
+          a.blur();
+        }
+      } catch {}
+      // Strategy 1: scroll the bottom-most extracted post into view
+      // (forces virtualization to render the next batch)
+      if (lastPostEl && lastPostEl.isConnected) {
+        try { lastPostEl.scrollIntoView({ behavior: "instant", block: "end" }); } catch {}
+      }
+      // Strategy 2: classic scrollBy on detected scroller + window
+      try { scroller.scrollBy({ top: 1200, behavior: "instant" }); } catch {
+        try { scroller.scrollBy(0, 1200); } catch {}
+      }
+      try { window.scrollBy(0, 1200); } catch {}
+      // Strategy 3: direct scrollTop set as last-resort
+      try { scroller.scrollTop = before + 1200; } catch {}
+      // Strategy 4: dispatch wheel event on the scroller
+      try {
+        scroller.dispatchEvent(new WheelEvent("wheel", { deltaY: 1200, bubbles: true, cancelable: true }));
+      } catch {}
+
+      // Verify after a short delay that something moved
       setTimeout(() => {
         const after = scroller.scrollTop;
         if (after === lastScrollTop) {
           stuckCount++;
-          if (stuckCount === 3) LOG(`⚠ scroll appears stuck at ${after}px (3 consecutive non-moves)`);
-          if (stuckCount >= 6) {
-            LOG(`⚠ giving up auto-scroll after 6 stuck attempts. Manual scroll still works.`);
+          if (stuckCount === 3) {
+            LOG(`⚠ scroll stuck at ${after}px after 3 attempts — re-detecting scroll target`);
+            // Re-detect — maybe virtualization changed the container
+            const newScroller = findScroller();
+            if (newScroller && newScroller !== scroller) {
+              LOG(`switching scroller to ${newScroller.tagName}.${(newScroller.className || "").slice(0, 30)}`);
+              // eslint-disable-next-line no-param-reassign
+              scrollerRef.el = newScroller;
+            }
+          }
+          if (stuckCount >= 8) {
+            LOG(`⚠ giving up auto-scroll after 8 stuck attempts. Scroll the page manually — the scanner will keep running.`);
             autoScrolling = false;
             updateCounter();
           }
         } else {
-          if (stuckCount > 0) LOG(`scroll resumed at ${after}px`);
+          if (stuckCount > 0) LOG(`scroll resumed (${lastScrollTop} → ${after}px)`);
           stuckCount = 0;
         }
         lastScrollTop = after;
-      }, 600);
+      }, 700);
     }, 1500);
   }
 

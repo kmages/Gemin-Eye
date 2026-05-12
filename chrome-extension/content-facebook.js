@@ -81,10 +81,12 @@
       });
       LOG(`extractPosts: ${els.length} dir=auto, ${found.length} new (short/long:${skippedShort} seen:${skippedSeen} link:${skippedLink})`);
       found.forEach((p, i) => {
-        console.groupCollapsed(`%c[Gemin-Eye FB] candidate #${scannedCount + i + 1} (${p.text.length} chars)`, "color:#6d28d9;font-weight:bold");
-        console.log("FULL TEXT:\n" + p.text);
-        console.log("Element:", p.element);
-        console.groupEnd();
+        console.log(
+          `%c[Gemin-Eye FB] POST #${scannedCount + i + 1} (${p.text.length} chars):\n%c${p.text}\n%c—————————————————————————————`,
+          "color:#6d28d9;font-weight:bold;font-size:12px",
+          "color:#222;background:#f5f0ff;padding:4px 8px;border-left:3px solid #6d28d9;display:block;white-space:pre-wrap",
+          "color:#999",
+        );
       });
       return found;
     }

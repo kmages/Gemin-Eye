@@ -186,13 +186,13 @@
         }
       } catch {}
       const postNum = scannedCount;
-      console.groupCollapsed(
-        `%c[Gemin-Eye LI] POST #${postNum} (${text.length} chars) → ${authorName || "?"}`,
-        "color:#0077B5;font-weight:bold",
+      console.log(
+        `%c[Gemin-Eye LI] POST #${postNum} by ${authorName || "?"} (${text.length} chars):\n%c${text}\n%c—————————————————————————————`,
+        "color:#0077B5;font-weight:bold;font-size:12px",
+        "color:#222;background:#f0f6ff;padding:4px 8px;border-left:3px solid #0077B5;display:block;white-space:pre-wrap",
+        "color:#999",
+        el,
       );
-      console.log("FULL TEXT:\n" + text);
-      console.log("Element:", el);
-      console.groupEnd();
       chrome.runtime.sendMessage(
         {
           type: "GE_SCAN",
@@ -272,7 +272,7 @@
       }
       return document.scrollingElement || document.documentElement;
     }
-    const scroller = findScroller();
+    let scroller = findScroller();
     LOG("scroll target:", scroller?.tagName, scroller?.className?.slice?.(0, 40), "scrollHeight:", scroller?.scrollHeight);
 
     // Track the most-recently-extracted post element so we can scrollIntoView
@@ -335,8 +335,7 @@
             const newScroller = findScroller();
             if (newScroller && newScroller !== scroller) {
               LOG(`switching scroller to ${newScroller.tagName}.${(newScroller.className || "").slice(0, 30)}`);
-              // eslint-disable-next-line no-param-reassign
-              scrollerRef.el = newScroller;
+              scroller = newScroller;
             }
           }
           if (stuckCount >= 8) {

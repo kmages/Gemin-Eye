@@ -430,6 +430,33 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  app.get("/api/extension/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      if (!(await hasProTier(userId))) {
+        return res.status(402).json({ error: "subscription_required", upgradeUrl: "/billing" });
+      }
+      const path = await import("node:path");
+      const fs = await import("node:fs");
+      const archiver = (await import("archiver")).default;
+      const extDir = path.resolve(process.cwd(), "chrome-extension");
+      if (!fs.existsSync(extDir)) {
+        return res.status(404).json({ error: "Extension folder not found" });
+      }
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", 'attachment; filename="gemin-eye-chrome-extension.zip"');
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      archive.on("error", (err) => { console.error("zip error:", err); try { res.end(); } catch {} });
+      archive.pipe(res);
+      archive.directory(extDir, "chrome-extension");
+      await archive.finalize();
+    } catch (error) {
+      console.error("Extension download error:", error);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to build download" });
+    }
+  });
+
   app.get("/api/extension/config", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;

@@ -13,7 +13,7 @@ import {
   Eye, Target, MessageCircle, TrendingUp, Copy, ExternalLink,
   CheckCircle, Clock, AlertCircle, Zap, ArrowRight, LogOut, Plus, Users, Send, Settings,
   Search, Monitor, Check, Bookmark, Activity, Play, Pause, ChevronDown, ChevronUp,
-  X, Tag, Wifi, WifiOff, SlidersHorizontal, Loader2,
+  X, Tag, Wifi, WifiOff, SlidersHorizontal, Loader2, Download,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SiFacebook, SiLinkedin } from "react-icons/si";
@@ -490,9 +490,19 @@ function ChromeExtensionCard() {
         <li>Click <strong>Copy config</strong> below.</li>
         <li>Click the extension icon, paste the config, save.</li>
       </ol>
-      <Button onClick={copyConfig} data-testid="button-copy-extension-config">
-        {copied ? "Copied!" : "Copy config"}
-      </Button>
+      <div className="flex gap-2 flex-wrap">
+        <Button
+          variant="outline"
+          onClick={() => { window.location.href = "/api/extension/download"; }}
+          data-testid="button-download-extension"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Download extension
+        </Button>
+        <Button onClick={copyConfig} data-testid="button-copy-extension-config">
+          {copied ? "Copied!" : "Copy config"}
+        </Button>
+      </div>
     </Card>
   );
 }

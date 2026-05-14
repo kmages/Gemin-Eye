@@ -245,7 +245,13 @@
             LOG(`✗ POST #${postNum} network error:`, d.error);
             failCount++;
           } else {
-            LOG(`• POST #${postNum} not a match. reason:`, d.reason || "low_score", "score:", d.score ?? "?");
+            // Show the real reason from the backend. Only 'low_intent' carries
+            // a score; other reasons (no_keyword_match, own_response,
+            // ai_parse_error, post_too_old, all_campaigns_paused) don't.
+            const parts = [`reason: ${d.reason || "unknown"}`];
+            if (typeof d.score === "number") parts.push(`score: ${d.score}/10`);
+            if (typeof d.threshold === "number") parts.push(`threshold: ${d.threshold}`);
+            LOG(`• POST #${postNum} not a match. ${parts.join(" · ")}`);
           }
           updateCounter();
         },

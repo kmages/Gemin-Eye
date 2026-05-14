@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { businesses as businessesTable, campaigns as campaignsTable, leads as leadsTable, aiResponses as aiResponsesTable } from "@shared/schema";
 import type { Business, Campaign } from "@shared/schema";
-import { generateContent, parseAIJsonWithSchema, scanMatchSchema, TONE_MAP, MIN_POST_LENGTH, MIN_SCAN_INTENT_SCORE } from "../utils/ai";
+import { generateContent, parseAIJsonWithSchema, scanMatchSchema, TONE_MAP, MIN_POST_LENGTH } from "../utils/ai";
 import { escapeHtml } from "../utils/html";
 import { getFeedbackGuidance } from "../utils/feedback";
 import { keywordMatch } from "../utils/keywords";
@@ -212,8 +212,11 @@ IMPORTANT: Return ONLY a single JSON object with no other text, no explanation, 
     return { matched: false, reason: "ai_parse_error" };
   }
 
-  if (!match.is_lead || match.intent_score < MIN_SCAN_INTENT_SCORE) {
-    return { matched: false, reason: "low_intent", score: match.intent_score };
+  // Use the per-business intent threshold (set via dashboard slider) so FB +
+  // LinkedIn extension scans behave the same as Reddit + Google Alerts monitors.
+  const threshold = business.intentThreshold ?? 5;
+  if (!match.is_lead || match.intent_score < threshold) {
+    return { matched: false, reason: "low_intent", score: match.intent_score, threshold };
   }
 
   const feedbackGuidance = await getFeedbackGuidance(business.id);

@@ -12,6 +12,11 @@
     if (window.__geminEyeLiActive) { LOG("scan already running"); return; }
     window.__geminEyeLiActive = true;
 
+    // Detect mode: posts search vs regular feed
+    const isSearch = /\/search\/results\/content/.test(location.pathname);
+    const modeLabel = isSearch ? "Posts Search" : "Feed";
+    LOG(`mode: ${modeLabel} (path: ${location.pathname})`);
+
     const seenPosts = {};
     let scannedCount = 0,
       sentCount = 0,
@@ -60,7 +65,7 @@
     };
 
     banner.appendChild(
-      document.createTextNode(`Gemin-Eye LinkedIn [${business.businessName}] `),
+      document.createTextNode(`Gemin-Eye LinkedIn ${modeLabel} [${business.businessName}] `),
     );
     banner.appendChild(counter);
     banner.appendChild(pauseBtn);
@@ -106,8 +111,27 @@
       const skipped = { short: 0, long: 0, seen: 0 };
       let strategy = "none";
 
+      // Strategy 0: search results page — each result card has stable hooks
+      // (LinkedIn keeps these mostly stable for accessibility/SEO crawlers)
+      if (isSearch) {
+        const searchSelectors = [
+          "div.search-results-container li",
+          "li.reusable-search__result-container",
+          "div[data-chameleon-result-urn]",
+          "div.feed-shared-update-v2",
+          "[data-view-name='search-entity-result-universal-template']",
+        ];
+        let containers = document.querySelectorAll(searchSelectors.join(","));
+        if (containers.length > 0) {
+          strategy = "search-cards";
+          containers.forEach((c) => pushIfNew(found, c, cleanText(c.innerText), skipped));
+        }
+      }
+
       // Strategy 1: explicit testids
-      let containers = document.querySelectorAll(TESTID_SELECTORS.join(","));
+      let containers = found.length === 0
+        ? document.querySelectorAll(TESTID_SELECTORS.join(","))
+        : [];
       if (containers.length > 0) {
         strategy = "testid";
         containers.forEach((c) => pushIfNew(found, c, cleanText(c.innerText), skipped));

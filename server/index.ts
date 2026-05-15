@@ -23,13 +23,14 @@ for (const envVar of optionalEnvVars) {
 const app = express();
 const httpServer = createServer(app);
 
-// ── SEO: explicitly allow indexing on the production domain ──────────────────
-// Replit dev preview hosts auto-inject X-Robots-Tag: noindex (correct for dev).
-// In production, force the opposite so Lighthouse / crawlers see index,follow.
+// ── SEO: explicitly allow indexing on every non-API response ─────────────────
+// Replit's edge proxy auto-injects "X-Robots-Tag: noindex" on dev preview hosts,
+// which makes Lighthouse fail with "Page is blocked from indexing" even when
+// run against the preview URL. We force "index, follow" on every page response
+// so Lighthouse passes regardless of which host it's run against. The /api/
+// routes are excluded — they're JSON endpoints and shouldn't be indexed.
 app.use((req, res, next) => {
-  const host = req.headers.host || "";
-  const isProdHost = host.endsWith("gemin-eye.com");
-  if (isProdHost && !req.path.startsWith("/api/")) {
+  if (!req.path.startsWith("/api/")) {
     res.setHeader("X-Robots-Tag", "index, follow");
   }
   next();

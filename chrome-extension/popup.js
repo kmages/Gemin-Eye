@@ -78,8 +78,8 @@ async function triggerScan(platform, hostMatch) {
   if (!tab || !tab.url || !hostMatch.test(tab.url)) {
     $("status").textContent =
       platform === "facebook"
-        ? "Open a Facebook group page first."
-        : "Open a LinkedIn feed/search page first.";
+        ? "Open a Facebook group, feed, or search-posts page first."
+        : "Open a LinkedIn feed or search-posts page first.";
     $("status").className = "err";
     return;
   }

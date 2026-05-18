@@ -78,10 +78,14 @@ const corsMiddleware = cors({
 });
 
 // Apply CORS to all /api routes except the Telegram + Stripe webhooks
-// (both are server-to-server with their own signature verification).
+// (both are server-to-server with their own signature verification)
+// and the FB/LinkedIn scan endpoints (which have their own CORS handler
+// in server/routes/scan.ts that allows chrome-extension:// origins —
+// the per-business HMAC scan token does the authentication there).
 app.use("/api", (req, res, next) => {
   if (req.path.startsWith("/telegram/webhook")) return next();
   if (req.path.startsWith("/stripe/webhook")) return next();
+  if (req.path === "/fb-scan" || req.path === "/li-scan") return next();
   corsMiddleware(req, res, next);
 });
 // ──────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,64 @@
+
+Meeting Purpose
+
+To resolve the core technical challenge of lead generation automation.
+Key Takeaways
+
+    The Core Problem: The current Chrome extension approach fails on user experience (manual setup, browser-dependent) and reliability, breaking the platform's promise of effortless automation.
+
+    The Lead Quality Problem: The Reddit-based lead gen is failing to deliver geographically relevant leads (e.g., a "Chicago roofing" campaign yielded leads from Kansas and Tennessee), making the feature unusable.
+
+    The Facebook Opportunity: Facebook groups are the richest source of high-intent leads, but scraping them is technically difficult due to privacy restrictions and the risk of account bans.
+
+    The Path Forward: Jack will research a viable technical solution, focusing on a backend scraping method for Facebook, and present findings in a follow-up meeting.
+
+Topics
+The Automation Challenge
+
+    The current Chrome extension approach directly conflicts with the platform's core value proposition: effortless automation.
+
+    User Experience Friction:
+
+        Requires manual setup and browser operation.
+
+        Creates user friction (e.g., forgetting to run it, privacy concerns).
+
+    Reliability & Scalability Issues:
+
+        Monitoring stops when the browser is closed.
+
+        Third-party tools are not a fit → designed for managing specific accounts, not the platform's diverse, user-defined lead searches.
+
+Lead Generation Performance
+
+    Reddit (Backend):
+
+        Failure: A "Chicago roofing" campaign yielded 37 leads from Kansas and Tennessee, not the specified location.
+
+        Significance: This failure makes the feature unusable for businesses that require local leads.
+
+    Facebook (Extension):
+
+        Opportunity: Private Facebook groups are the richest source of high-intent leads (e.g., "Chicago Renovation Room").
+
+        Challenge: The current extension is the only working method. Jack's account was blocked during testing, highlighting the technical difficulty and risk of account bans.
+
+Proposed Solutions & Constraints
+
+    Hybrid Approach (Jack's Suggestion):
+
+        Use backend automation for Reddit.
+
+        Use the extension for Facebook/LinkedIn initially.
+
+        Gradually migrate to full backend automation.
+
+    Backend Scraping (Ken's AI Suggestion):
+
+        Constraint: Facebook's public API only supports public groups, which are often low-value (filled with advertisers).
+
+        Constraint: Scraping private groups via tools like Puppeteer carries a high risk of account bans.
+
+Next Steps
+
+    Jack: Research and propose a viable technical solution for automated lead generation, focusing on a backend scraping method for Facebook.

@@ -172,7 +172,7 @@ export default function LandingPage() {
             ) : (
               <>
                 <Button variant="ghost" size="sm" asChild data-testid="button-login">
-                  <a href="/api/login">Log In</a>
+                  <a href="/api/login">Sign in with Google</a>
                 </Button>
                 <Button size="sm" asChild data-testid="button-get-started">
                   <a href="/api/login">Get Started <ArrowRight className="w-4 h-4 ml-1" /></a>

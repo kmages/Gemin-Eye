@@ -30,9 +30,22 @@ const getOidcConfig = memoize(
   { maxAge: 3600 * 1000 }
 );
 
-function resolveCallbackHost(hostHeader: string | undefined, fallback: string): string {
-  if (hostHeader && hostHeader.length > 0) return hostHeader;
-  return fallback;
+// Only allow OAuth callback strategies to be created for hosts we trust. This
+// prevents host-header-driven strategy proliferation (memory growth) and keeps
+// the auth flow from being influenced by untrusted Host input.
+function isAllowedCallbackHost(host: string | undefined): host is string {
+  if (!host || host.length === 0) return false;
+  const allowed = new Set<string>(["gemin-eye.com", "www.gemin-eye.com"]);
+  for (const d of (process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)) {
+    allowed.add(d);
+  }
+  if (allowed.has(host)) return true;
+  // Replit-managed production subdomain (e.g. gemin-eye.replit.app).
+  if (host.endsWith(".replit.app")) return true;
+  return false;
 }
 
 function callbackUrlFor(host: string): string {
@@ -40,12 +53,14 @@ function callbackUrlFor(host: string): string {
 }
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtlMs = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: false,
-    ttl: sessionTtl,
+    // connect-pg-simple expects the TTL in SECONDS (the cookie maxAge below is
+    // in milliseconds). Passing ms here would keep session rows alive for years.
+    ttl: sessionTtlMs / 1000,
     tableName: "sessions",
   });
   return session({
@@ -56,7 +71,7 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: true,
-      maxAge: sessionTtl,
+      maxAge: sessionTtlMs,
     },
   });
 }
@@ -136,7 +151,10 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", async (req, res, next) => {
     try {
-      const host = resolveCallbackHost(req.hostname, req.hostname);
+      const host = req.hostname;
+      if (!isAllowedCallbackHost(host)) {
+        return res.status(400).send("Invalid host");
+      }
       const strategyName = await ensureStrategy(host);
       passport.authenticate(strategyName, {
         prompt: "select_account",
@@ -149,7 +167,10 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", async (req, res, next) => {
     try {
-      const host = resolveCallbackHost(req.hostname, req.hostname);
+      const host = req.hostname;
+      if (!isAllowedCallbackHost(host)) {
+        return res.status(400).send("Invalid host");
+      }
       const strategyName = await ensureStrategy(host);
       passport.authenticate(strategyName, {
         successReturnToOrRedirect: "/dashboard",
@@ -171,30 +192,16 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Google is used purely for identity here — we never call Google APIs on the
+  // user's behalf after login, so the Express session (1-week TTL) is the source
+  // of truth, not the short-lived Google access token. Gating on the Google
+  // token's `exp` would force a re-login every ~hour. As long as Passport has a
+  // valid authenticated session, the request is authorized.
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user?.expires_at) {
+  if (!req.isAuthenticated() || !user?.claims?.sub) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
-  }
-
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
+  return next();
 };
